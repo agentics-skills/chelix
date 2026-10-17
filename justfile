@@ -18,12 +18,12 @@ format-check:
 lockfile-check:
     cargo fetch --locked
 
-# Lint Rust code using clippy (macOS omits --all-features and excludes chelix-matrix).
+# Lint Rust code using clippy (macOS omits --all-features).
 lint: lockfile-check
     #!/usr/bin/env bash
     set -euo pipefail
     if [ "$(uname -s)" = "Darwin" ]; then
-        cargo +{{nightly_toolchain}} clippy -Z unstable-options --workspace --all-targets --exclude chelix-matrix --timings -- -D warnings
+        cargo +{{nightly_toolchain}} clippy -Z unstable-options --workspace --all-targets --timings -- -D warnings
     else
         cargo +{{nightly_toolchain}} clippy -Z unstable-options --workspace --all-features --all-targets --timings -- -D warnings
     fi

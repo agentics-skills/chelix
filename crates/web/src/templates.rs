@@ -1122,13 +1122,13 @@ mod tests {
     }
 
     #[test]
-    fn load_channels_offered_from_config_path_reads_matrix_entries() {
+    fn load_channels_offered_from_config_path_reads_offered_entries() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("chelix.toml");
         let mut file = std::fs::File::create(&path).unwrap();
         writeln!(
             file,
-            "[channels]\noffered = [\"telegram\", \"matrix\", \"whatsapp\"]\n[tools.execute_command]\nterminal_size = \"115x58\"\n[sandbox]\narchived_session_retention_days = 3"
+            "[channels]\noffered = [\"telegram\", \"signal\", \"whatsapp\"]\n[tools.execute_command]\nterminal_size = \"115x58\"\n[sandbox]\narchived_session_retention_days = 3"
         )
         .unwrap();
 
@@ -1136,7 +1136,7 @@ mod tests {
 
         assert_eq!(offered, vec![
             "telegram".to_owned(),
-            "matrix".to_owned(),
+            "signal".to_owned(),
             "whatsapp".to_owned(),
         ]);
     }

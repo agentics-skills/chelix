@@ -757,7 +757,7 @@ impl ChatService for LiveChatService {
         )
         .await;
 
-        // Notify any channel (Telegram, Matrix, WhatsApp, etc.)
+        // Notify any channel (Telegram, WhatsApp, etc.)
         // that has pending reply targets on this session.
         notify_channels_of_compaction(&self.state, session_key, &outcome).await;
 

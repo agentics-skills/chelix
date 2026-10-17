@@ -24,7 +24,7 @@ export function AddTelegramModal(): VNode {
 		const form = (e.target as HTMLElement).closest(".channel-form") as HTMLElement;
 		const accountId = accountDraft.value.trim();
 		const credential = (form.querySelector("[data-field=credential]") as HTMLInputElement).value.trim();
-		const v = validateChannelFields(ChannelType.Telegram, accountId, credential);
+		const v = validateChannelFields(accountId, credential);
 		if (!v.valid) {
 			error.value = v.error;
 			return;

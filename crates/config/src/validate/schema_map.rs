@@ -352,18 +352,13 @@ pub(crate) fn build_schema_map() -> KnownKeys {
                 value: Box::new(Leaf),
                 fields: HashMap::from([("tools", channel_tools())]),
             };
-            MapWithFields {
-                // Dynamic keys: extra channel types via #[serde(flatten)]
-                value: Box::new(Map(Box::new(channel_account()))),
-                fields: HashMap::from([
-                    ("offered", Array(Box::new(Leaf))),
-                    ("telegram", Map(Box::new(channel_account()))),
-                    ("whatsapp", Map(Box::new(channel_account()))),
-                    ("matrix", Map(Box::new(channel_account()))),
-                    ("signal", Map(Box::new(channel_account()))),
-                    ("telephony", Map(Box::new(channel_account()))),
-                ]),
-            }
+            Struct(HashMap::from([
+                ("offered", Array(Box::new(Leaf))),
+                ("telegram", Map(Box::new(channel_account()))),
+                ("whatsapp", Map(Box::new(channel_account()))),
+                ("signal", Map(Box::new(channel_account()))),
+                ("telephony", Map(Box::new(channel_account()))),
+            ]))
         }),
         (
             "tls",

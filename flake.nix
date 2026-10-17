@@ -22,10 +22,8 @@
         pkgs = import nixpkgs {
           inherit system overlays;
         };
-        nightly = "2025-11-30";
+        nightly = "2026-07-30";
 
-        # Pinned nightly to avoid recursion limit overflow in matrix-sdk
-        # Latest nightly (2026-04) has query depth changes that break matrix-sdk 0.16
         rustToolchain = pkgs.rust-bin.nightly.${nightly}.default;
 
         rustPlatform = pkgs.makeRustPlatform {
@@ -48,9 +46,6 @@
           cargoLock = {
             lockFile = ./Cargo.lock;
             allowBuiltinFetchGit = true;
-            outputHashes = {
-              "sqlx-core-0.8.6" = "sha256-iZZlJ8YGlM1YUEGitK4aZH68tmg3y+gAVysXS8B+DW8=";
-            };
           };
           nativeBuildInputs = with pkgs; [
             cmake

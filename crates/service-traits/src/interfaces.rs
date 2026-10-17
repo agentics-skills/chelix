@@ -141,20 +141,9 @@ pub trait ChannelService: Send + Sync {
     async fn add(&self, params: Value) -> ServiceResult;
     async fn remove(&self, params: Value) -> ServiceResult;
     async fn update(&self, params: Value) -> ServiceResult;
-    async fn retry_ownership(&self, params: Value) -> ServiceResult;
     async fn senders_list(&self, params: Value) -> ServiceResult;
     async fn sender_approve(&self, params: Value) -> ServiceResult;
     async fn sender_deny(&self, params: Value) -> ServiceResult;
-
-    async fn oauth_start(&self, params: Value) -> ServiceResult {
-        let _ = params;
-        Err("channel OAuth not supported".into())
-    }
-
-    async fn oauth_complete(&self, params: Value) -> ServiceResult {
-        let _ = params;
-        Err("channel OAuth not supported".into())
-    }
 }
 
 pub struct NoopChannelService;
@@ -182,10 +171,6 @@ impl ChannelService for NoopChannelService {
     }
 
     async fn update(&self, _p: Value) -> ServiceResult {
-        Err("no channel service configured".into())
-    }
-
-    async fn retry_ownership(&self, _p: Value) -> ServiceResult {
         Err("no channel service configured".into())
     }
 

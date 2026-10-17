@@ -138,18 +138,6 @@ impl ChannelRegistry {
         Ok(())
     }
 
-    /// Register an account in the index without starting it.
-    ///
-    /// Used by flows that create accounts outside of `start_account`
-    /// (e.g. OIDC two-phase login).
-    pub fn index_account(&self, account_id: &str, channel_type: &str) {
-        let mut index = self
-            .account_index
-            .write()
-            .unwrap_or_else(|e| e.into_inner());
-        index.insert(account_id.to_string(), channel_type.to_string());
-    }
-
     /// Resolve account_id → channel_type via the index.
     pub fn resolve_channel_type(&self, account_id: &str) -> Option<String> {
         let index = self.account_index.read().unwrap_or_else(|e| e.into_inner());
@@ -244,19 +232,6 @@ impl ChannelRegistry {
             .ok_or_else(|| Error::invalid_input(format!("unknown channel type: {channel_type}")))?;
         let p = plugin.read().await;
         p.update_account_config(account_id, config)
-    }
-
-    /// Retry deferred account setup for a running account.
-    pub async fn retry_account_setup(&self, account_id: &str) -> Result<()> {
-        let channel_type = self
-            .resolve_channel_type(account_id)
-            .ok_or_else(|| Error::unknown_account(account_id))?;
-        let plugin = self
-            .plugins
-            .get(&channel_type)
-            .ok_or_else(|| Error::invalid_input(format!("unknown channel type: {channel_type}")))?;
-        let mut p = plugin.write().await;
-        p.retry_account_setup(account_id).await
     }
 
     /// Returns descriptors for all registered channel types.
@@ -749,7 +724,7 @@ mod tests {
             .register(Arc::new(RwLock::new(TestPlugin::new("telegram"))))
             .await;
         registry
-            .register(Arc::new(RwLock::new(TestPlugin::new("matrix"))))
+            .register(Arc::new(RwLock::new(TestPlugin::new("signal"))))
             .await;
 
         registry
@@ -758,7 +733,7 @@ mod tests {
             .unwrap();
 
         let result = registry
-            .start_account("matrix", "shared-id", serde_json::json!({}))
+            .start_account("signal", "shared-id", serde_json::json!({}))
             .await;
         assert!(result.is_err());
     }
@@ -786,7 +761,7 @@ mod tests {
     async fn unknown_channel_type_errors() {
         let registry = ChannelRegistry::new();
         let result = registry
-            .start_account("matrix", "bot1", serde_json::json!({}))
+            .start_account("unregistered", "bot1", serde_json::json!({}))
             .await;
         assert!(result.is_err());
     }
@@ -798,7 +773,7 @@ mod tests {
             .register(Arc::new(RwLock::new(TestPlugin::new("telegram"))))
             .await;
         registry
-            .register(Arc::new(RwLock::new(TestPlugin::new("matrix"))))
+            .register(Arc::new(RwLock::new(TestPlugin::new("signal"))))
             .await;
 
         registry
@@ -806,14 +781,14 @@ mod tests {
             .await
             .unwrap();
         registry
-            .start_account("matrix", "mx1", serde_json::json!({}))
+            .start_account("signal", "sig1", serde_json::json!({}))
             .await
             .unwrap();
 
         let mut accounts = registry.all_accounts();
         accounts.sort();
         assert_eq!(accounts, vec![
-            ("matrix".into(), "mx1".into()),
+            ("signal".into(), "sig1".into()),
             ("telegram".into(), "tg1".into()),
         ]);
     }
@@ -917,7 +892,7 @@ mod tests {
             .register(Arc::new(RwLock::new(TestPlugin::new("telegram"))))
             .await;
         registry
-            .register(Arc::new(RwLock::new(TestPlugin::new("matrix"))))
+            .register(Arc::new(RwLock::new(TestPlugin::new("signal"))))
             .await;
 
         let mut descs: Vec<String> = registry
@@ -926,7 +901,7 @@ mod tests {
             .map(|d| d.channel_type.to_string())
             .collect();
         descs.sort();
-        assert_eq!(descs, vec!["matrix", "telegram"]);
+        assert_eq!(descs, vec!["signal", "telegram"]);
     }
 
     #[test]

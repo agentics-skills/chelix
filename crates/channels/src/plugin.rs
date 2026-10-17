@@ -17,7 +17,6 @@ use crate::{Error, Result, config_view::ChannelConfigView};
 pub enum ChannelType {
     Telegram,
     Whatsapp,
-    Matrix,
     Signal,
     Telephony,
 }
@@ -28,7 +27,6 @@ impl ChannelType {
         match self {
             Self::Telegram => "telegram",
             Self::Whatsapp => "whatsapp",
-            Self::Matrix => "matrix",
             Self::Signal => "signal",
             Self::Telephony => "telephony",
         }
@@ -39,7 +37,6 @@ impl ChannelType {
         match self {
             Self::Telegram => "Telegram",
             Self::Whatsapp => "WhatsApp",
-            Self::Matrix => "Matrix",
             Self::Signal => "Signal",
             Self::Telephony => "Phone Call",
         }
@@ -75,7 +72,6 @@ impl ChannelType {
         match self {
             Self::Telegram => &["token"],
             Self::Whatsapp => &[],
-            Self::Matrix => &["access_token", "password"],
             Self::Signal => &[],
             Self::Telephony => &["auth_token"],
         }
@@ -95,7 +91,6 @@ impl std::str::FromStr for ChannelType {
         match s {
             "telegram" => Ok(Self::Telegram),
             "whatsapp" => Ok(Self::Whatsapp),
-            "matrix" | "element" => Ok(Self::Matrix),
             "signal" => Ok(Self::Signal),
             "telephony" | "phone" | "voice_call" | "voicecall" => Ok(Self::Telephony),
             other => Err(Error::invalid_input(format!(
@@ -110,7 +105,6 @@ impl ChannelType {
     pub const ALL: &[ChannelType] = &[
         Self::Telegram,
         Self::Whatsapp,
-        Self::Matrix,
         Self::Signal,
         Self::Telephony,
     ];
@@ -149,22 +143,6 @@ impl ChannelType {
                     supports_otp: true,
                     supports_reactions: false,
                     supports_location: false,
-                },
-            },
-            Self::Matrix => ChannelDescriptor {
-                channel_type: *self,
-                display_name: "Matrix",
-                capabilities: ChannelCapabilities {
-                    inbound_mode: InboundMode::GatewayLoop,
-                    supports_outbound: true,
-                    supports_streaming: true,
-                    supports_interactive: true,
-                    supports_threads: true,
-                    supports_voice_ingest: true,
-                    supports_pairing: false,
-                    supports_otp: true,
-                    supports_reactions: true,
-                    supports_location: true,
                 },
             },
             Self::Signal => ChannelDescriptor {
@@ -646,7 +624,7 @@ pub struct InteractiveMessage {
 /// Core channel plugin trait. Each messaging platform implements this.
 #[async_trait]
 pub trait ChannelPlugin: Send + Sync {
-    /// Channel identifier (e.g. "telegram", "matrix").
+    /// Channel identifier (e.g. "telegram", "signal").
     fn id(&self) -> &str;
 
     /// Human-readable channel name.
@@ -657,14 +635,6 @@ pub trait ChannelPlugin: Send + Sync {
 
     /// Stop an account connection.
     async fn stop_account(&mut self, account_id: &str) -> Result<()>;
-
-    /// Retry account-specific setup that is waiting on some external action.
-    ///
-    /// Most channels do not need this. Matrix uses it to resume a pending
-    /// browser-approved cross-signing reset without tearing down the account.
-    async fn retry_account_setup(&mut self, _account_id: &str) -> Result<()> {
-        Err(Error::unavailable("account setup retry not supported"))
-    }
 
     /// Get outbound adapter for sending messages.
     fn outbound(&self) -> Option<&dyn ChannelOutbound>;
@@ -704,29 +674,6 @@ pub trait ChannelPlugin: Send + Sync {
     /// Downcast to OTP provider if this channel supports OTP self-approval.
     fn as_otp_provider(&self) -> Option<&dyn ChannelOtpProvider> {
         None
-    }
-
-    /// Start an OAuth/OIDC login flow. Returns auth URL and CSRF state.
-    async fn oidc_start(
-        &self,
-        _account_id: &str,
-        _config: serde_json::Value,
-        _redirect_uri: &str,
-    ) -> Result<serde_json::Value> {
-        Err(Error::unavailable(
-            "OIDC login not supported for this channel",
-        ))
-    }
-
-    /// Complete an OAuth/OIDC login after browser redirect.
-    async fn oidc_complete(
-        &self,
-        _csrf_state: &str,
-        _callback_url: &str,
-    ) -> Result<serde_json::Value> {
-        Err(Error::unavailable(
-            "OIDC login not supported for this channel",
-        ))
     }
 }
 
@@ -1143,17 +1090,17 @@ mod tests {
     #[test]
     fn reaction_change_event_serialization() {
         let event = ChannelEvent::ReactionChange {
-            channel_type: ChannelType::Matrix,
-            account_id: "matrix1".into(),
-            chat_id: "!room:example.com".into(),
-            message_id: "$event".into(),
-            user_id: "@user:example.com".into(),
+            channel_type: ChannelType::Telegram,
+            account_id: "telegram1".into(),
+            chat_id: "123".into(),
+            message_id: "42".into(),
+            user_id: "7".into(),
             emoji: "thumbsup".into(),
             added: true,
         };
         let json = serde_json::to_value(&event).unwrap();
         assert_eq!(json["kind"], "reaction_change");
-        assert_eq!(json["channel_type"], "matrix");
+        assert_eq!(json["channel_type"], "telegram");
         assert_eq!(json["emoji"], "thumbsup");
         assert_eq!(json["added"], true);
     }
@@ -1163,7 +1110,6 @@ mod tests {
         for (s, expected) in [
             ("telegram", ChannelType::Telegram),
             ("whatsapp", ChannelType::Whatsapp),
-            ("matrix", ChannelType::Matrix),
         ] {
             let parsed: ChannelType = s.parse().unwrap_or_else(|e| panic!("parse {s}: {e}"));
             assert_eq!(parsed, expected);
@@ -1180,11 +1126,7 @@ mod tests {
 
     #[test]
     fn channel_type_serde_round_trip() {
-        for ct in [
-            ChannelType::Telegram,
-            ChannelType::Whatsapp,
-            ChannelType::Matrix,
-        ] {
+        for ct in [ChannelType::Telegram, ChannelType::Whatsapp] {
             let json = serde_json::to_string(&ct).unwrap_or_else(|e| panic!("serialize: {e}"));
             let back: ChannelType =
                 serde_json::from_str(&json).unwrap_or_else(|e| panic!("deserialize: {e}"));
@@ -1195,7 +1137,7 @@ mod tests {
     #[test]
     fn all_covers_every_variant() {
         // If a new variant is added to ChannelType, this test forces updating ALL.
-        assert_eq!(ChannelType::ALL.len(), 5);
+        assert_eq!(ChannelType::ALL.len(), 4);
         for ct in ChannelType::ALL {
             // descriptor() must not panic
             let desc = ct.descriptor();
@@ -1207,7 +1149,6 @@ mod tests {
     fn descriptor_returns_correct_display_names() {
         assert_eq!(ChannelType::Telegram.descriptor().display_name, "Telegram");
         assert_eq!(ChannelType::Whatsapp.descriptor().display_name, "WhatsApp");
-        assert_eq!(ChannelType::Matrix.descriptor().display_name, "Matrix");
     }
 
     #[test]
@@ -1226,10 +1167,6 @@ mod tests {
     fn channel_type_secret_fields_are_declared() {
         assert_eq!(ChannelType::Telegram.secret_fields(), ["token"]);
         assert_eq!(ChannelType::Whatsapp.secret_fields(), &[] as &[&str]);
-        assert_eq!(ChannelType::Matrix.secret_fields(), [
-            "access_token",
-            "password"
-        ]);
     }
 
     #[test]

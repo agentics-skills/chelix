@@ -68,18 +68,6 @@ pub(crate) async fn init_channels(
             .await;
     }
 
-    #[cfg(feature = "matrix")]
-    {
-        let matrix_plugin = Arc::new(tokio::sync::RwLock::new(
-            chelix_matrix::MatrixPlugin::new()
-                .with_message_log(Arc::clone(&message_log))
-                .with_event_sink(Arc::clone(&channel_sink)),
-        ));
-        registry
-            .register(matrix_plugin as Arc<tokio::sync::RwLock<dyn ChannelPlugin>>)
-            .await;
-    }
-
     #[cfg(feature = "signal")]
     {
         let signal_plugin = Arc::new(tokio::sync::RwLock::new(

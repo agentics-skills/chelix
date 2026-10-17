@@ -36,14 +36,11 @@ Use this when adding a new channel crate or bringing an existing one to parity.
 - Configurable streaming responses.
 - Interactive flows, native in some channels and fallback-driven in others.
 - Reply support and thread support where the platform has a thread model.
-- Voice or audio ingest in Telegram, WhatsApp, and Matrix.
+- Voice or audio ingest in Telegram, WhatsApp.
 - Pairing in WhatsApp.
-- OTP approval flow for unknown DM users in Telegram, WhatsApp, and Matrix.
-- Reaction support in Matrix.
-- Location send or receive support in Telegram, and
-  Matrix.
-- Access control patterns: DM policy, group or room policy, allowlists, mention
-  mode, auto-join or equivalent.
+- OTP approval flow for unknown DM users in Telegram, WhatsApp.
+- Location send or receive support in Telegram.
+- Access control patterns: DM policy, group policy, allowlists, mention mode.
 - Web UI support: add, edit, onboarding, icons, setup help, advanced JSON patch
   editor.
 
@@ -111,16 +108,3 @@ Use this when adding a new channel crate or bringing an existing one to parity.
 - Unit tests for any parsing helpers, thread/reaction/media helpers, and merge
   logic.
 - Run the targeted Rust tests and JS formatting/linting.
-
-## Matrix-specific lessons worth reusing
-
-- Do not assume UI edits send a full config object. Preserve omitted fields
-  server-side.
-- Redacted secrets from status JSON must not overwrite the stored secret on
-  save.
-- Auto-generated account IDs reduce setup friction for channels that already
-  have stable native IDs.
-- Public-server defaults matter. A real placeholder like `https://matrix.org` is
-  much better than a fake example.
-- If the channel has a DM approval or OTP flow, expose it in both onboarding and
-  settings. Users expect the bot to answer on first contact.

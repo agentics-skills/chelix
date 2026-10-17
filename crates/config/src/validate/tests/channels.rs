@@ -63,31 +63,13 @@ fn channels_unknown_account_type_rejected() {
 }
 
 #[test]
-fn channels_offered_matrix_accepted() {
-    let toml = r#"
-[channels]
-offered = ["telegram", "matrix"]
-"#;
-    let result = validate_toml_str(toml);
-    let warning = result
-        .diagnostics
-        .iter()
-        .find(|d| d.path == "channels.offered[1]" && d.category == "unknown-field");
-    assert!(
-        warning.is_none(),
-        "matrix should be accepted, got: {:?}",
-        result.diagnostics
-    );
-}
-
-#[test]
 fn channels_offered_configured_known_type_accepted() {
     let toml = r#"
 [channels]
-offered = ["telegram", "matrix"]
+offered = ["telegram", "signal"]
 
-[channels.matrix.my-bot]
-access_token = "matrix-test"
+[channels.signal.my-bot]
+account = "+15551234567"
 "#;
     let result = validate_toml_str(toml);
     let warning = result
@@ -97,25 +79,6 @@ access_token = "matrix-test"
     assert!(
         warning.is_none(),
         "configured known channel type should be accepted in offered, got: {:?}",
-        result.diagnostics
-    );
-}
-
-#[test]
-fn channels_extra_config_accepted() {
-    let toml = r#"
-[channels.matrix.my-bot]
-access_token = "matrix-test"
-dm_policy = "allowlist"
-"#;
-    let result = validate_toml_str(toml);
-    let error = result.diagnostics.iter().find(|d| {
-        d.path.starts_with("channels.matrix")
-            && (d.severity == Severity::Error || d.category == "unknown-field")
-    });
-    assert!(
-        error.is_none(),
-        "extra channel config should be accepted without errors, got: {:?}",
         result.diagnostics
     );
 }

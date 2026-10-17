@@ -366,7 +366,7 @@ impl GatewayInner {
             channel_status_log: HashMap::new(),
             fast_mode_sessions: HashSet::new(),
             steer_text: HashMap::new(),
-            channels_offered: vec!["telegram".into(), "whatsapp".into(), "matrix".into()],
+            channels_offered: vec!["telegram".into(), "whatsapp".into()],
             passkey_host_update_pending: HashSet::new(),
             shiki_cdn_url: None,
         }
@@ -1035,13 +1035,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn default_channels_offered_include_matrix() {
+    async fn default_channels_offered() {
         let state = test_state();
         let inner = state.inner.read().await;
         assert_eq!(inner.channels_offered, vec![
             "telegram".to_owned(),
             "whatsapp".to_owned(),
-            "matrix".to_owned(),
         ]);
     }
 

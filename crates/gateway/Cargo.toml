@@ -28,7 +28,6 @@ chelix-github           = { optional = true, workspace = true }
 chelix-google           = { optional = true, workspace = true }
 chelix-home-assistant   = { optional = true, workspace = true }
 chelix-linkup           = { optional = true, workspace = true }
-chelix-matrix           = { optional = true, workspace = true }
 chelix-mcp              = { workspace = true }
 chelix-mcp-agent-bridge = { workspace = true }
 chelix-media            = { workspace = true }
@@ -107,7 +106,6 @@ default = [
   "google",
   "home-assistant",
   "linkup",
-  "matrix",
   "mdns",
   "metrics",
   "prometheus",
@@ -134,7 +132,6 @@ github = ["dep:chelix-github"]
 google = ["dep:chelix-google"]
 home-assistant = ["dep:chelix-home-assistant"]
 linkup = ["dep:chelix-linkup"]
-matrix = ["dep:chelix-matrix"]
 mdns = ["dep:mdns-sd"]
 metrics = [
   "chelix-call-bus/metrics",
@@ -146,7 +143,6 @@ metrics = [
   "chelix-github?/metrics",
   "chelix-google?/metrics",
   "chelix-linkup?/metrics",
-  "chelix-matrix/metrics",
   "chelix-metrics/sqlite",
   "chelix-signal?/metrics",
   "dep:chelix-metrics",

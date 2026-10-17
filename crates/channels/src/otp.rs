@@ -597,19 +597,19 @@ mod tests {
 
         approve_sender_via_otp(
             Some(&sink),
-            ChannelType::Matrix,
+            ChannelType::Telegram,
             "bot1",
-            "@alice:matrix.org",
-            "@alice:matrix.org",
-            Some("@alice:matrix.org"),
+            "12345",
+            "12345",
+            Some("12345"),
         )
         .await;
 
         let approvals = state.approvals.lock().unwrap_or_else(|e| e.into_inner());
         assert_eq!(approvals.as_slice(), [(
-            "matrix".to_string(),
+            "telegram".to_string(),
             "bot1".to_string(),
-            "@alice:matrix.org".to_string()
+            "12345".to_string()
         )]);
         drop(approvals);
 
@@ -623,10 +623,10 @@ mod tests {
                 username,
                 resolution,
             } => {
-                assert_eq!(*channel_type, ChannelType::Matrix);
+                assert_eq!(*channel_type, ChannelType::Telegram);
                 assert_eq!(account_id, "bot1");
-                assert_eq!(peer_id, "@alice:matrix.org");
-                assert_eq!(username.as_deref(), Some("@alice:matrix.org"));
+                assert_eq!(peer_id, "12345");
+                assert_eq!(username.as_deref(), Some("12345"));
                 assert_eq!(resolution, "approved");
             },
             other => panic!("unexpected event: {other:?}"),

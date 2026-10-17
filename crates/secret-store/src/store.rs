@@ -230,7 +230,7 @@ mod tests {
         let token = generated_secret_value();
         let config = serde_json::json!({
             "token": token,
-            "room_policy": "allowlist"
+            "dm_policy": "allowlist"
         });
 
         assert!(has_plaintext_secret_fields(&config, &["token"]).unwrap());
@@ -242,36 +242,36 @@ mod tests {
     async fn encrypt_and_decrypt_round_trip_secret_fields() {
         let vault = test_vault().await;
         let token = generated_secret_value();
-        let password = generated_secret_value();
+        let auth_token = generated_secret_value();
         let mut config = serde_json::json!({
             "token": token.clone(),
-            "password": password.clone(),
-            "room_policy": "allowlist"
+            "auth_token": auth_token.clone(),
+            "dm_policy": "allowlist"
         });
 
         let encrypted = encrypt_secret_fields(
             &mut config,
-            &["token", "password"],
-            "channel:matrix:test",
+            &["token", "auth_token"],
+            "channel:telegram:test",
             &vault,
         )
         .await
         .unwrap();
         assert!(encrypted);
-        assert!(has_encrypted_secret_fields(&config, &["token", "password"]).unwrap());
-        assert_eq!(config["room_policy"], "allowlist");
+        assert!(has_encrypted_secret_fields(&config, &["token", "auth_token"]).unwrap());
+        assert_eq!(config["dm_policy"], "allowlist");
 
         let decrypted = decrypt_secret_fields(
             &mut config,
-            &["token", "password"],
-            "channel:matrix:test",
+            &["token", "auth_token"],
+            "channel:telegram:test",
             &vault,
         )
         .await
         .unwrap();
         assert!(decrypted);
         assert_eq!(config["token"], token);
-        assert_eq!(config["password"], password);
+        assert_eq!(config["auth_token"], auth_token);
     }
 
     #[cfg(feature = "vault")]

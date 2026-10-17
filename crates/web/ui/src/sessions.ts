@@ -56,7 +56,7 @@ export function isArchivableSession(session: SessionMeta): boolean {
 }
 
 function isClearableSession(session: SessionMeta): boolean {
-	const isChannelSessionKey = session.key.startsWith("telegram:") || session.key.startsWith("matrix:");
+	const isChannelSessionKey = session.key.startsWith("telegram:");
 	return !(session.key.startsWith("cron:") || isChannelSessionKey || session.channelBinding);
 }
 

@@ -206,19 +206,6 @@ fn parse_config_rejects_unknown_channel_types() {
 }
 
 #[test]
-fn parse_config_accepts_matrix_accounts_in_extra() {
-    let config = parse_config(
-        "[channels]\noffered = ['matrix']\n[channels.matrix.bot]\naccess_token = 'test'\n\n[tools.execute_command]\nterminal_size = \"115x58\"\n\n[sandbox]\narchived_session_retention_days = 3\n",
-        std::path::Path::new("chelix.toml"),
-    )
-    .expect("known channel config must load");
-    assert_eq!(
-        config.channels.extra["matrix"]["bot"]["access_token"],
-        "test"
-    );
-}
-
-#[test]
 fn parse_config_rejects_unknown_provider_section() {
     let error = parse_config(
         "[providers.voice-openai]\nenabled = true\n",

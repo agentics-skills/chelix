@@ -1,17 +1,11 @@
 // ── Channels page (Preact + Signals) ──────────────────────────
 
 import type { Signal } from "@preact/signals";
-import { computed, signal, useSignal } from "@preact/signals";
+import { computed, signal } from "@preact/signals";
 import type { VNode } from "preact";
 import { render } from "preact";
 import { useEffect } from "preact/hooks";
-import {
-	channelStorageNote,
-	fetchChannelStatus,
-	matrixOwnershipModeGuidance,
-	normalizeMatrixAuthMode,
-	normalizeMatrixOwnershipMode,
-} from "../channel-utils";
+import { channelStorageNote, fetchChannelStatus } from "../channel-utils";
 import { copyToClipboard } from "../clipboard";
 import { TabBar } from "../components/forms/Tabs";
 import { onEvent } from "../events";
@@ -22,7 +16,6 @@ import { connected } from "../signals";
 import * as S from "../state";
 import { showToast } from "../toast";
 import { ConfirmDialog, requestConfirm } from "../ui";
-import { AddMatrixModal } from "./channels/modals/AddMatrixModal";
 import { AddSignalModal } from "./channels/modals/AddSignalModal";
 // ── Sub-module imports (modals + shared fields) ──────────────
 import { AddTelegramModal } from "./channels/modals/AddTelegramModal";
@@ -38,26 +31,7 @@ interface ChannelSession {
 	messageCount?: number;
 }
 
-interface MatrixVerificationPrompt {
-	other_user_id: string;
-}
-
-interface MatrixStatus {
-	user_id?: string;
-	device_id?: string;
-	device_display_name?: string;
-	ownership_mode?: string;
-	auth_mode?: string;
-	recovery_state?: string;
-	device_verified_by_owner?: boolean;
-	ownership_error?: string;
-	cross_signing_complete?: boolean;
-	verification_state?: string;
-	pending_verifications?: MatrixVerificationPrompt[];
-}
-
 interface ChannelExtra {
-	matrix?: MatrixStatus;
 	qr_data?: string;
 	qr_svg?: string;
 }
@@ -77,18 +51,6 @@ export interface ChannelConfig {
 	allowlist?: string[];
 	model_override?: ChannelModelOverride;
 	model_provider?: string;
-	// Matrix
-	homeserver?: string;
-	user_id?: string;
-	password?: string | null;
-	access_token?: string;
-	device_id?: string;
-	device_display_name?: string | null;
-	ownership_mode?: string;
-	room_policy?: string;
-	auto_join?: string;
-	user_allowlist?: string[];
-	room_allowlist?: string[];
 	otp_self_approval?: boolean;
 	otp_cooldown_secs?: number;
 	// Signal
@@ -157,7 +119,6 @@ const senders: Signal<SenderEntry[]> = signal([]);
 const activeTab: Signal<string> = signal("channels");
 export const showAddTelegram: Signal<boolean> = signal(false);
 export const showAddWhatsApp: Signal<boolean> = signal(false);
-export const showAddMatrix: Signal<boolean> = signal(false);
 export const showAddSignal: Signal<boolean> = signal(false);
 export const editingChannel: Signal<Channel | null> = signal(null);
 const sendersAccount: Signal<string> = signal("");
@@ -177,7 +138,6 @@ export function channelType(type: string | undefined): string {
 export function channelLabel(type: string | undefined): string {
 	const t = channelType(type);
 	if (t === "whatsapp") return "WhatsApp";
-	if (t === "matrix") return "Matrix";
 	if (t === "signal") return "Signal";
 	return "Telegram";
 }
@@ -227,248 +187,6 @@ function ChannelStorageNotice(): VNode {
 		</div>
 	);
 }
-
-// ── Matrix info row ──────────────────────────────────────────
-
-interface MatrixInfoRowProps {
-	label: string;
-	value: unknown;
-	copyLabel?: string | null;
-}
-
-function MatrixInfoRow({ label, value, copyLabel = null }: MatrixInfoRowProps): VNode {
-	const text = String(value || "").trim();
-	return (
-		<div className="flex items-center justify-between gap-3">
-			<div className="min-w-0">
-				<div className="text-[11px] uppercase tracking-wide text-sky-700">{label}</div>
-				<div className="truncate font-mono text-sky-900">{text || "\u2014"}</div>
-			</div>
-			{text && (
-				<button
-					type="button"
-					className="provider-btn provider-btn-sm provider-btn-secondary"
-					onClick={() => copyToClipboard(text, copyLabel || `${label} copied`)}
-				>
-					Copy
-				</button>
-			)}
-		</div>
-	);
-}
-
-// ── Matrix ownership card ────────────────────────────────────
-
-interface MatrixOwnershipCardProps {
-	channel: Channel;
-	matrixStatus: MatrixStatus;
-}
-
-type MatrixOwnershipIssue = "none" | "approval_required" | "incomplete_secret_storage" | "generic_blocked";
-
-interface MatrixOwnershipView {
-	issue: MatrixOwnershipIssue;
-	modeTitle: string;
-	modeText: string;
-	detailTitle: string;
-	detailText: string;
-	approvalUrl: string;
-	verificationText: string;
-	hasAccountDetails: boolean;
-}
-
-function matrixOwnershipIssue(ownershipMode: string, ownershipError: string): MatrixOwnershipIssue {
-	if (ownershipMode !== "chelix_owned" || !ownershipError) return "none";
-	if (ownershipError.includes("requires browser approval to reset cross-signing")) return "approval_required";
-	if (ownershipError.includes("incomplete secret storage")) return "incomplete_secret_storage";
-	return "generic_blocked";
-}
-
-function matrixOwnershipTitle(issue: MatrixOwnershipIssue, ownershipMode: string): string {
-	if (issue === "approval_required") return "Ownership approval required";
-	if (issue !== "none") return "Chelix ownership blocked";
-	return ownershipMode === "chelix_owned" ? "Managed by Chelix" : "User-managed in Element";
-}
-
-function matrixOwnershipText(issue: MatrixOwnershipIssue, authMode: string, ownershipMode: string): string {
-	if (issue === "approval_required") {
-		return "This existing Matrix account can already chat, but Matrix needs one browser approval before Chelix can take over encryption ownership. Open the approval page, approve the reset, then retry ownership setup.";
-	}
-	if (issue === "incomplete_secret_storage") {
-		return "This account already has partial Matrix secure-backup state. Finish or repair it in Element, or switch this channel to user-managed mode.";
-	}
-	if (issue === "generic_blocked") {
-		return "Chelix could not take ownership of this Matrix account automatically. Repair the account in Element or switch this channel to user-managed mode.";
-	}
-	if (authMode === "password" || authMode === "oidc") return matrixOwnershipModeGuidance(authMode, ownershipMode);
-	return "Access token auth is always user-managed. If you want encrypted Matrix chats, reconnect this channel with OIDC or password auth so Chelix can create its own device.";
-}
-
-function matrixOwnershipView(channel: Channel, matrixStatus: MatrixStatus): MatrixOwnershipView {
-	const ownershipMode = normalizeMatrixOwnershipMode(matrixStatus.ownership_mode);
-	const authMode = normalizeMatrixAuthMode(matrixStatus.auth_mode);
-	const ownershipError = String(matrixStatus.ownership_error || "").trim();
-	const issue = matrixOwnershipIssue(ownershipMode, ownershipError);
-	const approvalMatch = ownershipError.match(/https?:\/\/\S+/);
-	return {
-		issue,
-		modeTitle: matrixOwnershipTitle(issue, ownershipMode),
-		modeText: matrixOwnershipText(issue, authMode, ownershipMode),
-		detailTitle:
-			issue === "approval_required"
-				? "Browser approval pending"
-				: ownershipError
-					? "Ownership setup needs attention"
-					: "",
-		detailText:
-			issue === "approval_required"
-				? `Approve the reset while signed into ${matrixStatus.user_id || "this Matrix account"} in the browser, then use the retry button here so Chelix can finish taking ownership.`
-				: ownershipError,
-		approvalUrl: approvalMatch ? approvalMatch[0].replace(/[;),.]+$/, "") : "",
-		verificationText: matrixStatus.device_verified_by_owner
-			? "Device verified by owner"
-			: "Device not yet verified by owner",
-		hasAccountDetails: [
-			channel.config?.homeserver,
-			matrixStatus.user_id,
-			matrixStatus.device_id,
-			matrixStatus.device_display_name || channel.config?.device_display_name,
-		].some((value) => !!String(value || "").trim()),
-	};
-}
-
-function MatrixAccountDetails({ channel, status }: { channel: Channel; status: MatrixStatus }): VNode {
-	return (
-		<details className="mt-2 rounded-md border border-sky-600/20 bg-sky-100/50 px-3 py-2">
-			<summary className="cursor-pointer text-[11px] font-medium uppercase tracking-wide text-sky-800">
-				Matrix account details
-			</summary>
-			<div className="mt-2 grid gap-2">
-				<MatrixInfoRow label="Homeserver" value={channel.config?.homeserver || ""} copyLabel="Homeserver copied" />
-				<MatrixInfoRow label="Matrix user" value={status.user_id || ""} copyLabel="Matrix user ID copied" />
-				<MatrixInfoRow label="Device ID" value={status.device_id || ""} copyLabel="Matrix device ID copied" />
-				<MatrixInfoRow
-					label="Device name"
-					value={status.device_display_name || channel.config?.device_display_name || ""}
-					copyLabel="Matrix device name copied"
-				/>
-			</div>
-		</details>
-	);
-}
-
-interface MatrixApprovalActionProps {
-	show: boolean;
-	approvalUrl: string;
-	userId: string | undefined;
-	retrying: boolean;
-	error: string;
-	onRetry: () => void;
-}
-
-function MatrixApprovalAction(props: MatrixApprovalActionProps): VNode | null {
-	if (!(props.show && props.approvalUrl)) return null;
-	const accountName = props.userId || "this account";
-	return (
-		<div className="mt-2">
-			<div className="flex flex-wrap gap-2">
-				<a
-					href={props.approvalUrl}
-					target="_blank"
-					rel="noreferrer"
-					className="provider-btn provider-btn-sm"
-					aria-label={`Open approval page for ${props.userId || "this Matrix account"}`}
-				>
-					Open approval page for {accountName}
-				</a>
-				<button
-					type="button"
-					className="provider-btn provider-btn-sm"
-					onClick={props.onRetry}
-					disabled={props.retrying}
-				>
-					{props.retrying ? "Retrying ownership setup..." : "Click here once you reset the account"}
-				</button>
-			</div>
-			<div className="mt-2 text-[11px] text-sky-800">
-				Make sure the browser page is signed into{" "}
-				<span className="font-mono text-sky-800">{props.userId || "the Matrix bot account"}</span>.
-			</div>
-			{props.error && (
-				<div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-100">
-					{props.error}
-				</div>
-			)}
-		</div>
-	);
-}
-
-function MatrixOwnershipDetail({ title, text }: { title: string; text: string }): VNode | null {
-	if (!title) return null;
-	return (
-		<div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-100">
-			<div className="font-medium text-amber-50">{title}</div>
-			<div className="mt-1">{text}</div>
-		</div>
-	);
-}
-
-function MatrixOwnershipCard({ channel, matrixStatus }: MatrixOwnershipCardProps): VNode {
-	const retryingOwnership = useSignal(false);
-	const retryOwnershipError = useSignal("");
-	const view = matrixOwnershipView(channel, matrixStatus);
-	const recoveryState = String(matrixStatus.recovery_state || "unknown");
-	const deviceVerified = !!matrixStatus.device_verified_by_owner;
-
-	function retryOwnershipSetup(): void {
-		retryingOwnership.value = true;
-		retryOwnershipError.value = "";
-		sendRpc("channels.retry_ownership", {
-			type: channelType(channel.type),
-			account_id: channel.account_id,
-		}).then((res) => {
-			retryingOwnership.value = false;
-			if (res?.ok) {
-				showToast("Retrying Matrix ownership setup");
-				loadChannels();
-				return;
-			}
-			retryOwnershipError.value =
-				(res?.error as { message?: string; detail?: string })?.message ||
-				(res?.error as { detail?: string })?.detail ||
-				"Failed to retry Matrix ownership setup.";
-		});
-	}
-
-	return (
-		<div className="rounded-md border border-sky-600/30 bg-sky-50 px-3 py-2 text-xs text-sky-900">
-			<div className="flex items-center gap-2">
-				<div className="font-medium text-sky-800">{view.modeTitle}</div>
-				<span className={`provider-item-badge ${deviceVerified ? "configured" : "oauth"}`}>
-					{view.verificationText}
-				</span>
-			</div>
-			<div className="mt-1 text-sky-900">{view.modeText}</div>
-			<div className="mt-2 text-sky-900">
-				Cross-signing:{" "}
-				<span className="font-medium">{matrixStatus?.cross_signing_complete ? "ready" : "not ready"}</span>. Recovery:{" "}
-				<span className="font-medium">{recoveryState}</span>.
-			</div>
-			{view.hasAccountDetails && <MatrixAccountDetails channel={channel} status={matrixStatus} />}
-			<MatrixApprovalAction
-				show={view.issue === "approval_required"}
-				approvalUrl={view.approvalUrl}
-				userId={matrixStatus.user_id}
-				retrying={retryingOwnership.value}
-				error={retryOwnershipError.value}
-				onRetry={retryOwnershipSetup}
-			/>
-			<MatrixOwnershipDetail title={view.detailTitle} text={view.detailText} />
-		</div>
-	);
-}
-
-// ── Sender selection helpers ─────────────────────────────────
 
 function senderSelectionKey(ch: Channel): string {
 	return `${channelType(ch.type)}::${ch.account_id}`;
@@ -521,7 +239,6 @@ interface ChannelIconProps {
 function ChannelIcon({ type }: ChannelIconProps): VNode {
 	const t = channelType(type);
 	if (t === "whatsapp") return <span className="icon icon-whatsapp" />;
-	if (t === "matrix") return <span className="icon icon-matrix" />;
 	return <span className="icon icon-telegram" />;
 }
 
@@ -537,10 +254,6 @@ interface ChannelCardView {
 	statusClass: string;
 	sessionLine: string;
 	modeLabel: string | null;
-	matrixStatus: MatrixStatus | null;
-	pendingVerifications: MatrixVerificationPrompt[];
-	verificationStateLabel: string | null;
-	showOwnershipCard: boolean;
 	telegramUrl: string | null;
 }
 
@@ -554,7 +267,6 @@ function channelSessionLine(sessions: ChannelSession[] | undefined): string {
 function channelCardView(channel: Channel): ChannelCardView {
 	const type = channelType(channel.type);
 	const descriptor = channelDescriptor(channel.type);
-	const matrixStatus = channel.extra?.matrix || null;
 	return {
 		type,
 		displayName: channel.name || channel.account_id || channelLabel(channel.type),
@@ -563,17 +275,6 @@ function channelCardView(channel: Channel): ChannelCardView {
 		modeLabel: descriptor
 			? MODE_LABELS[descriptor.capabilities.inbound_mode] || descriptor.capabilities.inbound_mode
 			: null,
-		matrixStatus,
-		pendingVerifications: Array.isArray(matrixStatus?.pending_verifications) ? matrixStatus.pending_verifications : [],
-		verificationStateLabel: matrixStatus?.verification_state || null,
-		showOwnershipCard:
-			type === "matrix" &&
-			!!(
-				matrixStatus?.user_id ||
-				matrixStatus?.device_id ||
-				channel.config?.homeserver ||
-				matrixStatus?.ownership_error
-			),
 		telegramUrl: type === "telegram" && channel.account_id ? `https://t.me/${channel.account_id}` : null,
 	};
 }
@@ -588,9 +289,6 @@ function ChannelSummary({ channel, view }: { channel: Channel; view: ChannelCard
 				<span className="text-sm text-[var(--text-strong)]">{view.displayName}</span>
 				{channel.details && <span className="text-xs text-[var(--muted)]">{channel.details}</span>}
 				{view.sessionLine && <span className="text-xs text-[var(--muted)]">{view.sessionLine}</span>}
-				{view.type === "matrix" && view.verificationStateLabel && (
-					<span className="text-xs text-[var(--muted)]">Encryption device state: {view.verificationStateLabel}</span>
-				)}
 				{view.telegramUrl && (
 					<a href={view.telegramUrl} target="_blank" className="text-xs text-[var(--accent)] underline">
 						t.me/{channel.account_id}
@@ -599,25 +297,6 @@ function ChannelSummary({ channel, view }: { channel: Channel; view: ChannelCard
 			</div>
 			<span className={`provider-item-badge ${view.statusClass}`}>{channel.status || "unknown"}</span>
 			{view.modeLabel && <span className="tier-badge">{view.modeLabel}</span>}
-		</div>
-	);
-}
-
-function MatrixVerificationPrompts({ prompts }: { prompts: MatrixVerificationPrompt[] }): VNode | null {
-	if (!prompts.length) return null;
-	return (
-		<div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
-			<div className="font-medium text-sky-900">Verification pending</div>
-			{prompts.map((prompt) => (
-				<div key={prompt.other_user_id} className="mt-1">
-					<div>With {prompt.other_user_id}</div>
-					<div className="text-emerald-200/90">
-						Send <span className="font-mono">verify yes</span>, <span className="font-mono">verify no</span>,{" "}
-						<span className="font-mono">verify show</span>, or <span className="font-mono">verify cancel</span> as a
-						normal message in that same Matrix chat.
-					</div>
-				</div>
-			))}
 		</div>
 	);
 }
@@ -661,10 +340,6 @@ function ChannelCard({ channel: ch }: ChannelCardProps): VNode {
 	return (
 		<div className="provider-card p-3 rounded-lg mb-2">
 			<ChannelSummary channel={ch} view={view} />
-			{view.type === "matrix" && <MatrixVerificationPrompts prompts={view.pendingVerifications} />}
-			{view.showOwnershipCard && view.matrixStatus && (
-				<MatrixOwnershipCard channel={ch} matrixStatus={view.matrixStatus} />
-			)}
 			<ChannelCardActions channel={ch} onRemove={onRemove} />
 		</div>
 	);
@@ -673,7 +348,7 @@ function ChannelCard({ channel: ch }: ChannelCardProps): VNode {
 // ── Connect channel buttons ──────────────────────────────────
 
 function ConnectButtons(): VNode {
-	const offered = new Set((getGon("channels_offered") || ["telegram", "whatsapp", "matrix"]) as string[]);
+	const offered = new Set((getGon("channels_offered") || ["telegram", "whatsapp"]) as string[]);
 	return (
 		<div className="flex gap-2 flex-wrap">
 			{offered.has("telegram") && (
@@ -685,17 +360,6 @@ function ConnectButtons(): VNode {
 					}}
 				>
 					<span className="icon icon-telegram" /> Connect Telegram
-				</button>
-			)}
-			{offered.has("matrix") && (
-				<button
-					type="button"
-					className="provider-btn provider-btn-secondary inline-flex items-center gap-1.5"
-					onClick={() => {
-						if (connected.value) showAddMatrix.value = true;
-					}}
-				>
-					<span className="icon icon-matrix" /> Connect Matrix
 				</button>
 			)}
 			{offered.has("whatsapp") && (
@@ -955,7 +619,6 @@ function ChannelsPageComponent(): VNode {
 			{activeTab.value === "channels" && <ChannelStorageNotice />}
 			{activeTab.value === "channels" ? <ChannelsTab /> : <SendersTab />}
 			<AddTelegramModal />
-			<AddMatrixModal />
 			<AddSignalModal />
 			<AddWhatsAppModal />
 			<EditChannelModal />
@@ -973,7 +636,6 @@ export function initChannels(container: HTMLElement): void {
 	container.style.cssText = "flex-direction:column;padding:0;overflow:hidden;";
 	activeTab.value = "channels";
 	showAddTelegram.value = false;
-	showAddMatrix.value = false;
 	showAddSignal.value = false;
 	showAddWhatsApp.value = false;
 	editingChannel.value = null;

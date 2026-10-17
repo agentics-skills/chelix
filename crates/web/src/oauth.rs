@@ -35,24 +35,13 @@ pub async fn oauth_callback_handler(
         "state": oauth_state,
     });
 
-    let completion = match state
+    match state
         .gateway
         .services
         .mcp
-        .oauth_complete(completion_params.clone())
+        .oauth_complete(completion_params)
         .await
     {
-        Ok(result) => Ok(result),
-        Err(mcp_error) => state
-            .gateway
-            .services
-            .channel
-            .oauth_complete(completion_params)
-            .await
-            .map_err(|channel_error| (mcp_error, channel_error)),
-    };
-
-    match completion {
         Ok(_) => {
             let nonce = uuid::Uuid::new_v4().to_string();
             let html = format!(
@@ -69,10 +58,9 @@ pub async fn oauth_callback_handler(
             }
             resp
         },
-        Err((mcp_error, channel_error)) => {
+        Err(mcp_error) => {
             tracing::warn!(
                 mcp_error = %mcp_error,
-                channel_error = %channel_error,
                 "OAuth callback completion failed"
             );
             (

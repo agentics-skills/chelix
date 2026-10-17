@@ -10,7 +10,6 @@ import {
 	makeBranchIcon,
 	makeChatIcon,
 	makeCronIcon,
-	makeMatrixIcon,
 	makeProjectIcon,
 	makeTelegramIcon,
 } from "../icons";
@@ -40,7 +39,6 @@ const spinnerFrames: string[] = [
 function channelSessionType(s: Session): ChannelType | null {
 	const key = s.key || "";
 	if (key.startsWith(`${ChannelType.Telegram}:`)) return ChannelType.Telegram;
-	if (key.startsWith(`${ChannelType.Matrix}:`)) return ChannelType.Matrix;
 	const binding = s.channelBinding || null;
 	if (!binding) return null;
 	try {
@@ -59,11 +57,9 @@ function formatHHMM(epochMs: number): string {
 
 const channelIconFactories: Partial<Record<ChannelType, () => HTMLSpanElement>> = {
 	[ChannelType.Telegram]: makeTelegramIcon,
-	[ChannelType.Matrix]: makeMatrixIcon,
 };
 
 const channelLabels: Partial<Record<ChannelType, string>> = {
-	[ChannelType.Matrix]: "Matrix",
 	[ChannelType.Telegram]: "Telegram",
 };
 

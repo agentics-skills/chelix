@@ -595,7 +595,6 @@ fn channels_config_defaults_offered() {
     assert_eq!(config.offered, vec![
         "telegram".to_string(),
         "whatsapp".to_string(),
-        "matrix".to_string(),
         "signal".to_string(),
     ]);
 }
@@ -606,17 +605,16 @@ fn channels_config_empty_toml_defaults_offered() {
     assert_eq!(config.offered, vec![
         "telegram".to_string(),
         "whatsapp".to_string(),
-        "matrix".to_string(),
         "signal".to_string(),
     ]);
 }
 
 #[test]
 fn channels_config_explicit_offered() {
-    let config: ChannelsConfig = toml::from_str(r#"offered = ["telegram", "matrix"]"#).unwrap();
+    let config: ChannelsConfig = toml::from_str(r#"offered = ["telegram", "signal"]"#).unwrap();
     assert_eq!(config.offered, vec![
         "telegram".to_string(),
-        "matrix".to_string()
+        "signal".to_string()
     ]);
 }
 
