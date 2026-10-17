@@ -110,8 +110,7 @@ still deleted, and the response is the collected errors. Share rows of a
 deleted session are deleted.
 
 For one session, an uncommitted worktree is checked before `StopSession`.
-That error, a `StopSession` error, and an error while stopping the live
-external-agent process all return before the `sessions` row and its
+That error and a `StopSession` error return before the `sessions` row and its
 `channel_sessions` rows are deleted. After those steps the deletion removes
 the worktree, media, tool results, and history. When `sandbox.mode` is `On`
 and the session owns its sandbox, container removal starts in the background.

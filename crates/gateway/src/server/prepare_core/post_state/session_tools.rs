@@ -128,7 +128,7 @@ fn build_create_session(
                 .await?;
 
                 metadata
-                    .create_llm_session(
+                    .create_session(
                         &key,
                         req.label.as_deref(),
                         &model_reasoning,
@@ -325,10 +325,8 @@ async fn agent_model_and_reasoning(
 }
 
 fn session_entry_payload(entry: chelix_sessions::metadata::SessionEntry) -> Value {
-    let model = entry.model().map(str::to_string);
-    let reasoning_effort = entry
-        .reasoning_effort()
-        .map(|effort| effort.as_str().to_string());
+    let model = entry.model().to_string();
+    let reasoning_effort = entry.reasoning_effort().as_str().to_string();
     let chelix_sessions::metadata::SessionEntry {
         id,
         key,
@@ -494,11 +492,8 @@ mod tests {
             .get("session:valid")
             .await?
             .ok_or_else(|| std::io::Error::other("valid session metadata was not created"))?;
-        assert_eq!(valid_entry.model(), Some("test::valid"));
-        assert_eq!(
-            valid_entry.reasoning_effort().map(ReasoningEffort::as_str),
-            Some("medium")
-        );
+        assert_eq!(valid_entry.model(), "test::valid");
+        assert_eq!(valid_entry.reasoning_effort().as_str(), "medium");
 
         let (state, metadata, _dir) = create_test_state().await?;
         let create = build_create_session(state, Arc::clone(&metadata));

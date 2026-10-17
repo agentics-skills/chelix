@@ -56,10 +56,6 @@ export interface RpcMethodMap {
 	"command.approval.resolve": unknown;
 	"tool.permission.pending": { requests: unknown[] };
 	"tool.permission.resolve": unknown;
-	"external_agents.bind": unknown;
-	"external_agents.list": unknown;
-	"external_agents.status": unknown;
-	"external_agents.unbind": unknown;
 
 	// ── Hooks ───────────────────────────────────────────────────
 	"hooks.list": unknown;

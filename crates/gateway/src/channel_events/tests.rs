@@ -140,12 +140,11 @@ fn session_entry(
         id: id.to_string(),
         key: key.to_string(),
         label: label.map(str::to_string),
-        backing: chelix_sessions::metadata::SessionBacking::external(
-            chelix_sessions::metadata::ExternalSessionIdentity::new(
-                chelix_sessions::metadata::ExternalAgentKind::Codex,
-                None,
-            ),
-        ),
+        model_reasoning: chelix_common::ResolvedModelReasoning::try_new(
+            "test::model".to_string(),
+            chelix_common::ReasoningEffort::from("off"),
+        )
+        .unwrap(),
         created_at: 0,
         updated_at: 0,
         message_count,

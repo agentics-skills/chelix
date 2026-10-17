@@ -1110,7 +1110,7 @@ mod tests {
 
     async fn create_parent(metadata: &SqliteSessionMetadata, session_key: &str) {
         metadata
-            .create_llm_session(session_key, None, &test_model_reasoning(), Some("main"))
+            .create_session(session_key, None, &test_model_reasoning(), Some("main"))
             .await
             .unwrap();
     }

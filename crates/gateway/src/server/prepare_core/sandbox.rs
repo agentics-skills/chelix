@@ -293,7 +293,7 @@ mod tests {
         )
         .unwrap_or_else(|error| panic!("valid test pair: {error}"));
         metadata
-            .create_llm_session("session:child", None, &model_reasoning, Some("main"))
+            .create_session("session:child", None, &model_reasoning, Some("main"))
             .await
             .unwrap_or_else(|error| panic!("child session setup failed: {error}"));
         metadata
@@ -330,7 +330,7 @@ mod tests {
             ("session:no-container", true, None, true),
         ] {
             metadata
-                .create_llm_session(key, None, &model_reasoning, Some("main"))
+                .create_session(key, None, &model_reasoning, Some("main"))
                 .await?;
             metadata.set_archived(key, archived).await?;
             if let Some(owner) = owner {

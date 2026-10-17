@@ -319,7 +319,7 @@ async fn setup_memory_forget_provider_resolver(
         ResolvedModelReasoning::try_new("test::model".to_string(), ReasoningEffort::from("off"))
             .unwrap();
     metadata
-        .create_llm_session("agent:writer:main", None, &model_reasoning, Some("writer"))
+        .create_session("agent:writer:main", None, &model_reasoning, Some("writer"))
         .await
         .unwrap();
 
@@ -454,7 +454,7 @@ async fn memory_forget_provider_resolver_rejects_missing_session_and_invalid_pai
         ResolvedModelReasoning::try_new("test::missing".to_string(), ReasoningEffort::from("off"))
             .unwrap();
     metadata
-        .create_llm_session(invalid_session_key, None, &invalid_pair, Some("writer"))
+        .create_session(invalid_session_key, None, &invalid_pair, Some("writer"))
         .await
         .unwrap();
     let resolver = MemoryForgetProviderResolver::new(

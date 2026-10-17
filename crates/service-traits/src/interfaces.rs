@@ -1083,35 +1083,3 @@ impl ProjectService for NoopProjectService {
         Ok(serde_json::json!(null))
     }
 }
-
-#[async_trait]
-pub trait ExternalAgentService: Send + Sync {
-    async fn list(&self) -> ServiceResult;
-    async fn bind(&self, params: Value) -> ServiceResult;
-    async fn unbind(&self, params: Value) -> ServiceResult;
-    async fn status(&self, params: Value) -> ServiceResult;
-    async fn shutdown_session(&self, session_key: &str);
-}
-
-pub struct NoopExternalAgentService;
-
-#[async_trait]
-impl ExternalAgentService for NoopExternalAgentService {
-    async fn list(&self) -> ServiceResult {
-        Ok(serde_json::json!([]))
-    }
-
-    async fn bind(&self, _params: Value) -> ServiceResult {
-        Err("external agents not configured".into())
-    }
-
-    async fn unbind(&self, _params: Value) -> ServiceResult {
-        Err("external agents not configured".into())
-    }
-
-    async fn status(&self, _params: Value) -> ServiceResult {
-        Ok(serde_json::json!({ "bound": false }))
-    }
-
-    async fn shutdown_session(&self, _session_key: &str) {}
-}

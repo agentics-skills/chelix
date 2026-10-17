@@ -2,7 +2,7 @@ use {
     chelix_common::{ModelOverride, ResolvedModelReasoning},
     chelix_config::AgentsConfig,
     chelix_service_traits::{ModelService, ServiceError},
-    chelix_sessions::{SessionKey, metadata::EnsureLlmSessionOutcome},
+    chelix_sessions::{SessionKey, metadata::EnsureSessionOutcome},
     tokio::sync::RwLock,
 };
 
@@ -41,13 +41,7 @@ pub(super) async fn resolved_agent_pair(
         .await
 }
 
-fn external_agent_initialization_error(session_key: &str, agent_id: &str) -> ServiceError {
-    ServiceError::message(format!(
-        "session '{session_key}' is external-only and cannot use agent '{agent_id}' without a complete model/reasoning override"
-    ))
-}
-
-pub(crate) async fn ensure_internal_chat_session(
+pub(crate) async fn ensure_chat_session(
     services: &GatewayServices,
     session_key: &SessionKey,
     requested_agent_id: Option<&str>,
@@ -66,14 +60,13 @@ pub(crate) async fn ensure_internal_chat_session(
         .as_deref()
         .ok_or_else(|| ServiceError::message("session metadata is not available"))?;
 
-    if let Some(entry) = metadata.get(key).await.map_err(ServiceError::message)? {
-        if entry.model_reasoning().is_some() {
-            return Ok(());
-        }
-        let Some(agent_id) = requested_agent_id else {
-            return Ok(());
-        };
-        return Err(external_agent_initialization_error(key, agent_id));
+    if metadata
+        .get(key)
+        .await
+        .map_err(ServiceError::message)?
+        .is_some()
+    {
+        return Ok(());
     }
 
     let agents_config = services
@@ -88,15 +81,11 @@ pub(crate) async fn ensure_internal_chat_session(
         resolved_agent_pair(agents_config, services.model.as_ref(), &agent_id).await?;
 
     match metadata
-        .ensure_llm_session(key, None, &model_reasoning, Some(&agent_id))
+        .ensure_session(key, None, &model_reasoning, Some(&agent_id))
         .await
         .map_err(ServiceError::message)?
     {
-        EnsureLlmSessionOutcome::Created(_) | EnsureLlmSessionOutcome::ExistingLlm(_) => Ok(()),
-        EnsureLlmSessionOutcome::ExistingExternal(_) if requested_agent_id.is_none() => Ok(()),
-        EnsureLlmSessionOutcome::ExistingExternal(_) => {
-            Err(external_agent_initialization_error(key, &agent_id))
-        },
+        EnsureSessionOutcome::Created(_) | EnsureSessionOutcome::Existing(_) => Ok(()),
     }
 }
 
@@ -104,15 +93,9 @@ pub(crate) async fn ensure_internal_chat_session(
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use {
-        super::*,
-        async_trait::async_trait,
-        chelix_common::ReasoningEffort,
-        chelix_config::AgentConfig,
-        chelix_service_traits::ServiceResult,
-        chelix_sessions::metadata::{
-            ExternalAgentKind, ExternalSessionIdentity, SqliteSessionMetadata,
-        },
-        std::sync::Arc,
+        super::*, async_trait::async_trait, chelix_common::ReasoningEffort,
+        chelix_config::AgentConfig, chelix_service_traits::ServiceResult,
+        chelix_sessions::metadata::SqliteSessionMetadata, std::sync::Arc,
     };
 
     struct ExactModelService;
@@ -165,19 +148,17 @@ mod tests {
     }
 
     #[derive(Clone, Copy)]
-    enum ExistingBacking {
+    enum ExistingSession {
         Missing,
-        Llm,
-        External,
+        Present,
     }
 
     struct InitializationCase {
         name: &'static str,
-        existing: ExistingBacking,
+        existing: ExistingSession,
         requested_agent_id: Option<&'static str>,
-        expected_model: Option<&'static str>,
+        expected_model: &'static str,
         expected_agent_id: Option<&'static str>,
-        expected_error: bool,
     }
 
     async fn sqlite_metadata() -> Arc<SqliteSessionMetadata> {
@@ -216,47 +197,28 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn initializes_only_missing_internal_sessions() {
+    async fn initializes_only_missing_sessions() {
         let cases = [
             InitializationCase {
                 name: "missing uses default agent",
-                existing: ExistingBacking::Missing,
+                existing: ExistingSession::Missing,
                 requested_agent_id: None,
-                expected_model: Some("test::main"),
+                expected_model: "test::main",
                 expected_agent_id: Some("main"),
-                expected_error: false,
             },
             InitializationCase {
                 name: "missing uses requested agent",
-                existing: ExistingBacking::Missing,
+                existing: ExistingSession::Missing,
                 requested_agent_id: Some("worker"),
-                expected_model: Some("test::worker"),
+                expected_model: "test::worker",
                 expected_agent_id: Some("worker"),
-                expected_error: false,
             },
             InitializationCase {
-                name: "existing llm session remains unchanged",
-                existing: ExistingBacking::Llm,
+                name: "existing session remains unchanged",
+                existing: ExistingSession::Present,
                 requested_agent_id: Some("worker"),
-                expected_model: Some("test::main"),
+                expected_model: "test::main",
                 expected_agent_id: Some("main"),
-                expected_error: false,
-            },
-            InitializationCase {
-                name: "external session without requested agent remains external",
-                existing: ExistingBacking::External,
-                requested_agent_id: None,
-                expected_model: None,
-                expected_agent_id: None,
-                expected_error: false,
-            },
-            InitializationCase {
-                name: "external session rejects requested agent without override",
-                existing: ExistingBacking::External,
-                requested_agent_id: Some("worker"),
-                expected_model: None,
-                expected_agent_id: None,
-                expected_error: true,
             },
         ];
 
@@ -264,45 +226,24 @@ mod tests {
             let metadata = sqlite_metadata().await;
             let key = format!("session:initialization-{index}");
             match case.existing {
-                ExistingBacking::Missing => {},
-                ExistingBacking::Llm => {
+                ExistingSession::Missing => {},
+                ExistingSession::Present => {
                     metadata
-                        .create_llm_session(&key, None, &main_pair(), Some("main"))
-                        .await
-                        .unwrap();
-                },
-                ExistingBacking::External => {
-                    metadata
-                        .bind_external(
-                            &key,
-                            None,
-                            &ExternalSessionIdentity::new(ExternalAgentKind::Codex, None),
-                        )
+                        .create_session(&key, None, &main_pair(), Some("main"))
                         .await
                         .unwrap();
                 },
             }
             let services = test_services(Arc::clone(&metadata));
 
-            let result = ensure_internal_chat_session(
+            ensure_chat_session(
                 &services,
                 &SessionKey::new(key.clone()),
                 case.requested_agent_id,
                 None,
             )
-            .await;
-
-            assert_eq!(result.is_err(), case.expected_error, "{}", case.name);
-            if case.expected_error {
-                assert!(
-                    result
-                        .expect_err("expected initialization error")
-                        .to_string()
-                        .contains("external-only"),
-                    "{}",
-                    case.name
-                );
-            }
+            .await
+            .unwrap();
             let entry = metadata
                 .get(&key)
                 .await
@@ -312,13 +253,6 @@ mod tests {
             assert_eq!(
                 entry.agent_id.as_deref(),
                 case.expected_agent_id,
-                "{}",
-                case.name
-            );
-            assert_eq!(
-                entry.external_agent_kind(),
-                matches!(case.existing, ExistingBacking::External)
-                    .then_some(ExternalAgentKind::Codex),
                 "{}",
                 case.name
             );
@@ -335,7 +269,7 @@ mod tests {
             reasoning_effort: ReasoningEffort::from("custom"),
         };
 
-        ensure_internal_chat_session(
+        ensure_chat_session(
             &services,
             &session_key,
             Some("unconfigured-agent"),

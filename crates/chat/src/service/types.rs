@@ -533,56 +533,6 @@ impl LiveChatService {
         runs_by_session.insert(session_key.to_string(), run_id.to_string());
     }
 
-    pub(in crate::service) async fn cancel_run(
-        active_runs: &Arc<RwLock<HashMap<String, CancellationToken>>>,
-        active_runs_by_session: &Arc<RwLock<HashMap<String, String>>>,
-        terminal_runs: &Arc<RwLock<HashSet<String>>>,
-        run_id: Option<&str>,
-        session_key: Option<&str>,
-    ) -> (Option<String>, bool) {
-        let resolved_run_id = if let Some(id) = run_id {
-            Some(id.to_string())
-        } else if let Some(key) = session_key {
-            active_runs_by_session.read().await.get(key).cloned()
-        } else {
-            None
-        };
-
-        let Some(target_run_id) = resolved_run_id.clone() else {
-            return (None, false);
-        };
-        let terminal_runs = terminal_runs.read().await;
-        if terminal_runs.contains(&target_run_id) {
-            return (resolved_run_id, false);
-        }
-        let cancellation_token = active_runs.read().await.get(&target_run_id).cloned();
-        let cancelled = cancellation_token.is_some_and(|token| {
-            if token.is_cancelled() {
-                return false;
-            }
-            token.cancel();
-            true
-        });
-
-        (resolved_run_id, cancelled)
-    }
-
-    pub(in crate::service) async fn resolve_session_key_for_run(
-        active_runs_by_session: &Arc<RwLock<HashMap<String, String>>>,
-        run_id: Option<&str>,
-        session_key: Option<&str>,
-    ) -> Option<String> {
-        if let Some(key) = session_key {
-            return Some(key.to_string());
-        }
-        let target_run_id = run_id?;
-        active_runs_by_session
-            .read()
-            .await
-            .iter()
-            .find_map(|(key, active_run_id)| (active_run_id == target_run_id).then(|| key.clone()))
-    }
-
     pub(crate) async fn wait_for_event_forwarder(
         active_event_forwarders: &Arc<
             RwLock<HashMap<String, tokio::task::JoinHandle<EventForwarderResult>>>,

@@ -912,9 +912,7 @@ impl MemoryForgetProviderResolver {
             .get(session_key.as_str())
             .await?
             .ok_or_else(|| anyhow::anyhow!("session '{session_key}' not found"))?;
-        let model_reasoning = session.model_reasoning().ok_or_else(|| {
-            anyhow::anyhow!("session '{session_key}' does not have a model/reasoning pair")
-        })?;
+        let model_reasoning = session.model_reasoning();
 
         let registry = self.providers.read().await;
         let resolved = registry.resolve_model_reasoning(

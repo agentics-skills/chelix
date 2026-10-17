@@ -21,8 +21,6 @@ mod init_memory;
 mod location;
 mod prepare_core;
 
-#[cfg(test)]
-pub(crate) use prepare_core::register_stop_session;
 mod prepared;
 mod seed_content;
 mod startup;

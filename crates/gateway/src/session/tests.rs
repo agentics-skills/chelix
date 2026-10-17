@@ -1144,7 +1144,7 @@ mod tests {
 
     async fn create_test_session(metadata: &SqliteSessionMetadata, key: &str, label: Option<&str>) {
         metadata
-            .create_llm_session(key, label, &test_model_reasoning(), Some("main"))
+            .create_session(key, label, &test_model_reasoning(), Some("main"))
             .await
             .unwrap();
     }
@@ -1447,13 +1447,8 @@ reasoning_supported_efforts = ["off"]
         assert_eq!(response["model"], REASONING_MODEL);
         assert_eq!(response["reasoningEffort"], "high");
         let reasoning_entry = metadata.get(KEY).await.unwrap().unwrap();
-        assert_eq!(reasoning_entry.model(), Some(REASONING_MODEL));
-        assert_eq!(
-            reasoning_entry
-                .reasoning_effort()
-                .map(chelix_common::ReasoningEffort::as_str),
-            Some("high")
-        );
+        assert_eq!(reasoning_entry.model(), REASONING_MODEL);
+        assert_eq!(reasoning_entry.reasoning_effort().as_str(), "high");
         assert_eq!(reasoning_entry.version, before.version + 1);
 
         let response = service
@@ -1466,13 +1461,8 @@ reasoning_supported_efforts = ["off"]
         assert_eq!(response["model"], REASONING_MODEL);
         assert_eq!(response["reasoningEffort"], "low");
         let reasoning_only_entry = metadata.get(KEY).await.unwrap().unwrap();
-        assert_eq!(reasoning_only_entry.model(), Some(REASONING_MODEL));
-        assert_eq!(
-            reasoning_only_entry
-                .reasoning_effort()
-                .map(chelix_common::ReasoningEffort::as_str),
-            Some("low")
-        );
+        assert_eq!(reasoning_only_entry.model(), REASONING_MODEL);
+        assert_eq!(reasoning_only_entry.reasoning_effort().as_str(), "low");
         assert_eq!(reasoning_only_entry.version, reasoning_entry.version + 1);
 
         let response = service
@@ -1486,13 +1476,8 @@ reasoning_supported_efforts = ["off"]
         assert_eq!(response["model"], OFF_MODEL);
         assert_eq!(response["reasoningEffort"], "off");
         let off_entry = metadata.get(KEY).await.unwrap().unwrap();
-        assert_eq!(off_entry.model(), Some(OFF_MODEL));
-        assert_eq!(
-            off_entry
-                .reasoning_effort()
-                .map(chelix_common::ReasoningEffort::as_str),
-            Some("off")
-        );
+        assert_eq!(off_entry.model(), OFF_MODEL);
+        assert_eq!(off_entry.reasoning_effort().as_str(), "off");
         assert_eq!(off_entry.version, reasoning_only_entry.version + 1);
     }
 
@@ -1526,7 +1511,7 @@ reasoning_supported_efforts = ["off"]
         assert_eq!(after.id, before.id);
         assert_eq!(after.key, before.key);
         assert_eq!(after.label, before.label);
-        assert_eq!(after.backing, before.backing);
+        assert_eq!(after.model_reasoning, before.model_reasoning);
         assert_eq!(after.created_at, before.created_at);
         assert_eq!(after.updated_at, before.updated_at);
         assert_eq!(after.message_count, before.message_count);
@@ -1640,7 +1625,10 @@ reasoning_supported_efforts = ["off"]
                 "unexpected {name} error: {error}",
             );
             let after = metadata.get(KEY).await.unwrap().unwrap();
-            assert_eq!(after.backing, before.backing, "{name} changed backing");
+            assert_eq!(
+                after.model_reasoning, before.model_reasoning,
+                "{name} changed model/reasoning"
+            );
             assert_eq!(after.version, before.version, "{name} changed version");
         }
     }

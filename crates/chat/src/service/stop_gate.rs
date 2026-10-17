@@ -359,24 +359,23 @@ impl StopGate {
         self.notify.notify_waiters();
     }
 
-    /// Returns whether this call owns a stop. `Stale` performs no side effects.
+    /// Returns whether this call owns a stop.
     pub(in crate::service) fn choose_stop(
         &self,
         session_key: &str,
         expected: Option<&str>,
-        external_matches: bool,
     ) -> Option<Option<String>> {
         let mut state = lock(&self.state);
-        let local = state.current_run.get(session_key).cloned();
+        let run = state.current_run.get(session_key).cloned();
         let matches = match expected {
             None => true,
-            Some(expected) => local.as_deref() == Some(expected) || external_matches,
+            Some(expected) => run.as_deref() == Some(expected),
         };
         if !matches {
             return None;
         }
         begin_stop_locked(&mut state, session_key);
-        Some(local)
+        Some(run)
     }
 
     pub(in crate::service) fn arm_next_batch(
@@ -411,7 +410,7 @@ impl StopGate {
 }
 
 impl super::types::LiveChatService {
-    pub async fn current_local_run(&self, key: &str) -> Option<String> {
+    pub async fn current_run(&self, key: &str) -> Option<String> {
         self.active_runs_by_session.read().await.get(key).cloned()
     }
 
@@ -446,9 +445,8 @@ impl super::types::LiveChatService {
         &self,
         key: &str,
         expected: Option<&str>,
-        external_matches: bool,
     ) -> Result<chelix_service_traits::StopSessionOutcome, ServiceError> {
-        let Some(local_run) = self.stop_gate.choose_stop(key, expected, external_matches) else {
+        let Some(run) = self.stop_gate.choose_stop(key, expected) else {
             return Ok(chelix_service_traits::StopSessionOutcome {
                 cancelled: false,
                 run_id: expected.map(str::to_string),
@@ -460,13 +458,11 @@ impl super::types::LiveChatService {
             active: true,
         };
         let mut cancelled = false;
-        let mut run_id = local_run;
-        let cancel_local = expected.is_none() || run_id.as_deref() == expected;
+        let mut run_id = run;
         let mut seen = 0;
         loop {
             let notified = self.stop_gate.notified();
-            if cancel_local
-                && let Some(current) = self.current_local_run(key).await
+            if let Some(current) = self.current_run(key).await
                 && expected.is_none_or(|expected| expected == current)
             {
                 let active = self.active_runs.read().await;

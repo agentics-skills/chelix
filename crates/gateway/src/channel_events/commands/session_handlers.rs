@@ -83,7 +83,7 @@ pub(in crate::channel_events) async fn handle_new(
     let label = format!("{} {n}", reply_to.channel_type.display_name());
 
     session_metadata
-        .create_llm_session(
+        .create_session(
             &new_key,
             Some(&label),
             &model_reasoning,

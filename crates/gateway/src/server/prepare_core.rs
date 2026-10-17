@@ -35,8 +35,6 @@ use {
 mod log_persistence;
 mod post_state;
 
-#[cfg(test)]
-pub(crate) use post_state::register_stop_session;
 mod sandbox;
 mod tool_registration;
 /// Prepare the core gateway: load config, run migrations, wire services,
@@ -525,13 +523,9 @@ pub async fn prepare_gateway_core(
         tokio::spawn(async move {
             if let Some(state) = st.get() {
                 let session_id = SessionKey::new("main");
-                if let Err(error) = crate::session::ensure_internal_chat_session(
-                    &state.services,
-                    &session_id,
-                    None,
-                    None,
-                )
-                .await
+                if let Err(error) =
+                    crate::session::ensure_chat_session(&state.services, &session_id, None, None)
+                        .await
                 {
                     tracing::error!(%error, "cron system event session initialization failed");
                     return;
@@ -558,7 +552,7 @@ pub async fn prepare_gateway_core(
             let chat = state.chat();
             let session_key = format!("cron:{}", uuid::Uuid::new_v4());
             let session_id = SessionKey::new(session_key.clone());
-            crate::session::ensure_internal_chat_session(
+            crate::session::ensure_chat_session(
                 &state.services,
                 &session_id,
                 req.agent_id.as_deref(),
@@ -757,9 +751,6 @@ pub async fn prepare_gateway_core(
     call_bus
         .require::<chelix_service_traits::StopSession>()
         .map_err(|error| anyhow::anyhow!(error.to_string()))?;
-    call_bus
-        .require::<chelix_service_traits::ShutdownExternalBinding>()
-        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
     chelix_skills::skill_file::bind_skill_files(&call_bus)
         .map_err(|error| anyhow::anyhow!(error))?;
     services.skills = Arc::new(crate::services::NoopSkillsService::new(Arc::clone(
@@ -863,13 +854,8 @@ pub async fn prepare_gateway_core(
         });
     }
     if let Ok(chelix_config::AgentsConfigState::Configured { .. }) = config.agents.resolve_state() {
-        crate::session::ensure_internal_chat_session(
-            &services,
-            &SessionKey::new("main"),
-            None,
-            None,
-        )
-        .await?;
+        crate::session::ensure_chat_session(&services, &SessionKey::new("main"), None, None)
+            .await?;
     }
 
     // ── Code index initialization ──────────────────────────────────────

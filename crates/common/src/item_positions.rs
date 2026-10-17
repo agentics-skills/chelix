@@ -14,8 +14,6 @@
 //! * Responses carries `output_index` on delta events, but that value orders
 //!   items only within a channel for some providers, so distinct items can
 //!   share the same `output_index` inside a single response.
-//! * External agents report text and thinking as separate event kinds with no
-//!   ordering between them at all.
 //!
 //! Deriving a position from those fields makes two different items collide on
 //! one slot, which the materializer rejects as a position/id conflict. This

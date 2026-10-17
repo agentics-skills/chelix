@@ -1,6 +1,6 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use {super::*, sqlx::Row};
+use super::*;
 
 fn pair(model: &str, effort: &str) -> ResolvedModelReasoning {
     ResolvedModelReasoning::try_new(model.to_string(), ReasoningEffort::from(effort)).unwrap()
@@ -17,46 +17,6 @@ async fn sqlite_pool() -> sqlx::SqlitePool {
 }
 
 #[tokio::test]
-async fn storage_accepts_exactly_three_backing_states() {
-    let metadata = SqliteSessionMetadata::new(sqlite_pool().await);
-    let llm_pair = pair("test::llm", "low");
-
-    let llm = metadata
-        .create_llm_session("session:llm", None, &llm_pair, Some("main"))
-        .await
-        .unwrap();
-    assert!(matches!(llm.backing, SessionBacking::Llm { .. }));
-
-    let external = metadata
-        .bind_external(
-            "session:external",
-            None,
-            &ExternalSessionIdentity::new(ExternalAgentKind::Codex, None),
-        )
-        .await
-        .unwrap();
-    assert!(matches!(external.backing, SessionBacking::External { .. }));
-
-    let llm_external = metadata
-        .bind_external(
-            "session:llm",
-            None,
-            &ExternalSessionIdentity::new(ExternalAgentKind::Acp, Some("external-1".to_string())),
-        )
-        .await
-        .unwrap();
-    assert!(matches!(
-        llm_external.backing,
-        SessionBacking::LlmExternal { .. }
-    ));
-    assert_eq!(llm_external.model(), Some("test::llm"));
-    assert_eq!(
-        llm_external.reasoning_effort().map(ReasoningEffort::as_str),
-        Some("low")
-    );
-}
-
-#[tokio::test]
 async fn concurrent_ensure_creates_one_valid_row_and_one_event() {
     let pool = sqlite_pool().await;
     let event_bus = crate::session_events::SessionEventBus::new();
@@ -65,13 +25,13 @@ async fn concurrent_ensure_creates_one_valid_row_and_one_event() {
     let model_reasoning = pair("test::concurrent", "low");
 
     let (first, second) = tokio::join!(
-        metadata.ensure_llm_session(
+        metadata.ensure_session(
             "session:concurrent",
             Some("Concurrent"),
             &model_reasoning,
             Some("main"),
         ),
-        metadata.ensure_llm_session(
+        metadata.ensure_session(
             "session:concurrent",
             Some("Concurrent"),
             &model_reasoning,
@@ -81,8 +41,8 @@ async fn concurrent_ensure_creates_one_valid_row_and_one_event() {
     let first = first.unwrap();
     let second = second.unwrap();
     assert_ne!(first.created(), second.created());
-    assert!(first.entry().model_reasoning().is_some());
-    assert!(second.entry().model_reasoning().is_some());
+    assert_eq!(first.entry().model_reasoning(), &model_reasoning);
+    assert_eq!(second.entry().model_reasoning(), &model_reasoning);
     assert_eq!(
         metadata
             .list()
@@ -105,183 +65,30 @@ async fn concurrent_ensure_creates_one_valid_row_and_one_event() {
 }
 
 #[tokio::test]
-async fn promote_external_to_llm_preserves_identity_and_sets_agent() {
-    let metadata = SqliteSessionMetadata::new(sqlite_pool().await);
-    metadata
-        .bind_external(
-            "session:external-promotion",
-            None,
-            &ExternalSessionIdentity::new(ExternalAgentKind::Codex, Some("external-1".to_string())),
-        )
-        .await
-        .unwrap();
-
-    let outcome = metadata
-        .promote_external_to_llm(
-            "session:external-promotion",
-            &pair("test::promoted", "high"),
-            "main",
-        )
-        .await
-        .unwrap();
-    let entry = outcome.into_entry();
-    assert!(matches!(entry.backing, SessionBacking::LlmExternal { .. }));
-    assert_eq!(entry.model(), Some("test::promoted"));
-    assert_eq!(
-        entry.reasoning_effort().map(ReasoningEffort::as_str),
-        Some("high")
-    );
-    assert_eq!(entry.external_agent_kind(), Some(ExternalAgentKind::Codex));
-    assert_eq!(entry.external_session_id(), Some("external-1"));
-    assert_eq!(entry.agent_id.as_deref(), Some("main"));
-
-    let second = metadata
-        .promote_external_to_llm(
-            "session:external-promotion",
-            &pair("test::ignored", "low"),
-            "other",
-        )
-        .await
-        .unwrap()
-        .into_entry();
-    assert_eq!(second.model(), Some("test::promoted"));
-    assert_eq!(second.agent_id.as_deref(), Some("main"));
-}
-
-#[tokio::test]
-async fn strict_external_transitions_reject_stale_version_without_mutation() {
-    let metadata = SqliteSessionMetadata::new(sqlite_pool().await);
-    let external = metadata
-        .bind_external(
-            "session:strict-external",
-            None,
-            &ExternalSessionIdentity::new(ExternalAgentKind::Codex, None),
-        )
-        .await
-        .unwrap();
-    let updated = metadata
-        .update_external_session_id("session:strict-external", Some("external-2"))
-        .await
-        .unwrap();
-
-    let result = metadata
-        .replace_external_with_llm(
-            "session:strict-external",
-            external.version,
-            "main",
-            &pair("test::model", "low"),
-        )
-        .await;
-    assert!(result.is_err());
-    let unchanged = metadata
-        .get("session:strict-external")
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(unchanged.version, updated.version);
-    assert!(matches!(unchanged.backing, SessionBacking::External { .. }));
-    assert_eq!(unchanged.external_session_id(), Some("external-2"));
-}
-
-#[tokio::test]
-async fn explicit_llm_agent_assignment_clears_external_identity() {
-    let metadata = SqliteSessionMetadata::new(sqlite_pool().await);
-    metadata
-        .bind_external(
-            "session:explicit-agent",
-            None,
-            &ExternalSessionIdentity::new(ExternalAgentKind::Acp, Some("external-1".to_string())),
-        )
-        .await
-        .unwrap();
-
-    let entry = metadata
-        .create_or_assign_agent(
-            "session:explicit-agent",
-            "main",
-            &pair("test::selected", "high"),
-        )
-        .await
-        .unwrap();
-    assert!(matches!(entry.backing, SessionBacking::Llm { .. }));
-    assert_eq!(entry.model(), Some("test::selected"));
-    assert_eq!(entry.agent_id.as_deref(), Some("main"));
-    assert_eq!(entry.external_agent_kind(), None);
-    assert_eq!(entry.external_session_id(), None);
-}
-
-#[tokio::test]
-async fn schema_rejects_invalid_backing_rows() {
+async fn schema_rejects_invalid_model_reasoning_rows() {
     let pool = sqlite_pool().await;
     let cases = [
-        ("partial model", Some("test::model"), None, None, None),
-        ("partial reasoning", None, Some("low"), None, None),
-        ("empty model", Some(""), Some("low"), None, None),
-        ("empty reasoning", Some("test::model"), Some(""), None, None),
-        ("no backing", None, None, None, None),
-        ("empty external kind", None, None, Some(""), None),
-        ("unknown external kind", None, None, Some("unknown"), None),
-        ("orphan external ID", None, None, None, Some("external-1")),
+        ("partial model", Some("test::model"), None),
+        ("partial reasoning", None, Some("low")),
+        ("empty model", Some(""), Some("low")),
+        ("empty reasoning", Some("test::model"), Some("")),
+        ("no model/reasoning pair", None, None),
     ];
 
-    for (name, model, reasoning, kind, external_id) in cases {
+    for (name, model, reasoning) in cases {
         let result = sqlx::query(
             r#"INSERT INTO sessions (
-                   key, id, model, reasoning_effort, created_at, updated_at,
-                   external_agent_kind, external_session_id
-               ) VALUES (?, ?, ?, ?, 1, 1, ?, ?)"#,
+                   key, id, model, reasoning_effort, created_at, updated_at
+               ) VALUES (?, ?, ?, ?, 1, 1)"#,
         )
         .bind(format!("session:{name}"))
         .bind(format!("id:{name}"))
         .bind(model)
         .bind(reasoning)
-        .bind(kind)
-        .bind(external_id)
         .execute(&pool)
         .await;
         assert!(result.is_err(), "{name} unexpectedly passed");
     }
-}
-
-#[tokio::test]
-async fn unbind_updates_llm_external_and_deletes_external_only() {
-    let metadata = SqliteSessionMetadata::new(sqlite_pool().await);
-    let llm_pair = pair("test::model", "off");
-    metadata
-        .create_llm_session("session:llm", None, &llm_pair, Some("main"))
-        .await
-        .unwrap();
-    metadata
-        .bind_external(
-            "session:llm",
-            None,
-            &ExternalSessionIdentity::new(ExternalAgentKind::Codex, None),
-        )
-        .await
-        .unwrap();
-    metadata
-        .bind_external(
-            "session:external",
-            None,
-            &ExternalSessionIdentity::new(ExternalAgentKind::Acp, None),
-        )
-        .await
-        .unwrap();
-
-    let retained = metadata
-        .unbind_external("session:llm")
-        .await
-        .unwrap()
-        .unwrap();
-    assert!(matches!(retained.backing, SessionBacking::Llm { .. }));
-    assert!(
-        metadata
-            .unbind_external("session:external")
-            .await
-            .unwrap()
-            .is_none()
-    );
-    assert!(metadata.get("session:external").await.unwrap().is_none());
 }
 
 #[tokio::test]
@@ -290,7 +97,7 @@ async fn agent_reassignment_replaces_the_complete_pair_atomically() {
     let original = pair("test::original", "low");
     let replacement = pair("test::replacement", "high");
     metadata
-        .create_llm_session("session:agent", None, &original, Some("first"))
+        .create_session("session:agent", None, &original, Some("first"))
         .await
         .unwrap();
 
@@ -299,18 +106,15 @@ async fn agent_reassignment_replaces_the_complete_pair_atomically() {
         .await
         .unwrap();
     assert_eq!(entry.agent_id.as_deref(), Some("second"));
-    assert_eq!(entry.model(), Some("test::replacement"));
-    assert_eq!(
-        entry.reasoning_effort().map(ReasoningEffort::as_str),
-        Some("high")
-    );
+    assert_eq!(entry.model(), "test::replacement");
+    assert_eq!(entry.reasoning_effort().as_str(), "high");
 
     let missing = metadata
         .assign_agent("session:missing", "second", &original)
         .await;
     assert!(missing.is_err());
     let unchanged = metadata.get("session:agent").await.unwrap().unwrap();
-    assert_eq!(unchanged.model(), Some("test::replacement"));
+    assert_eq!(unchanged.model(), "test::replacement");
 }
 
 #[tokio::test]
@@ -319,7 +123,7 @@ async fn atomic_patch_rolls_back_every_field_on_late_storage_error() {
     let metadata = SqliteSessionMetadata::new(pool.clone());
     let original = pair("test::original", "low");
     metadata
-        .create_llm_session("session:patch", Some("Original"), &original, Some("main"))
+        .create_session("session:patch", Some("Original"), &original, Some("main"))
         .await
         .unwrap();
     sqlx::query(
@@ -352,7 +156,7 @@ async fn atomic_patch_rolls_back_every_field_on_late_storage_error() {
     let after = metadata.get("session:patch").await.unwrap().unwrap();
     assert_eq!(after.id, before.id);
     assert_eq!(after.label, before.label);
-    assert_eq!(after.backing, before.backing);
+    assert_eq!(after.model_reasoning, before.model_reasoning);
     assert_eq!(after.created_at, before.created_at);
     assert_eq!(after.updated_at, before.updated_at);
     assert_eq!(after.message_count, before.message_count);
@@ -379,7 +183,7 @@ async fn empty_patch_is_a_no_op_without_event_or_version_bump() {
     let event_bus = crate::session_events::SessionEventBus::new();
     let metadata = SqliteSessionMetadata::with_event_bus(pool, event_bus.clone());
     metadata
-        .create_llm_session(
+        .create_session(
             "session:no-op-patch",
             None,
             &pair("test::model", "low"),
@@ -407,7 +211,7 @@ async fn label_update_never_creates_a_session() {
     let metadata = SqliteSessionMetadata::new(sqlite_pool().await);
     let llm_pair = pair("test::model", "none");
     metadata
-        .create_llm_session("session:label", None, &llm_pair, Some("main"))
+        .create_session("session:label", None, &llm_pair, Some("main"))
         .await
         .unwrap();
 
@@ -425,135 +229,11 @@ async fn label_update_never_creates_a_session() {
     assert!(metadata.get("session:missing").await.unwrap().is_none());
 }
 
-async fn legacy_sessions_pool() -> sqlx::SqlitePool {
-    let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
-    sqlx::query("CREATE TABLE projects (id TEXT PRIMARY KEY)")
-        .execute(&pool)
-        .await
-        .unwrap();
-    sqlx::query(
-        r#"CREATE TABLE sessions (
-            key TEXT PRIMARY KEY,
-            id TEXT NOT NULL,
-            label TEXT,
-            model TEXT,
-            reasoning_effort TEXT,
-            created_at INTEGER NOT NULL,
-            updated_at INTEGER NOT NULL,
-            message_count INTEGER NOT NULL DEFAULT 0,
-            last_seen_message_count INTEGER NOT NULL DEFAULT 0,
-            project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
-            archived INTEGER NOT NULL DEFAULT 0,
-            worktree_branch TEXT,
-            channel_binding TEXT,
-            parent_session_key TEXT,
-            sandbox_owner_key TEXT,
-            fork_point INTEGER,
-            mcp_disabled INTEGER,
-            preview TEXT,
-            agent_id TEXT,
-            prompt_profile TEXT NOT NULL DEFAULT 'chat',
-            external_agent_kind TEXT,
-            external_session_id TEXT,
-            version INTEGER NOT NULL DEFAULT 0
-        )"#,
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
-    pool
-}
-
-#[tokio::test]
-async fn migration_copies_valid_rows_unchanged_and_rejects_invalid_rows() {
-    let valid_pool = legacy_sessions_pool().await;
-    sqlx::query(
-        r#"INSERT INTO sessions (
-               key, id, label, model, reasoning_effort, created_at, updated_at,
-               message_count, last_seen_message_count, archived, prompt_profile,
-               external_agent_kind, external_session_id, version
-           ) VALUES ('session:valid', 'id-valid', 'Valid', 'test::model', 'off',
-                     10, 20, 3, 2, 1, 'subagent', 'codex', 'external-1', 7)"#,
-    )
-    .execute(&valid_pool)
-    .await
-    .unwrap();
-    sqlx::raw_sql(include_str!(
-        "../../migrations/20260831023000_session_backing_constraints.sql"
-    ))
-    .execute(&valid_pool)
-    .await
-    .unwrap();
-    let copied = sqlx::query(
-        r#"SELECT key, id, label, model, reasoning_effort, created_at, updated_at,
-                  message_count, last_seen_message_count, archived, prompt_profile,
-                  external_agent_kind, external_session_id, version
-           FROM sessions WHERE key = 'session:valid'"#,
-    )
-    .fetch_one(&valid_pool)
-    .await
-    .unwrap();
-    assert_eq!(copied.get::<String, _>("key"), "session:valid");
-    assert_eq!(copied.get::<String, _>("id"), "id-valid");
-    assert_eq!(
-        copied.get::<Option<String>, _>("label").as_deref(),
-        Some("Valid")
-    );
-    assert_eq!(
-        copied.get::<Option<String>, _>("model").as_deref(),
-        Some("test::model")
-    );
-    assert_eq!(
-        copied
-            .get::<Option<String>, _>("reasoning_effort")
-            .as_deref(),
-        Some("off")
-    );
-    assert_eq!(copied.get::<i64, _>("created_at"), 10);
-    assert_eq!(copied.get::<i64, _>("updated_at"), 20);
-    assert_eq!(copied.get::<i64, _>("message_count"), 3);
-    assert_eq!(copied.get::<i64, _>("last_seen_message_count"), 2);
-    assert_eq!(copied.get::<i64, _>("archived"), 1);
-    assert_eq!(copied.get::<String, _>("prompt_profile"), "subagent");
-    assert_eq!(
-        copied
-            .get::<Option<String>, _>("external_agent_kind")
-            .as_deref(),
-        Some("codex")
-    );
-    assert_eq!(
-        copied
-            .get::<Option<String>, _>("external_session_id")
-            .as_deref(),
-        Some("external-1")
-    );
-    assert_eq!(copied.get::<i64, _>("version"), 7);
-
-    let invalid_pool = legacy_sessions_pool().await;
-    sqlx::query(
-        "INSERT INTO sessions (key, id, created_at, updated_at) VALUES ('invalid', 'id', 1, 1)",
-    )
-    .execute(&invalid_pool)
-    .await
-    .unwrap();
-    let migration = sqlx::raw_sql(include_str!(
-        "../../migrations/20260831023000_session_backing_constraints.sql"
-    ))
-    .execute(&invalid_pool)
-    .await;
-    assert!(migration.is_err());
-    let unchanged: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sessions WHERE key = 'invalid'")
-        .fetch_one(&invalid_pool)
-        .await
-        .unwrap();
-    assert_eq!(unchanged, 1);
-}
-
 #[tokio::test]
 async fn new_session_defaults_tool_permission_to_auto_manual() {
     let metadata = SqliteSessionMetadata::new(sqlite_pool().await);
     let entry = metadata
-        .create_llm_session(
+        .create_session(
             "session:perm",
             None,
             &pair("test::model", "low"),
@@ -569,7 +249,7 @@ async fn new_session_defaults_tool_permission_to_auto_manual() {
 async fn patch_updates_tool_permission_mode_and_type() {
     let metadata = SqliteSessionMetadata::new(sqlite_pool().await);
     metadata
-        .create_llm_session(
+        .create_session(
             "session:perm",
             None,
             &pair("test::model", "low"),

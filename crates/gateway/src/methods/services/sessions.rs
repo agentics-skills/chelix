@@ -550,7 +550,7 @@ mod tests {
             chelix_common::ReasoningEffort::from("off"),
         )?;
         metadata
-            .create_llm_session("child", None, &pair, Some("main"))
+            .create_session("child", None, &pair, Some("main"))
             .await?;
         store
             .append(

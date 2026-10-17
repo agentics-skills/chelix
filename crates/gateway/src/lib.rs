@@ -23,7 +23,6 @@ pub mod chat;
 pub mod chat_error;
 pub mod chat_status_outbox;
 pub mod cron;
-pub mod external_agents;
 pub mod logs;
 pub mod mcp_agent_tools;
 pub mod mcp_health;

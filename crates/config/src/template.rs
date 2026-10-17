@@ -479,36 +479,6 @@ terminal_size = "115x58"             # 115 chars x 58
 # webhook_url = "https://your-domain.com"   # Public URL for Plivo callbacks
 
 # ══════════════════════════════════════════════════════════════════════════════
-# EXTERNAL AGENTS
-# ══════════════════════════════════════════════════════════════════════════════
-# Connect Chelix chat sessions to external CLI coding agents.
-# Codex and ACP use persistent JSON-RPC sessions; Claude Code uses print-mode
-# resume when the CLI returns a session_id.
-# Chelix acts as orchestrator; the CLI agent owns its own context window.
-
-[external_agents]
-# enabled = false                   # Enable external agent bridge
-
-# Per-agent configuration (key = agent kind)
-# [external_agents.agents.claude-code]
-# binary = "claude"                 # Override binary path (default: look up on $PATH)
-# args = ["-p", "--output-format", "json"]
-# working_dir = "."                 # Override working directory
-# timeout_secs = 300                # Session timeout
-# use_tmux = false                  # Force tmux backend (vs direct PTY)
-# [external_agents.agents.codex]
-# binary = "codex"
-# args = ["app-server"]
-
-# [external_agents.agents.acp]
-# binary = "/path/to/acp-agent"
-# args = []
-
-# [external_agents.agents.opencode]
-# binary = "opencode"
-# use_tmux = true                   # opencode requires tmux (TUI app)
-
-# ══════════════════════════════════════════════════════════════════════════════
 # CHANNELS
 # ══════════════════════════════════════════════════════════════════════════════
 # External messaging integrations.

@@ -288,16 +288,11 @@ fn register_agent_config_methods(reg: &mut MethodRegistry) {
                     .map_err(|error| {
                         ErrorShape::new(error_codes::UNAVAILABLE, error.to_string())
                     })?;
-                ctx.state
-                    .services
-                    .external_agent
-                    .shutdown_session(session_key)
-                    .await;
                 Ok(serde_json::json!({
                     "ok": true,
                     "agent_id": agent_id,
                     "model": entry.model(),
-                    "reasoningEffort": entry.reasoning_effort().map(|effort| effort.as_str()),
+                    "reasoningEffort": entry.reasoning_effort().as_str(),
                     "version": entry.version,
                 }))
             })

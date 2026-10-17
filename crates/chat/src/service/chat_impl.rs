@@ -7,15 +7,11 @@ use std::{
     future::Future,
     path::Path,
     sync::Arc,
-    time::Duration,
 };
 
 use {
-    async_trait::async_trait,
-    serde_json::Value,
-    tokio::sync::RwLock,
-    tokio_util::sync::CancellationToken,
-    tracing::{info, warn},
+    async_trait::async_trait, serde_json::Value, tokio::sync::RwLock,
+    tokio_util::sync::CancellationToken, tracing::info,
 };
 
 use {
@@ -114,17 +110,14 @@ async fn ensure_send_sync_session_agent(
     {
         return Ok(entry);
     }
-    let model_reasoning = entry
-        .model_reasoning()
-        .cloned()
-        .ok_or_else(|| ServiceError::message("LLM session has no model/reasoning pair"))?;
+    let model_reasoning = entry.model_reasoning().clone();
     metadata
         .assign_agent(&entry.key, agent_id, &model_reasoning)
         .await
         .map_err(ServiceError::message)
 }
 
-async fn persist_send_sync_session_backing(
+async fn persist_send_sync_session(
     metadata: &chelix_sessions::metadata::SqliteSessionMetadata,
     session_entry: Option<chelix_sessions::metadata::SessionEntry>,
     session_key: &str,
@@ -132,12 +125,7 @@ async fn persist_send_sync_session_backing(
     agent_id: &str,
 ) -> Result<chelix_sessions::metadata::SessionEntry, ServiceError> {
     match session_entry {
-        Some(entry) if entry.model_reasoning().is_none() => metadata
-            .promote_external_to_llm(session_key, model_reasoning, agent_id)
-            .await
-            .map(chelix_sessions::metadata::PromoteExternalToLlmOutcome::into_entry)
-            .map_err(ServiceError::message),
-        Some(entry) if entry.model_reasoning() != Some(model_reasoning) => {
+        Some(entry) if entry.model_reasoning() != model_reasoning => {
             let entry = metadata
                 .set_model_reasoning(session_key, model_reasoning)
                 .await
@@ -146,19 +134,14 @@ async fn persist_send_sync_session_backing(
         },
         Some(entry) => ensure_send_sync_session_agent(metadata, entry, agent_id).await,
         None => match metadata
-            .ensure_llm_session(session_key, None, model_reasoning, Some(agent_id))
+            .ensure_session(session_key, None, model_reasoning, Some(agent_id))
             .await
             .map_err(ServiceError::message)?
         {
-            chelix_sessions::metadata::EnsureLlmSessionOutcome::Created(entry) => Ok(entry),
-            chelix_sessions::metadata::EnsureLlmSessionOutcome::ExistingLlm(entry) => {
+            chelix_sessions::metadata::EnsureSessionOutcome::Created(entry) => Ok(entry),
+            chelix_sessions::metadata::EnsureSessionOutcome::Existing(entry) => {
                 ensure_send_sync_session_agent(metadata, entry, agent_id).await
             },
-            chelix_sessions::metadata::EnsureLlmSessionOutcome::ExistingExternal(_) => metadata
-                .promote_external_to_llm(session_key, model_reasoning, agent_id)
-                .await
-                .map(chelix_sessions::metadata::PromoteExternalToLlmOutcome::into_entry)
-                .map_err(ServiceError::message),
         },
     }
 }
@@ -212,45 +195,6 @@ where
         })),
         ChatRunOutcome::Cancelled => Err("agent run cancelled".into()),
         ChatRunOutcome::Failed => on_failed().await,
-    }
-}
-
-async fn wait_until_session_run_unmapped(
-    service: &LiveChatService,
-    session_key: &str,
-    run_id: &str,
-) {
-    let mut version = service.session_gates.subscribe();
-    let mut warned = false;
-    loop {
-        {
-            let runs_by_session = service.active_runs_by_session.read().await;
-            if runs_by_session.get(session_key).map(String::as_str) != Some(run_id) {
-                return;
-            }
-        }
-        if warned {
-            if version.changed().await.is_err() {
-                return;
-            }
-            continue;
-        }
-        tokio::select! {
-            biased;
-            result = version.changed() => {
-                if result.is_err() {
-                    return;
-                }
-            },
-            () = tokio::time::sleep(Duration::from_secs(5)) => {
-                warn!(
-                    session_key,
-                    run_id,
-                    "chat.abort still waiting for the run to unmap"
-                );
-                warned = true;
-            },
-        }
     }
 }
 
@@ -319,7 +263,7 @@ impl ChatService for LiveChatService {
             .agent_runtime_limits(&session_agent_id)
             .map_err(ServiceError::message)?;
         session_entry = Some(
-            persist_send_sync_session_backing(
+            persist_send_sync_session(
                 self.session_metadata.as_ref(),
                 session_entry,
                 &session_key,
@@ -631,59 +575,42 @@ impl ChatService for LiveChatService {
     }
 
     async fn abort(&self, params: Value) -> ServiceResult {
-        let run_id = params.get("runId").and_then(|v| v.as_str());
-        let session_key = params.get("sessionKey").and_then(|v| v.as_str());
+        let run_id = params
+            .get("runId")
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        let session_key = params
+            .get("sessionKey")
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
         if run_id.is_none() && session_key.is_none() {
             return Err("missing 'runId' or 'sessionKey'".into());
         }
-
-        let resolved_session_key =
-            Self::resolve_session_key_for_run(&self.active_runs_by_session, run_id, session_key)
-                .await;
-        let (resolved_run_id, aborted) = Self::cancel_run(
-            &self.active_runs,
-            &self.active_runs_by_session,
-            &self.terminal_runs,
-            run_id,
-            session_key,
-        )
-        .await;
-        info!(
-            requested_run_id = ?run_id,
-            session_key = ?session_key,
-            resolved_run_id = ?resolved_run_id,
-            aborted,
-            "chat.abort"
-        );
-
-        if let Some(session_key) = resolved_session_key.as_deref() {
-            let dropped = self.tool_permissions.drop_session(session_key).await;
-            for view in dropped {
-                self.state
-                    .broadcast(
-                        "tool.permission.resolved",
-                        serde_json::json!({
-                            "sessionKey": view.session_key,
-                            "runId": view.run_id,
-                            "toolCallId": view.tool_call_id,
-                            "toolName": view.tool_name,
-                            "phase": view.phase,
-                            "decision": "cancelled",
-                        }),
-                    )
-                    .await;
-            }
-        }
-        if let (Some(session_key), Some(run_id)) =
-            (resolved_session_key.as_deref(), resolved_run_id.as_deref())
-        {
-            wait_until_session_run_unmapped(self, session_key, run_id).await;
-        }
-
+        let request = match (session_key.clone(), run_id) {
+            (Some(key), run_id) => chelix_service_traits::StopSession::Session {
+                key: chelix_sessions::SessionKey::new(key),
+                run_id,
+            },
+            (None, Some(run_id)) => chelix_service_traits::StopSession::Run { run_id },
+            (None, None) => return Err("missing 'runId' or 'sessionKey'".into()),
+        };
+        let outcome = self
+            .call_bus
+            .call(request)
+            .await
+            .map_err(|error| ServiceError::message(error.to_string()))?;
+        let response_session_key = match session_key {
+            Some(key) => Value::String(key),
+            None => Value::Null,
+        };
         Ok(serde_json::json!({
-            "aborted": aborted,
-            "runId": resolved_run_id,
-            "sessionKey": resolved_session_key,
+            "aborted": outcome.cancelled,
+            "runId": outcome.run_id,
+            "sessionKey": response_session_key,
         }))
     }
 
@@ -1601,13 +1528,11 @@ impl ChatService for LiveChatService {
 #[cfg(test)]
 mod tests {
     use std::{
-        collections::{HashMap, HashSet},
         pin::Pin,
         sync::{
             Arc, Mutex,
             atomic::{AtomicBool, Ordering},
         },
-        time::Duration,
     };
 
     use {
@@ -1625,10 +1550,7 @@ mod tests {
             SessionTerminal, TtsService,
         },
         chelix_sessions::{
-            PersistedMessage, QueuedPrompts, SessionKey,
-            metadata::{
-                ExternalAgentKind, ExternalSessionIdentity, SessionBacking, SqliteSessionMetadata,
-            },
+            PersistedMessage, QueuedPrompts, SessionKey, metadata::SqliteSessionMetadata,
             store::SessionStore,
         },
         serde_json::Value,
@@ -1638,8 +1560,7 @@ mod tests {
     };
 
     use super::{
-        ChatRunOutcome, LiveChatService, persist_send_sync_session_backing,
-        resolve_send_sync_outcome, tool_mode_enables_tools,
+        ChatRunOutcome, LiveChatService, resolve_send_sync_outcome, tool_mode_enables_tools,
     };
 
     struct ValidationTestRuntime {
@@ -1899,7 +1820,7 @@ mod tests {
         )
         .unwrap_or_else(|error| panic!("original test pair: {error}"));
         metadata
-            .create_llm_session("t:1", Some("Main"), &original_pair, Some("main"))
+            .create_session("t:1", Some("Main"), &original_pair, Some("main"))
             .await
             .unwrap_or_else(|error| panic!("original session setup: {error}"));
 
@@ -2079,14 +2000,6 @@ mod tests {
     async fn chat_auxiliary_surfaces_reject_invalid_persisted_pairs() {
         let (_directory, service, metadata, _session_store, resolved_efforts, _captured_messages) =
             validation_test_service().await;
-        metadata
-            .bind_external(
-                "external",
-                None,
-                &ExternalSessionIdentity::new(ExternalAgentKind::Codex, None),
-            )
-            .await
-            .unwrap_or_else(|error| panic!("external session setup: {error}"));
         for (session_key, model, effort) in [
             ("unknown", "test::missing", "off"),
             ("unsupported", "test::model", "high"),
@@ -2099,12 +2012,12 @@ mod tests {
                 panic!("invalid registry pair must remain storage-valid: {error}")
             });
             metadata
-                .create_llm_session(session_key, None, &pair, Some("main"))
+                .create_session(session_key, None, &pair, Some("main"))
                 .await
                 .unwrap_or_else(|error| panic!("invalid registry session setup: {error}"));
         }
 
-        for session_key in ["external", "unknown", "unsupported"] {
+        for session_key in ["unknown", "unsupported"] {
             let results = [
                 service
                     .compact(
@@ -2148,17 +2061,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn chat_turn_resolution_rejects_invalid_complete_pairs_or_missing_session_pair() {
-        let (_directory, service, metadata, _session_store, _resolved_efforts, _captured_messages) =
+    async fn chat_turn_resolution_rejects_invalid_complete_pairs() {
+        let (_directory, service, _metadata, _session_store, _resolved_efforts, _captured_messages) =
             validation_test_service().await;
-        metadata
-            .bind_external(
-                "external",
-                None,
-                &ExternalSessionIdentity::new(ExternalAgentKind::Codex, None),
-            )
-            .await
-            .unwrap_or_else(|error| panic!("external session setup: {error}"));
         let cases = [
             (
                 "empty model",
@@ -2200,7 +2105,6 @@ mod tests {
                     reasoning_effort: chelix_common::ReasoningEffort::from("high"),
                 }),
             ),
-            ("missing persisted pair", SessionKey::new("external"), None),
         ];
 
         for (name, session_id, model_override) in cases {
@@ -2261,7 +2165,10 @@ mod tests {
                 .await
                 .unwrap_or_else(|error| panic!("{name}: read history after: {error}"));
             assert_eq!(after.agent_id, before.agent_id, "{name}: agent changed");
-            assert_eq!(after.backing, before.backing, "{name}: backing changed");
+            assert_eq!(
+                after.model_reasoning, before.model_reasoning,
+                "{name}: model/reasoning changed"
+            );
             assert_eq!(after.version, before.version, "{name}: version changed");
             assert_eq!(
                 after.updated_at, before.updated_at,
@@ -2322,7 +2229,10 @@ mod tests {
                 .await
                 .unwrap_or_else(|error| panic!("{name}: read history after: {error}"));
             assert_eq!(after.agent_id, before.agent_id, "{name}: agent changed");
-            assert_eq!(after.backing, before.backing, "{name}: backing changed");
+            assert_eq!(
+                after.model_reasoning, before.model_reasoning,
+                "{name}: model/reasoning changed"
+            );
             assert_eq!(after.version, before.version, "{name}: version changed");
             assert_eq!(
                 after.updated_at, before.updated_at,
@@ -2408,7 +2318,7 @@ mod tests {
         )
         .unwrap_or_else(|error| panic!("persisted test pair: {error}"));
         metadata
-            .create_llm_session("agentless", None, &persisted_pair, None)
+            .create_session("agentless", None, &persisted_pair, None)
             .await
             .unwrap_or_else(|error| panic!("agentless session setup: {error}"));
 
@@ -2430,7 +2340,7 @@ mod tests {
             .unwrap_or_else(|error| panic!("agentless entry load: {error}"))
             .unwrap_or_else(|| panic!("agentless entry should exist"));
         assert_eq!(agentless_entry.agent_id.as_deref(), Some("other"));
-        assert_eq!(agentless_entry.model_reasoning(), Some(&persisted_pair));
+        assert_eq!(agentless_entry.model_reasoning(), &persisted_pair);
         let agentless_status = service
             .queued_prompts
             .status(SessionKey::new("agentless"))
@@ -2462,13 +2372,8 @@ mod tests {
             .unwrap_or_else(|error| panic!("existing entry load: {error}"))
             .unwrap_or_else(|| panic!("existing entry should exist"));
         assert_eq!(existing_entry.agent_id.as_deref(), Some("main"));
-        assert_eq!(existing_entry.model(), Some("test::other"));
-        assert_eq!(
-            existing_entry
-                .reasoning_effort()
-                .map(chelix_common::ReasoningEffort::as_str),
-            Some("off")
-        );
+        assert_eq!(existing_entry.model(), "test::other");
+        assert_eq!(existing_entry.reasoning_effort().as_str(), "off");
         let existing_status = service
             .queued_prompts
             .status(SessionKey::new("t:1"))
@@ -2476,59 +2381,6 @@ mod tests {
             .unwrap_or_else(|error| panic!("existing queue status: {error}"));
         assert_eq!(existing_status.prompts.len(), 1);
         drop(existing_permit);
-    }
-
-    #[tokio::test]
-    async fn send_sync_persistence_promotes_external_only_with_identity_and_agent() {
-        const KEY: &str = "session:external-send-sync";
-        let pool = sqlx::SqlitePool::connect("sqlite::memory:")
-            .await
-            .unwrap_or_else(|error| panic!("test database connection: {error}"));
-        sqlx::query("CREATE TABLE projects (id TEXT PRIMARY KEY)")
-            .execute(&pool)
-            .await
-            .unwrap_or_else(|error| panic!("projects table setup: {error}"));
-        SqliteSessionMetadata::init(&pool)
-            .await
-            .unwrap_or_else(|error| panic!("session metadata setup: {error}"));
-        let metadata = SqliteSessionMetadata::new(pool);
-        metadata
-            .bind_external(
-                KEY,
-                None,
-                &ExternalSessionIdentity::new(
-                    ExternalAgentKind::Codex,
-                    Some("external-1".to_string()),
-                ),
-            )
-            .await
-            .unwrap_or_else(|error| panic!("external session setup: {error}"));
-        let existing = metadata
-            .get(KEY)
-            .await
-            .unwrap_or_else(|error| panic!("external session load: {error}"));
-        let model_reasoning = chelix_common::ResolvedModelReasoning::try_new(
-            "test::model".to_string(),
-            chelix_common::ReasoningEffort::from("high"),
-        )
-        .unwrap_or_else(|error| panic!("test model/reasoning pair: {error}"));
-
-        let entry =
-            persist_send_sync_session_backing(&metadata, existing, KEY, &model_reasoning, "main")
-                .await
-                .unwrap_or_else(|error| panic!("send_sync backing persistence: {error}"));
-
-        assert!(matches!(entry.backing, SessionBacking::LlmExternal { .. }));
-        assert_eq!(entry.model(), Some("test::model"));
-        assert_eq!(
-            entry
-                .reasoning_effort()
-                .map(chelix_common::ReasoningEffort::as_str),
-            Some("high")
-        );
-        assert_eq!(entry.external_agent_kind(), Some(ExternalAgentKind::Codex));
-        assert_eq!(entry.external_session_id(), Some("external-1"));
-        assert_eq!(entry.agent_id.as_deref(), Some("main"));
     }
 
     #[tokio::test]
@@ -2560,235 +2412,6 @@ mod tests {
             Ok(value) => panic!("cancellation unexpectedly succeeded: {value}"),
         }
         assert!(!failure_called.load(Ordering::SeqCst));
-    }
-
-    #[tokio::test]
-    async fn cancel_run_signals_registered_token_without_removing_run_state() {
-        let active_runs = Arc::new(RwLock::new(HashMap::new()));
-        let active_runs_by_session = Arc::new(RwLock::new(HashMap::new()));
-        let terminal_runs = Arc::new(RwLock::new(HashSet::new()));
-        let cancellation_token = CancellationToken::new();
-        active_runs
-            .write()
-            .await
-            .insert("run-1".to_owned(), cancellation_token.clone());
-        active_runs_by_session
-            .write()
-            .await
-            .insert("session-1".to_owned(), "run-1".to_owned());
-
-        let (resolved_run_id, cancelled) = LiveChatService::cancel_run(
-            &active_runs,
-            &active_runs_by_session,
-            &terminal_runs,
-            None,
-            Some("session-1"),
-        )
-        .await;
-
-        assert_eq!(resolved_run_id.as_deref(), Some("run-1"));
-        assert!(cancelled);
-        assert!(cancellation_token.is_cancelled());
-        assert!(active_runs.read().await.contains_key("run-1"));
-        assert_eq!(
-            active_runs_by_session
-                .read()
-                .await
-                .get("session-1")
-                .map(String::as_str),
-            Some("run-1")
-        );
-
-        let (_, cancelled_again) = LiveChatService::cancel_run(
-            &active_runs,
-            &active_runs_by_session,
-            &terminal_runs,
-            Some("run-1"),
-            None,
-        )
-        .await;
-        assert!(!cancelled_again);
-    }
-
-    #[tokio::test]
-    async fn cancel_run_does_not_signal_a_terminal_run() {
-        let active_runs = Arc::new(RwLock::new(HashMap::new()));
-        let active_runs_by_session = Arc::new(RwLock::new(HashMap::new()));
-        let terminal_runs = Arc::new(RwLock::new(HashSet::from(["run-1".to_owned()])));
-        let cancellation_token = CancellationToken::new();
-        active_runs
-            .write()
-            .await
-            .insert("run-1".to_owned(), cancellation_token.clone());
-        active_runs_by_session
-            .write()
-            .await
-            .insert("session-1".to_owned(), "run-1".to_owned());
-
-        let (resolved_run_id, cancelled) = LiveChatService::cancel_run(
-            &active_runs,
-            &active_runs_by_session,
-            &terminal_runs,
-            None,
-            Some("session-1"),
-        )
-        .await;
-
-        assert_eq!(resolved_run_id.as_deref(), Some("run-1"));
-        assert!(!cancelled);
-        assert!(!cancellation_token.is_cancelled());
-    }
-
-    async fn unmap_session_run(service: &LiveChatService, session_key: &str, run_id: &str) {
-        service.active_runs.write().await.remove(run_id);
-        service
-            .active_runs_by_session
-            .write()
-            .await
-            .remove(session_key);
-        service.session_gates.notify();
-    }
-
-    #[tokio::test]
-    async fn abort_waits_until_the_session_run_is_unmapped() {
-        let (_directory, service, _metadata, _session_store, _resolved_efforts, _captured_messages) =
-            validation_test_service().await;
-        let session_key = "session:child";
-        let run_id = "run-1";
-        let cancellation_token = CancellationToken::new();
-        service
-            .active_runs
-            .write()
-            .await
-            .insert(run_id.to_owned(), cancellation_token.clone());
-        service
-            .active_runs_by_session
-            .write()
-            .await
-            .insert(session_key.to_owned(), run_id.to_owned());
-
-        let unmap_service = service.clone();
-        let unmap_token = cancellation_token.clone();
-        let unmap = tokio::spawn(async move {
-            unmap_token.cancelled().await;
-            unmap_session_run(&unmap_service, session_key, run_id).await;
-        });
-
-        let response = service
-            .abort(serde_json::json!({ "sessionKey": session_key }))
-            .await
-            .unwrap_or_else(|error| panic!("abort should succeed: {error}"));
-        unmap
-            .await
-            .unwrap_or_else(|error| panic!("unmap task: {error}"));
-        assert_eq!(response["aborted"], serde_json::json!(true));
-        assert!(cancellation_token.is_cancelled());
-
-        let active = service
-            .active(serde_json::json!({ "sessionKey": session_key }))
-            .await
-            .unwrap_or_else(|error| panic!("chat.active should succeed: {error}"));
-        assert_eq!(active["active"], serde_json::json!(false));
-        assert!(!service.active_runs.read().await.contains_key(run_id));
-    }
-
-    #[tokio::test]
-    async fn abort_does_not_overwrite_a_terminal_run_outcome() {
-        let (_directory, service, _metadata, _session_store, _resolved_efforts, _captured_messages) =
-            validation_test_service().await;
-        let session_key = "session:child";
-        let run_id = "run-1";
-        let cancellation_token = CancellationToken::new();
-        service
-            .session_gates
-            .finish_turn(session_key, SessionTerminal::Completed)
-            .await;
-        service
-            .terminal_runs
-            .write()
-            .await
-            .insert(run_id.to_owned());
-        service
-            .active_runs
-            .write()
-            .await
-            .insert(run_id.to_owned(), cancellation_token.clone());
-        service
-            .active_runs_by_session
-            .write()
-            .await
-            .insert(session_key.to_owned(), run_id.to_owned());
-
-        let abort_service = service.clone();
-        let abort = tokio::spawn(async move {
-            abort_service
-                .abort(serde_json::json!({ "sessionKey": session_key }))
-                .await
-        });
-        tokio::task::yield_now().await;
-        unmap_session_run(&service, session_key, run_id).await;
-        let response = abort
-            .await
-            .unwrap_or_else(|error| panic!("abort task: {error}"))
-            .unwrap_or_else(|error| panic!("abort should succeed: {error}"));
-        assert_eq!(response["aborted"], serde_json::json!(false));
-        assert!(!cancellation_token.is_cancelled());
-        let active = service
-            .active(serde_json::json!({ "sessionKey": session_key }))
-            .await
-            .unwrap_or_else(|error| panic!("chat.active should succeed: {error}"));
-        assert_eq!(active["active"], serde_json::json!(false));
-        assert_eq!(
-            service
-                .session_terminal(session_key)
-                .await
-                .unwrap_or_else(|error| panic!("session terminal should succeed: {error}")),
-            Some(SessionTerminal::Completed)
-        );
-    }
-
-    #[tokio::test]
-    async fn abort_stays_pending_when_version_bumps_without_unmapping() {
-        let (_directory, service, _metadata, _session_store, _resolved_efforts, _captured_messages) =
-            validation_test_service().await;
-        let session_key = "session:child";
-        let run_id = "run-1";
-        let cancellation_token = CancellationToken::new();
-        service
-            .active_runs
-            .write()
-            .await
-            .insert(run_id.to_owned(), cancellation_token.clone());
-        service
-            .active_runs_by_session
-            .write()
-            .await
-            .insert(session_key.to_owned(), run_id.to_owned());
-
-        let abort_service = service.clone();
-        let abort = tokio::spawn(async move {
-            abort_service
-                .abort(serde_json::json!({ "sessionKey": session_key }))
-                .await
-        });
-        cancellation_token.cancelled().await;
-        service.session_gates.notify();
-        tokio::time::sleep(Duration::from_millis(20)).await;
-        assert!(
-            !abort.is_finished(),
-            "abort must keep waiting while the session run is still mapped"
-        );
-        unmap_session_run(&service, session_key, run_id).await;
-        let response = abort
-            .await
-            .unwrap_or_else(|error| panic!("abort task: {error}"))
-            .unwrap_or_else(|error| panic!("abort should succeed: {error}"));
-        assert_eq!(response["aborted"], serde_json::json!(true));
-        let active = service
-            .active(serde_json::json!({ "sessionKey": session_key }))
-            .await
-            .unwrap_or_else(|error| panic!("chat.active should succeed: {error}"));
-        assert_eq!(active["active"], serde_json::json!(false));
     }
 
     #[tokio::test]
@@ -3003,8 +2626,7 @@ mod tests {
         gate.arrived.notified().await;
         assert!(service.active_runs.read().await.is_empty());
         let stopping = service.clone();
-        let stop =
-            tokio::spawn(async move { stopping.stop_current_session("t:1", None, false).await });
+        let stop = tokio::spawn(async move { stopping.stop_current_session("t:1", None).await });
         for _ in 0..100 {
             if service.stop_gate.is_suppressed("t:1") {
                 break;
@@ -3065,8 +2687,7 @@ mod tests {
             1
         );
         let stopping = service.clone();
-        let stop =
-            tokio::spawn(async move { stopping.stop_current_session("t:1", None, false).await });
+        let stop = tokio::spawn(async move { stopping.stop_current_session("t:1", None).await });
         for _ in 0..100 {
             if service.stop_gate.is_suppressed("t:1") {
                 break;
@@ -3104,7 +2725,7 @@ mod tests {
             .await
             .unwrap_or_else(|error| panic!("enqueue: {error}"));
         let _ = service
-            .stop_current_session("t:1", None, false)
+            .stop_current_session("t:1", None)
             .await
             .unwrap_or_else(|error| panic!("stop session: {error}"));
         let events = service
@@ -3191,7 +2812,7 @@ mod tests {
             .await
             .unwrap_or_else(|error| panic!("enqueue: {error}"));
         let outcome = service
-            .stop_current_session("t:1", Some("run-old"), false)
+            .stop_current_session("t:1", Some("run-old"))
             .await
             .unwrap_or_else(|error| panic!("stop session: {error}"));
         assert!(!outcome.cancelled);
@@ -3242,7 +2863,7 @@ mod tests {
             .unwrap_or_else(|error| panic!("second stop: {error}"));
         assert!(!outcome.cancelled);
         service
-            .stop_current_session("t:1", None, false)
+            .stop_current_session("t:1", None)
             .await
             .unwrap_or_else(|error| panic!("stop session: {error}"));
     }
@@ -3306,7 +2927,7 @@ mod tests {
             .unwrap_or_else(|error| panic!("second stop: {error}"));
         assert!(!outcome.cancelled);
         service
-            .stop_current_session("t:1", None, false)
+            .stop_current_session("t:1", None)
             .await
             .unwrap_or_else(|error| panic!("stop session: {error}"));
         gate.release.notify_one();
@@ -3322,10 +2943,8 @@ mod tests {
         mapping.insert("t:1".to_string(), "run-1".to_string());
         let first = service.clone();
         let second = service.clone();
-        let left =
-            tokio::spawn(async move { first.stop_current_session("t:1", None, false).await });
-        let right =
-            tokio::spawn(async move { second.stop_current_session("t:1", None, false).await });
+        let left = tokio::spawn(async move { first.stop_current_session("t:1", None).await });
+        let right = tokio::spawn(async move { second.stop_current_session("t:1", None).await });
         for _ in 0..100 {
             if service.stop_gate.stop_depth("t:1") == 2 {
                 break;
@@ -3356,7 +2975,7 @@ mod tests {
             Ok(outcome) => panic!("right stop succeeded, cancelled={}", outcome.cancelled),
         }
         service
-            .stop_current_session("t:1", None, false)
+            .stop_current_session("t:1", None)
             .await
             .unwrap_or_else(|error| panic!("later stop: {error}"));
     }

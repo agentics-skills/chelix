@@ -111,7 +111,7 @@ fn session_entry_value(entry: &chelix_sessions::metadata::SessionEntry) -> Value
         "key": &entry.key,
         "label": &entry.label,
         "model": entry.model(),
-        "reasoningEffort": entry.reasoning_effort().map(|effort| effort.as_str()),
+        "reasoningEffort": entry.reasoning_effort().as_str(),
         "createdAt": entry.created_at,
         "updatedAt": entry.updated_at,
         "messageCount": entry.message_count,
@@ -127,9 +127,6 @@ fn session_entry_value(entry: &chelix_sessions::metadata::SessionEntry) -> Value
         "agentId": &entry.agent_id,
         "toolPermissionMode": entry.tool_permission_mode,
         "toolPermissionType": entry.tool_permission_type,
-        "external_agent_kind": entry.external_agent_kind().map(|kind| kind.as_str()),
-        "externalAgentKind": entry.external_agent_kind().map(|kind| kind.as_str()),
-        "externalSessionId": entry.external_session_id(),
         "version": entry.version,
     })
 }
@@ -948,5 +945,5 @@ mod tests;
 pub(crate) mod title;
 mod voice;
 
-pub(crate) use initialization::ensure_internal_chat_session;
+pub(crate) use initialization::ensure_chat_session;
 pub use service::LiveSessionService;

@@ -3,7 +3,6 @@
 //! The canonical journal is `session_records` in `ui-history.sqlite`, next to
 //! the UI history tables. Media files stay on disk under the sessions directory.
 
-pub mod backing;
 pub mod error;
 mod journal;
 pub mod key;

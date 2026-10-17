@@ -137,8 +137,6 @@ const READ_METHODS: &[&str] = &[
     "memory.status",
     "memory.config.get",
     "hooks.list",
-    "external_agents.list",
-    "external_agents.status",
     "system.describe",
     "voicecall.status",
     #[cfg(feature = "telephony")]
@@ -178,8 +176,6 @@ const WRITE_METHODS: &[&str] = &[
     "chat.abort",
     "chat.queued_prompts.remove",
     "tool.permission.resolve",
-    "external_agents.bind",
-    "external_agents.unbind",
     "chat.clear",
     "chat.compact",
     "browser.request",

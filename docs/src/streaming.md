@@ -145,7 +145,7 @@ The `run_agent_loop_streaming()` function orchestrates the streaming agent loop:
 errors, and tool lifecycle stages into `UiHistoryRun`. The ordered callbacks in
 `agent_loop.rs` perform this copy before forwarding records to `StreamJournal`.
 Input streaming returns after enqueue; other lifecycle stages await their
-canonical processor receipt. The stream-only and external-agent paths also copy
+canonical processor receipt. The stream-only path also copies
 provider items before journal persistence.
 
 `UiHistoryEngine` in `crates/sessions/src/ui_history_engine.rs` owns the semantic
@@ -260,8 +260,6 @@ that slot:
 - Responses carries `output_index` on delta events, but for some providers it
     orders items only within a channel, so two distinct items can share one value
     inside a single response.
-- External agents report text and thinking as separate event kinds with no
-    ordering between them.
 
 Adapters for those transports assign the identity of the synthesized item once
 per segment and take its position from the allocator. Deriving a position from a
@@ -325,7 +323,7 @@ live rendering and history reload.
 ## Data Flow
 
 ```text
-Provider stream → runner / stream-only / external-agent ingress
+Provider stream → runner / stream-only ingress
   → UiHistoryEngine → revision watch → per-client delivery → WebSocket → browser
        └→ coalesced SQLite snapshots
   → ordered canonical append → session_records → next provider request

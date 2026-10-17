@@ -67,11 +67,7 @@ impl AgentTool for BranchSessionTool {
             .get(parent_key)
             .await?
             .ok_or_else(|| Error::message(format!("session '{parent_key}' not found")))?;
-        let model_reasoning = parent.model_reasoning().cloned().ok_or_else(|| {
-            Error::message(format!(
-                "session '{parent_key}' has no LLM model/reasoning pair"
-            ))
-        })?;
+        let model_reasoning = parent.model_reasoning().clone();
         let requested_point = params
             .get("fork_point")
             .map(|value| {
@@ -86,7 +82,7 @@ impl AgentTool for BranchSessionTool {
             .fork_history(parent_key, &new_key, requested_point)
             .await?;
         self.metadata
-            .create_llm_session(
+            .create_session(
                 &new_key,
                 Some(label),
                 &model_reasoning,
@@ -171,7 +167,7 @@ mod tests {
         )
         .unwrap();
         metadata
-            .create_llm_session(parent_key, Some("Parent"), &pair, Some("main"))
+            .create_session(parent_key, Some("Parent"), &pair, Some("main"))
             .await
             .unwrap();
         for index in 0..4 {
@@ -192,11 +188,8 @@ mod tests {
             .unwrap();
         let new_key = result["sessionKey"].as_str().unwrap();
         let child = metadata.get(new_key).await.unwrap().unwrap();
-        assert_eq!(child.model(), Some("test::model"));
-        assert_eq!(
-            child.reasoning_effort().map(ReasoningEffort::as_str),
-            Some("high")
-        );
+        assert_eq!(child.model(), "test::model");
+        assert_eq!(child.reasoning_effort().as_str(), "high");
         assert_eq!(child.agent_id.as_deref(), Some("main"));
         assert_eq!(store.read(new_key).await.unwrap().len(), 2);
     }

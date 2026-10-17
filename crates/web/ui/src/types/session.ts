@@ -36,9 +36,6 @@ export interface SessionMeta {
 	agent_id?: string;
 	/** CamelCase alias emitted alongside agent_id. */
 	agentId?: string;
-	external_agent_kind?: string | null;
-	externalAgentKind?: string | null;
-	externalSessionId?: string | null;
 	toolPermissionMode?: "auto" | "moderated";
 	toolPermissionType?: "manual";
 	version?: number;

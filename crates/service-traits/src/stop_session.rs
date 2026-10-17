@@ -7,12 +7,12 @@ pub enum StopSession {
     /// Stop the current activity of `key`.
     ///
     /// `run_id: None` stops whatever is current. `Some` stops that run only when
-    /// it is still the current local or external run of the session.
+    /// it is still the current run of the session.
     Session {
         key: SessionKey,
         run_id: Option<String>,
     },
-    /// Cancel one local run token. The session key is not resolved.
+    /// Cancel one run token. The session key is not resolved.
     Run { run_id: String },
 }
 
@@ -25,14 +25,4 @@ pub struct StopSessionOutcome {
 impl Procedure for StopSession {
     type Error = ServiceError;
     type Output = StopSessionOutcome;
-}
-
-/// Shut down the live external-agent process bound to one session.
-pub struct ShutdownExternalBinding {
-    pub key: SessionKey,
-}
-
-impl Procedure for ShutdownExternalBinding {
-    type Error = ServiceError;
-    type Output = ();
 }
