@@ -15,7 +15,6 @@ use {
 use crate::schema::{HomePersistenceConfig, SandboxConfig};
 
 pub const SANDBOX_HOME_DIR: &str = "/home/sandbox";
-pub const CHELIX_CTL_GUEST_PATH: &str = "/usr/local/bin/chelix-ctl";
 
 /// Access mode for a sandbox bind mount.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -74,7 +73,6 @@ enum MountViolationReason {
     InvalidDataMapping,
     ConfigExposure,
     ManagedHomeConflict,
-    ManagedControlConflict,
 }
 
 impl MountViolationReason {
@@ -86,7 +84,6 @@ impl MountViolationReason {
             Self::InvalidDataMapping => "conflicts with the mandatory data_dir mapping",
             Self::ConfigExposure => "source overlaps the protected config directory",
             Self::ManagedHomeConflict => "guest path conflicts with managed home persistence",
-            Self::ManagedControlConflict => "guest path conflicts with managed chelix-ctl",
         }
     }
 }
@@ -123,7 +120,6 @@ struct MountPlanContext {
     guest_data_dir: PathBuf,
     host_data_dir: PathBuf,
     config_dir: Option<PathBuf>,
-    chelix_ctl: Option<PathBuf>,
 }
 
 impl MountPlanContext {
@@ -134,7 +130,6 @@ impl MountPlanContext {
             guest_data_dir,
             host_data_dir,
             config_dir: crate::config_dir().map(|path| normalize_path(&path)),
-            chelix_ctl: chelix_ctl_host_path(),
         }
     }
 }
@@ -200,16 +195,6 @@ fn sandbox_mount_analysis_with_context(
             });
         },
         HomePersistenceConfig::Session | HomePersistenceConfig::Shared => {},
-    }
-
-    if let Some(host) = &context.chelix_ctl
-        && !paths_overlap(&context.guest_data_dir, Path::new(CHELIX_CTL_GUEST_PATH))
-    {
-        mounts.push(SandboxMount {
-            host: host.clone(),
-            guest: PathBuf::from(CHELIX_CTL_GUEST_PATH),
-            mode: MountMode::Ro,
-        });
     }
 
     let mut rejected_custom_mounts = Vec::new();
@@ -288,12 +273,6 @@ fn translate_data_path_to_host(path: &Path, context: &MountPlanContext) -> PathB
     }
 }
 
-fn chelix_ctl_host_path() -> Option<PathBuf> {
-    let executable = std::env::current_exe().ok()?;
-    let ctl = executable.parent()?.join("chelix-ctl");
-    ctl.is_file().then_some(ctl)
-}
-
 #[must_use]
 pub(crate) fn normalize_path(path: &Path) -> PathBuf {
     path.components()
@@ -357,10 +336,8 @@ fn managed_guest_mounts_conflict_with_context(
     cfg: &SandboxConfig,
     context: &MountPlanContext,
 ) -> bool {
-    (cfg.home_persistence != HomePersistenceConfig::Off
-        && paths_overlap(&context.guest_data_dir, Path::new(SANDBOX_HOME_DIR)))
-        || (context.chelix_ctl.is_some()
-            && paths_overlap(&context.guest_data_dir, Path::new(CHELIX_CTL_GUEST_PATH)))
+    cfg.home_persistence != HomePersistenceConfig::Off
+        && paths_overlap(&context.guest_data_dir, Path::new(SANDBOX_HOME_DIR))
 }
 
 fn custom_mount_violation_with_context(
@@ -444,17 +421,6 @@ fn custom_mount_violation_with_context(
             reason: MountViolationReason::ManagedHomeConflict,
             message: format!(
                 "sandbox mount guest '{}' conflicts with the managed home-persistence mount",
-                mount.guest.display()
-            ),
-        });
-    }
-
-    if context.chelix_ctl.is_some() && paths_overlap(&guest, Path::new(CHELIX_CTL_GUEST_PATH)) {
-        return Some(MountViolation {
-            kind: MountViolationKind::Guest,
-            reason: MountViolationReason::ManagedControlConflict,
-            message: format!(
-                "sandbox mount guest '{}' conflicts with the managed chelix-ctl mount",
                 mount.guest.display()
             ),
         });
@@ -699,7 +665,6 @@ mod tests {
             guest_data_dir: PathBuf::from("/agent/.chelix"),
             host_data_dir: PathBuf::from("/host/chelix-data"),
             config_dir: Some(PathBuf::from("/agent/.config/chelix")),
-            chelix_ctl: None,
         }
     }
 
@@ -763,24 +728,6 @@ mod tests {
         let mounts = sandbox_mount_plan_with_context(&config, &test_context());
 
         assert_eq!(mounts[1].host, Path::new("/host/chelix-data/custom/home"));
-    }
-
-    #[test]
-    fn mount_plan_includes_chelix_ctl_read_only_when_available() {
-        let mut context = test_context();
-        context.chelix_ctl = Some(PathBuf::from("/opt/chelix/bin/chelix-ctl"));
-        let config = SandboxConfig {
-            home_persistence: HomePersistenceConfig::Off,
-            ..SandboxConfig::default()
-        };
-
-        let mounts = sandbox_mount_plan_with_context(&config, &context);
-
-        assert_eq!(mounts[1], SandboxMount {
-            host: PathBuf::from("/opt/chelix/bin/chelix-ctl"),
-            guest: PathBuf::from(CHELIX_CTL_GUEST_PATH),
-            mode: MountMode::Ro,
-        });
     }
 
     #[test]
@@ -912,7 +859,6 @@ mod tests {
             guest_data_dir: PathBuf::from("/agent/.chelix"),
             host_data_dir: temp.path().join("data"),
             config_dir: Some(config_dir),
-            chelix_ctl: None,
         };
         let config = SandboxConfig {
             home_persistence: HomePersistenceConfig::Off,

@@ -1,7 +1,7 @@
 //! Agent tools for MCP server management.
 //!
 //! These tools let the agent manage MCP servers directly without needing
-//! sandbox network access or the `chelix-ctl` CLI.
+//! sandbox network access.
 
 use std::sync::Arc;
 
