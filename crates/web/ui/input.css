@@ -2246,14 +2246,6 @@
     -webkit-mask-image: url("./icons/masks/mask-99ebaaebfb879d04.svg");
     mask-image: url("./icons/masks/mask-99ebaaebfb879d04.svg");
   }
-  .icon-whatsapp {
-    -webkit-mask-image: url("./icons/masks/mask-ff8575a617bb799d.svg");
-    mask-image: url("./icons/masks/mask-ff8575a617bb799d.svg");
-  }
-  .icon-signal {
-    -webkit-mask-image: url("./icons/masks/signal.svg");
-    mask-image: url("./icons/masks/signal.svg");
-  }
   .icon-phone {
     -webkit-mask-image: url("./icons/masks/phone.svg");
     mask-image: url("./icons/masks/phone.svg");

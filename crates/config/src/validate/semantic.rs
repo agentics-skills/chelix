@@ -437,24 +437,6 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
         }
     }
 
-    // Unknown CalDAV provider
-    let valid_caldav_providers = ["fastmail", "icloud", "generic"];
-    for (name, account) in &config.caldav.accounts {
-        if let Some(ref provider) = account.provider
-            && !valid_caldav_providers.contains(&provider.as_str())
-        {
-            diagnostics.push(Diagnostic {
-                severity: Severity::Warning,
-                category: "unknown-field",
-                path: format!("caldav.accounts.{name}.provider"),
-                message: format!(
-                    "unknown CalDAV provider \"{provider}\"; expected one of: {}",
-                    valid_caldav_providers.join(", ")
-                ),
-            });
-        }
-    }
-
     // Home Assistant instances without URL or token
     for (name, instance) in &config.home_assistant.instances {
         if instance.url.is_none() {

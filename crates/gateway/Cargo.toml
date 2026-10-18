@@ -12,7 +12,6 @@ bytes                   = { workspace = true }
 chelix-agents           = { workspace = true }
 chelix-auth             = { workspace = true }
 chelix-browser          = { workspace = true }
-chelix-caldav           = { optional = true, workspace = true }
 chelix-call-bus         = { workspace = true }
 chelix-channels         = { workspace = true }
 chelix-chat             = { workspace = true }
@@ -42,7 +41,6 @@ chelix-providers        = { workspace = true }
 chelix-secret-store     = { workspace = true }
 chelix-service-traits   = { workspace = true }
 chelix-sessions         = { workspace = true }
-chelix-signal           = { optional = true, workspace = true }
 chelix-skills           = { workspace = true }
 chelix-telegram         = { optional = true, workspace = true }
 chelix-telephony        = { optional = true, workspace = true }
@@ -50,7 +48,6 @@ chelix-tools            = { workspace = true }
 chelix-vault            = { optional = true, workspace = true }
 chelix-voice            = { optional = true, workspace = true }
 chelix-webhooks         = { workspace = true }
-chelix-whatsapp         = { optional = true, workspace = true }
 chrono                  = { features = ["serde"], optional = true, workspace = true }
 flate2                  = { workspace = true }
 futures                 = { workspace = true }
@@ -58,7 +55,6 @@ hostname                = { workspace = true }
 mdns-sd                 = { optional = true, workspace = true }
 p256                    = { features = ["ecdsa"], optional = true, workspace = true }
 pulldown-cmark          = { features = ["html"], workspace = true }
-qrcode                  = { optional = true, workspace = true }
 rand                    = { workspace = true }
 reqwest                 = { workspace = true }
 secrecy                 = { workspace = true }
@@ -88,13 +84,11 @@ bundled-skills = [
   "chelix-skills/bundled-skills",
   "chelix-tools/bundled-skills",
 ]
-caldav = ["dep:chelix-caldav"]
 code-index-builtin = ["chelix-code-index/builtin"]
 context7 = ["dep:chelix-context7"]
 default = [
   "agent",
   "bundled-skills",
-  "caldav",
   "code-index-builtin",
   "context7",
   "duckduckgo",
@@ -110,14 +104,12 @@ default = [
   "metrics",
   "prometheus",
   "push-notifications",
-  "signal",
   "telegram",
   "telephony",
   "tls",
   "vault",
   "voice",
   "web-ui",
-  "whatsapp",
 ]
 duckduckgo = ["dep:chelix-duckduckgo"]
 exa = ["dep:chelix-exa"]
@@ -144,19 +136,16 @@ metrics = [
   "chelix-google?/metrics",
   "chelix-linkup?/metrics",
   "chelix-metrics/sqlite",
-  "chelix-signal?/metrics",
   "dep:chelix-metrics",
 ]
 prometheus = ["chelix-metrics/prometheus", "metrics"]
 push-notifications = ["chelix-chat/push-notifications", "dep:chrono", "dep:p256", "dep:web-push"]
-signal = ["dep:chelix-signal"]
 telegram = ["chelix-chat/telegram", "dep:chelix-telegram"]
 telephony = ["dep:chelix-telephony"]
 tls = []
 vault = ["chelix-auth/vault", "chelix-secret-store/vault", "dep:chelix-vault"]
 voice = ["dep:chelix-voice"]
 web-ui = ["chelix-chat/web-ui"]
-whatsapp = ["chelix-whatsapp/metrics", "dep:chelix-whatsapp", "dep:qrcode"]
 
 [dev-dependencies]
 chelix-tools = { features = ["test-util"], workspace = true }

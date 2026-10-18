@@ -1128,16 +1128,15 @@ mod tests {
         let mut file = std::fs::File::create(&path).unwrap();
         writeln!(
             file,
-            "[channels]\noffered = [\"telegram\", \"signal\", \"whatsapp\"]\n[tools.execute_command]\nterminal_size = \"115x58\"\n[sandbox]\narchived_session_retention_days = 3"
+            "[channels]\noffered = [\"telegram\", \"telephony\"]\n[tools.execute_command]\nterminal_size = \"115x58\"\n[sandbox]\narchived_session_retention_days = 3"
         )
         .unwrap();
 
         let offered = load_channels_offered_from_config_path(&path).unwrap();
 
-        assert_eq!(offered, vec![
-            "telegram".to_owned(),
-            "signal".to_owned(),
-            "whatsapp".to_owned(),
-        ]);
+        assert_eq!(
+            offered,
+            vec!["telegram".to_owned(), "telephony".to_owned(),]
+        );
     }
 }

@@ -9,8 +9,6 @@ capabilities that control what features are available.
 | Channel         | Inbound Mode                 | Public URL Required | Key Capabilities                                                                                                                         |
 | --------------- | ---------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | Telegram        | Polling                      | No                  | Streaming, voice ingest, reactions, OTP, location                                                                                        |
-| WhatsApp        | Gateway (WebSocket)          | No                  | Streaming, voice ingest, OTP, pairing, location                                                                                          |
-| Signal          | Gateway (signal-cli SSE)     | No                  | OTP, DMs, groups, outbound text                                                                                                          |
 
 ## Inbound Modes
 
@@ -18,11 +16,6 @@ capabilities that control what features are available.
 
 The bot periodically fetches new messages from the platform API. No public URL
 or open port is needed. Used by Telegram.
-
-### Gateway / WebSocket
-
-The bot opens a persistent outbound WebSocket connection to the platform and
-receives events in real time. No public URL needed. Used by WhatsApp.
 
 ### Webhook
 
@@ -45,7 +38,6 @@ integrations (e.g. email, SMS).
 | `supports_interactive`  | Can send interactive components (buttons, menus) |
 | `supports_threads`      | Can reply in threads                             |
 | `supports_voice_ingest` | Can receive and transcribe voice messages        |
-| `supports_pairing`      | Requires device pairing (QR code)                |
 | `supports_otp`          | Supports OTP-based sender approval               |
 | `supports_reactions`    | Can add/remove emoji reactions                   |
 | `supports_location`     | Can receive and process location data            |
@@ -81,17 +73,9 @@ Manual file configuration looks like this:
 token = "123456:ABC-DEF..."
 dm_policy = "allowlist"
 allowlist = ["alice", "bob"]
-
-[channels.whatsapp.my_wa]
-dm_policy = "open"
-
-[channels.signal.my_signal]
-account = "+15551234567"
-http_url = "http://127.0.0.1:8080"
 ```
 
-For detailed configuration, see the per-channel pages: [Telegram](telegram.md),
-[WhatsApp](whatsapp.md), [Signal](signal.md).
+For detailed configuration, see the per-channel pages: [Telegram](telegram.md).
 
 You can also use the web UI's **Channels** tab for guided setup with each
 platform. Web-added channels do not get written back into `chelix.toml`.
@@ -157,7 +141,7 @@ Controls who can send direct messages to the bot.
 
 | Value         | Behavior                                                                               |
 | ------------- | -------------------------------------------------------------------------------------- |
-| `"allowlist"` | Only users listed in `allowlist` can DM (**default for all channels except WhatsApp**) |
+| `"allowlist"` | Only users listed in `allowlist` can DM (**default**) |
 | `"open"`      | Anyone can DM the bot                                                                  |
 | `"disabled"`  | DMs are silently ignored                                                               |
 
@@ -178,7 +162,7 @@ Controls who can interact with the bot in group chats / channels.
 | `"allowlist"` | Only groups on the allowlist are allowed |
 | `"disabled"`  | Group messages are silently ignored      |
 
-The group allowlist field is `group_allowlist` (Telegram, WhatsApp).
+The group allowlist field is `group_allowlist` (Telegram).
 
 ### Mention Mode
 
@@ -203,7 +187,7 @@ All allowlist fields across all channels share the same matching behavior:
 
 ### OTP Self-Approval
 
-Channels that support OTP (Telegram, WhatsApp) allow
+Channels that support OTP (Telegram) allow
 non-allowlisted users to self-approve by entering a 6-digit code. The code
 appears in the web UI under **Channels > Senders**. See each channel's page for
 details.

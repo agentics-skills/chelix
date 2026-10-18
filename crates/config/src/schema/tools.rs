@@ -917,10 +917,6 @@ fn default_sandbox_packages() -> Vec<String> {
         "osmium-tool",
         "osmctools",
         "libgdal-dev",
-        // CalDAV / CardDAV
-        "vdirsyncer",
-        "khal",
-        "python3-caldav",
         // Email (IMAP sync, indexing, CLI clients)
         "isync",
         "offlineimap3",

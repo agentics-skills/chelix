@@ -46,7 +46,6 @@ tempfile = { workspace = true }
 
 [features]
 agent          = ["chelix-gateway/agent", "chelix-web?/agent"]
-caldav         = ["chelix-gateway/caldav"]
 home-assistant = ["chelix-gateway/home-assistant"]
 # User-facing integrations stay default-on in the CLI crate per workspace policy,
 # even when the underlying implementation remains feature-gated in lower crates.
@@ -59,7 +58,6 @@ default = ["full"]
 full = [
   "agent",
   "bundled-skills",
-  "caldav",
   "code-index-builtin",
   "code-splitter",
   "context7",
@@ -92,14 +90,12 @@ full = [
   "metrics",
   "prometheus",
   "push-notifications",
-  "signal",
   "telegram",
   "telephony",
   "tls",
   "vault",
   "voice",
   "web-ui",
-  "whatsapp",
 ]
 # Minimal build for memory-constrained devices (Raspberry Pi, etc.).
 # Build with: cargo build --release --no-default-features --features lightweight
@@ -137,14 +133,12 @@ mdns               = ["chelix-gateway/mdns"]
 metrics            = ["chelix-httpd/metrics", "chelix-web?/metrics"]
 prometheus         = ["chelix-httpd/prometheus"]
 push-notifications = ["chelix-httpd/push-notifications", "chelix-web?/push-notifications"]
-signal             = ["chelix-httpd/signal"]
 telegram           = ["chelix-gateway/telegram"]
 telephony          = ["chelix-httpd/telephony"]
 tls                = ["chelix-httpd/tls"]
 vault              = ["chelix-httpd/vault", "chelix-web?/vault"]
 voice              = ["chelix-gateway/voice", "chelix-web?/voice"]
 web-ui             = ["chelix-httpd/web-ui", "dep:chelix-web"]
-whatsapp           = ["chelix-gateway/whatsapp"]
 
 [lints]
 workspace = true

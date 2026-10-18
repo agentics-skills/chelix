@@ -6,7 +6,7 @@
  * Channel type identifier.
  * Serialised as lowercase via `#[serde(rename_all = "lowercase")]`.
  */
-export type ChannelType = "telegram" | "whatsapp" | "signal" | "telephony";
+export type ChannelType = "telegram" | "telephony";
 
 /**
  * Runtime constants for `ChannelType` values.
@@ -14,8 +14,6 @@ export type ChannelType = "telegram" | "whatsapp" | "signal" | "telephony";
  */
 export const ChannelType = {
 	Telegram: "telegram" as const,
-	WhatsApp: "whatsapp" as const,
-	Signal: "signal" as const,
 	Telephony: "telephony" as const,
 } satisfies Record<string, ChannelType>;
 
@@ -23,7 +21,7 @@ export const ChannelType = {
  * How a channel receives inbound messages.
  * Serialised as snake_case via `#[serde(rename_all = "snake_case")]`.
  */
-export type InboundMode = "none" | "polling" | "gateway_loop" | "webhook";
+export type InboundMode = "none" | "polling" | "webhook";
 
 /** Static capability flags for a channel type. */
 export interface ChannelCapabilities {
@@ -33,7 +31,6 @@ export interface ChannelCapabilities {
 	supports_interactive: boolean;
 	supports_threads: boolean;
 	supports_voice_ingest: boolean;
-	supports_pairing: boolean;
 	supports_otp: boolean;
 	supports_reactions: boolean;
 	supports_location: boolean;

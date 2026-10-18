@@ -14,12 +14,9 @@ import { sendRpc } from "../helpers";
 import { updateNavCount } from "../nav-counts";
 import { connected } from "../signals";
 import * as S from "../state";
-import { showToast } from "../toast";
 import { ConfirmDialog, requestConfirm } from "../ui";
-import { AddSignalModal } from "./channels/modals/AddSignalModal";
 // ── Sub-module imports (modals + shared fields) ──────────────
 import { AddTelegramModal } from "./channels/modals/AddTelegramModal";
-import { AddWhatsAppModal } from "./channels/modals/AddWhatsAppModal";
 import { EditChannelModal } from "./channels/modals/EditChannelModal";
 
 // ── Types ────────────────────────────────────────────────────
@@ -29,11 +26,6 @@ interface ChannelSession {
 	label?: string;
 	active?: boolean;
 	messageCount?: number;
-}
-
-interface ChannelExtra {
-	qr_data?: string;
-	qr_svg?: string;
 }
 
 export interface ChannelModelOverride {
@@ -53,12 +45,7 @@ export interface ChannelConfig {
 	model_provider?: string;
 	otp_self_approval?: boolean;
 	otp_cooldown_secs?: number;
-	// Signal
-	account?: string;
-	account_uuid?: string;
-	http_url?: string;
 	group_allowlist?: string[];
-	text_chunk_limit?: number;
 	// Advanced config patch pass-through
 	[key: string]: unknown;
 }
@@ -71,7 +58,6 @@ export interface Channel {
 	status?: string;
 	config?: ChannelConfig;
 	sessions?: ChannelSession[];
-	extra?: ChannelExtra;
 }
 
 interface ChannelDescriptor {
@@ -95,8 +81,6 @@ interface ChannelEvent {
 	kind: string;
 	account_id?: string;
 	channel_type?: string;
-	qr_data?: string;
-	qr_svg?: string;
 	reason?: string;
 }
 
@@ -118,28 +102,13 @@ export function prefetchChannels(): Promise<void> {
 const senders: Signal<SenderEntry[]> = signal([]);
 const activeTab: Signal<string> = signal("channels");
 export const showAddTelegram: Signal<boolean> = signal(false);
-export const showAddWhatsApp: Signal<boolean> = signal(false);
-export const showAddSignal: Signal<boolean> = signal(false);
 export const editingChannel: Signal<Channel | null> = signal(null);
 const sendersAccount: Signal<string> = signal("");
-
-// Track WhatsApp pairing state (updated by WebSocket events).
-export const waQrData: Signal<string | null> = signal(null);
-export const waQrSvg: Signal<string | null> = signal(null);
-export const waPairingAccountId: Signal<string | null> = signal(null);
-export const waPairingError: Signal<string | null> = signal(null);
 
 // ── Helpers ──────────────────────────────────────────────────
 
 export function channelType(type: string | undefined): string {
 	return type || "telegram";
-}
-
-export function channelLabel(type: string | undefined): string {
-	const t = channelType(type);
-	if (t === "whatsapp") return "WhatsApp";
-	if (t === "signal") return "Signal";
-	return "Telegram";
 }
 
 function channelDescriptor(type: string | undefined): ChannelDescriptor | null {
@@ -150,14 +119,12 @@ function channelDescriptor(type: string | undefined): ChannelDescriptor | null {
 const MODE_LABELS: Record<string, string> = {
 	none: "Send only",
 	polling: "Polling",
-	gateway_loop: "Gateway",
 	webhook: "Webhook",
 };
 
 const MODE_HINTS: Record<string, string> = {
 	webhook: "Requires a publicly reachable URL. Configure your platform to send events to the endpoint shown below.",
 	polling: "Connects automatically via long-polling. No public URL needed.",
-	gateway_loop: "Maintains a persistent connection. No public URL needed.",
 	none: "This channel is send-only and cannot receive inbound messages.",
 };
 
@@ -230,18 +197,6 @@ function loadSenders(): void {
 	});
 }
 
-// ── Channel icon ─────────────────────────────────────────────
-
-interface ChannelIconProps {
-	type: string;
-}
-
-function ChannelIcon({ type }: ChannelIconProps): VNode {
-	const t = channelType(type);
-	if (t === "whatsapp") return <span className="icon icon-whatsapp" />;
-	return <span className="icon icon-telegram" />;
-}
-
 // ── Channel card ─────────────────────────────────────────────
 
 interface ChannelCardProps {
@@ -269,7 +224,7 @@ function channelCardView(channel: Channel): ChannelCardView {
 	const descriptor = channelDescriptor(channel.type);
 	return {
 		type,
-		displayName: channel.name || channel.account_id || channelLabel(channel.type),
+		displayName: channel.name || channel.account_id || "Telegram",
 		statusClass: channel.status === "connected" ? "configured" : "oauth",
 		sessionLine: channelSessionLine(channel.sessions),
 		modeLabel: descriptor
@@ -283,7 +238,7 @@ function ChannelSummary({ channel, view }: { channel: Channel; view: ChannelCard
 	return (
 		<div className="flex items-center gap-2.5">
 			<span className="inline-flex items-center justify-center w-7 h-7 rounded-md bg-[var(--surface2)]">
-				<ChannelIcon type={channel.type} />
+				<span className="icon icon-telegram" />
 			</span>
 			<div className="flex flex-col gap-0.5">
 				<span className="text-sm text-[var(--text-strong)]">{view.displayName}</span>
@@ -348,7 +303,7 @@ function ChannelCard({ channel: ch }: ChannelCardProps): VNode {
 // ── Connect channel buttons ──────────────────────────────────
 
 function ConnectButtons(): VNode {
-	const offered = new Set((getGon("channels_offered") || ["telegram", "whatsapp"]) as string[]);
+	const offered = new Set((getGon("channels_offered") || ["telegram"]) as string[]);
 	return (
 		<div className="flex gap-2 flex-wrap">
 			{offered.has("telegram") && (
@@ -360,28 +315,6 @@ function ConnectButtons(): VNode {
 					}}
 				>
 					<span className="icon icon-telegram" /> Connect Telegram
-				</button>
-			)}
-			{offered.has("whatsapp") && (
-				<button
-					type="button"
-					className="provider-btn provider-btn-secondary inline-flex items-center gap-1.5"
-					onClick={() => {
-						if (connected.value) showAddWhatsApp.value = true;
-					}}
-				>
-					<span className="icon icon-whatsapp" /> Connect WhatsApp
-				</button>
-			)}
-			{offered.has("signal") && (
-				<button
-					type="button"
-					className="provider-btn provider-btn-secondary inline-flex items-center gap-1.5"
-					onClick={() => {
-						if (connected.value) showAddSignal.value = true;
-					}}
-				>
-					<span className="icon icon-signal" /> Connect Signal
 				</button>
 			)}
 		</div>
@@ -543,31 +476,12 @@ function SendersTab(): VNode {
 
 // ── Channel event handlers ───────────────────────────────────
 
-function handleWhatsAppPairingEvent(p: ChannelEvent): void {
-	if (p.kind === "pairing_qr_code" && p.account_id === waPairingAccountId.value) {
-		waQrData.value = p.qr_data || null;
-		waQrSvg.value = p.qr_svg || null;
-	}
-	if (p.kind === "pairing_complete" && p.account_id === waPairingAccountId.value) {
-		showToast("WhatsApp connected!");
-		showAddWhatsApp.value = false;
-		waPairingAccountId.value = null;
-		waQrData.value = null;
-		waQrSvg.value = null;
-		loadChannels();
-	}
-	if (p.kind === "pairing_failed" && p.account_id === waPairingAccountId.value) {
-		waPairingError.value = p.reason || "Pairing failed";
-	}
-}
-
 function handleChannelEvent(_payload: unknown): void {
 	const p = _payload as ChannelEvent;
 	if (p.kind === "otp_resolved") {
 		loadChannels();
 	}
-	handleWhatsAppPairingEvent(p);
-	if (p.kind === "pairing_complete" || p.kind === "account_disabled") {
+	if (p.kind === "account_disabled") {
 		loadChannels();
 	}
 	const selected = parseSenderSelectionKey(sendersAccount.value || "");
@@ -619,8 +533,6 @@ function ChannelsPageComponent(): VNode {
 			{activeTab.value === "channels" && <ChannelStorageNotice />}
 			{activeTab.value === "channels" ? <ChannelsTab /> : <SendersTab />}
 			<AddTelegramModal />
-			<AddSignalModal />
-			<AddWhatsAppModal />
 			<EditChannelModal />
 			<ConfirmDialog />
 		</div>
@@ -636,8 +548,6 @@ export function initChannels(container: HTMLElement): void {
 	container.style.cssText = "flex-direction:column;padding:0;overflow:hidden;";
 	activeTab.value = "channels";
 	showAddTelegram.value = false;
-	showAddSignal.value = false;
-	showAddWhatsApp.value = false;
 	editingChannel.value = null;
 	sendersAccount.value = "";
 	senders.value = [];

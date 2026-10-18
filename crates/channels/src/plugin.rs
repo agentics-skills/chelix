@@ -16,8 +16,6 @@ use crate::{Error, Result, config_view::ChannelConfigView};
 #[non_exhaustive]
 pub enum ChannelType {
     Telegram,
-    Whatsapp,
-    Signal,
     Telephony,
 }
 
@@ -26,8 +24,6 @@ impl ChannelType {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Telegram => "telegram",
-            Self::Whatsapp => "whatsapp",
-            Self::Signal => "signal",
             Self::Telephony => "telephony",
         }
     }
@@ -36,8 +32,6 @@ impl ChannelType {
     pub fn display_name(&self) -> &'static str {
         match self {
             Self::Telegram => "Telegram",
-            Self::Whatsapp => "WhatsApp",
-            Self::Signal => "Signal",
             Self::Telephony => "Phone Call",
         }
     }
@@ -55,15 +49,7 @@ impl ChannelType {
                     Some("private".to_string())
                 }
             },
-            Self::Signal => {
-                if chat_id.starts_with("group:") {
-                    Some("group".to_string())
-                } else {
-                    Some("direct".to_string())
-                }
-            },
             Self::Telephony => Some("call".to_string()),
-            _ => None,
         }
     }
 
@@ -71,8 +57,6 @@ impl ChannelType {
     pub fn secret_fields(&self) -> &'static [&'static str] {
         match self {
             Self::Telegram => &["token"],
-            Self::Whatsapp => &[],
-            Self::Signal => &[],
             Self::Telephony => &["auth_token"],
         }
     }
@@ -90,8 +74,6 @@ impl std::str::FromStr for ChannelType {
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s {
             "telegram" => Ok(Self::Telegram),
-            "whatsapp" => Ok(Self::Whatsapp),
-            "signal" => Ok(Self::Signal),
             "telephony" | "phone" | "voice_call" | "voicecall" => Ok(Self::Telephony),
             other => Err(Error::invalid_input(format!(
                 "unknown channel type: {other}"
@@ -102,12 +84,7 @@ impl std::str::FromStr for ChannelType {
 
 impl ChannelType {
     /// All known channel types.
-    pub const ALL: &[ChannelType] = &[
-        Self::Telegram,
-        Self::Whatsapp,
-        Self::Signal,
-        Self::Telephony,
-    ];
+    pub const ALL: &[ChannelType] = &[Self::Telegram, Self::Telephony];
 
     /// Returns the static descriptor for this channel type.
     #[must_use]
@@ -123,42 +100,9 @@ impl ChannelType {
                     supports_interactive: false,
                     supports_threads: false,
                     supports_voice_ingest: true,
-                    supports_pairing: false,
                     supports_otp: true,
                     supports_reactions: false,
                     supports_location: true,
-                },
-            },
-            Self::Whatsapp => ChannelDescriptor {
-                channel_type: *self,
-                display_name: "WhatsApp",
-                capabilities: ChannelCapabilities {
-                    inbound_mode: InboundMode::GatewayLoop,
-                    supports_outbound: true,
-                    supports_streaming: true,
-                    supports_interactive: false,
-                    supports_threads: false,
-                    supports_voice_ingest: true,
-                    supports_pairing: true,
-                    supports_otp: true,
-                    supports_reactions: false,
-                    supports_location: false,
-                },
-            },
-            Self::Signal => ChannelDescriptor {
-                channel_type: *self,
-                display_name: "Signal",
-                capabilities: ChannelCapabilities {
-                    inbound_mode: InboundMode::GatewayLoop,
-                    supports_outbound: true,
-                    supports_streaming: false,
-                    supports_interactive: false,
-                    supports_threads: false,
-                    supports_voice_ingest: false,
-                    supports_pairing: false,
-                    supports_otp: true,
-                    supports_reactions: false,
-                    supports_location: false,
                 },
             },
             Self::Telephony => ChannelDescriptor {
@@ -171,7 +115,6 @@ impl ChannelType {
                     supports_interactive: false,
                     supports_threads: false,
                     supports_voice_ingest: true,
-                    supports_pairing: false,
                     supports_otp: false,
                     supports_reactions: false,
                     supports_location: false,
@@ -191,7 +134,6 @@ pub enum InboundMode {
     None,
     /// Long-polling loop (Telegram).
     Polling,
-    GatewayLoop,
     /// HTTP webhook endpoint.
     Webhook,
 }
@@ -205,7 +147,6 @@ pub struct ChannelCapabilities {
     pub supports_interactive: bool,
     pub supports_threads: bool,
     pub supports_voice_ingest: bool,
-    pub supports_pairing: bool,
     pub supports_otp: bool,
     pub supports_reactions: bool,
     pub supports_location: bool,
@@ -267,26 +208,6 @@ pub enum ChannelEvent {
         peer_id: String,
         username: Option<String>,
         resolution: String,
-    },
-    /// A QR code was generated for device pairing (e.g. WhatsApp Linked Devices).
-    PairingQrCode {
-        channel_type: ChannelType,
-        account_id: String,
-        /// Raw QR data string to be rendered as a QR code image.
-        qr_data: String,
-    },
-    /// Device pairing completed successfully.
-    PairingComplete {
-        channel_type: ChannelType,
-        account_id: String,
-        /// Display name of the paired device/account.
-        display_name: Option<String>,
-    },
-    /// Device pairing failed.
-    PairingFailed {
-        channel_type: ChannelType,
-        account_id: String,
-        reason: String,
     },
     /// Channel account status changed (e.g. ownership bootstrap complete).
     StatusChanged {
@@ -624,7 +545,7 @@ pub struct InteractiveMessage {
 /// Core channel plugin trait. Each messaging platform implements this.
 #[async_trait]
 pub trait ChannelPlugin: Send + Sync {
-    /// Channel identifier (e.g. "telegram", "signal").
+    /// Channel identifier (e.g. "telegram").
     fn id(&self) -> &str;
 
     /// Human-readable channel name.
@@ -820,7 +741,6 @@ pub struct ChannelHealthSnapshot {
     pub connected: bool,
     pub account_id: String,
     pub details: Option<String>,
-    pub extra: Option<serde_json::Value>,
 }
 
 /// Stream event for edit-in-place streaming.
@@ -981,58 +901,12 @@ mod tests {
     }
 
     #[test]
-    fn channel_type_whatsapp_roundtrip() {
-        let ct = ChannelType::Whatsapp;
-        assert_eq!(ct.as_str(), "whatsapp");
-        assert_eq!(ct.to_string(), "whatsapp");
-        assert_eq!("whatsapp".parse::<ChannelType>().unwrap(), ct);
-    }
-
-    #[test]
     fn channel_type_serde_roundtrip() {
-        for ct in [ChannelType::Telegram, ChannelType::Whatsapp] {
+        for ct in [ChannelType::Telegram, ChannelType::Telephony] {
             let json = serde_json::to_string(&ct).unwrap();
             let parsed: ChannelType = serde_json::from_str(&json).unwrap();
             assert_eq!(parsed, ct);
         }
-    }
-
-    #[test]
-    fn pairing_qr_code_event_serialization() {
-        let event = ChannelEvent::PairingQrCode {
-            channel_type: ChannelType::Whatsapp,
-            account_id: "wa1".into(),
-            qr_data: "2@abc123".into(),
-        };
-        let json = serde_json::to_value(&event).unwrap();
-        assert_eq!(json["kind"], "pairing_qr_code");
-        assert_eq!(json["channel_type"], "whatsapp");
-        assert_eq!(json["account_id"], "wa1");
-        assert_eq!(json["qr_data"], "2@abc123");
-    }
-
-    #[test]
-    fn pairing_complete_event_serialization() {
-        let event = ChannelEvent::PairingComplete {
-            channel_type: ChannelType::Whatsapp,
-            account_id: "wa1".into(),
-            display_name: Some("My Phone".into()),
-        };
-        let json = serde_json::to_value(&event).unwrap();
-        assert_eq!(json["kind"], "pairing_complete");
-        assert_eq!(json["display_name"], "My Phone");
-    }
-
-    #[test]
-    fn pairing_failed_event_serialization() {
-        let event = ChannelEvent::PairingFailed {
-            channel_type: ChannelType::Whatsapp,
-            account_id: "wa1".into(),
-            reason: "timeout".into(),
-        };
-        let json = serde_json::to_value(&event).unwrap();
-        assert_eq!(json["kind"], "pairing_failed");
-        assert_eq!(json["reason"], "timeout");
     }
 
     struct DummyOutbound;
@@ -1109,7 +983,7 @@ mod tests {
     fn channel_type_round_trip() {
         for (s, expected) in [
             ("telegram", ChannelType::Telegram),
-            ("whatsapp", ChannelType::Whatsapp),
+            ("telephony", ChannelType::Telephony),
         ] {
             let parsed: ChannelType = s.parse().unwrap_or_else(|e| panic!("parse {s}: {e}"));
             assert_eq!(parsed, expected);
@@ -1126,7 +1000,7 @@ mod tests {
 
     #[test]
     fn channel_type_serde_round_trip() {
-        for ct in [ChannelType::Telegram, ChannelType::Whatsapp] {
+        for ct in [ChannelType::Telegram, ChannelType::Telephony] {
             let json = serde_json::to_string(&ct).unwrap_or_else(|e| panic!("serialize: {e}"));
             let back: ChannelType =
                 serde_json::from_str(&json).unwrap_or_else(|e| panic!("deserialize: {e}"));
@@ -1137,7 +1011,7 @@ mod tests {
     #[test]
     fn all_covers_every_variant() {
         // If a new variant is added to ChannelType, this test forces updating ALL.
-        assert_eq!(ChannelType::ALL.len(), 4);
+        assert_eq!(ChannelType::ALL.len(), 2);
         for ct in ChannelType::ALL {
             // descriptor() must not panic
             let desc = ct.descriptor();
@@ -1148,7 +1022,6 @@ mod tests {
     #[test]
     fn descriptor_returns_correct_display_names() {
         assert_eq!(ChannelType::Telegram.descriptor().display_name, "Telegram");
-        assert_eq!(ChannelType::Whatsapp.descriptor().display_name, "WhatsApp");
     }
 
     #[test]
@@ -1166,7 +1039,6 @@ mod tests {
     #[test]
     fn channel_type_secret_fields_are_declared() {
         assert_eq!(ChannelType::Telegram.secret_fields(), ["token"]);
-        assert_eq!(ChannelType::Whatsapp.secret_fields(), &[] as &[&str]);
     }
 
     #[test]
@@ -1186,8 +1058,6 @@ mod tests {
         assert_eq!(json, "\"none\"");
         let json = serde_json::to_string(&InboundMode::Polling).unwrap();
         assert_eq!(json, "\"polling\"");
-        let json = serde_json::to_string(&InboundMode::GatewayLoop).unwrap();
-        assert_eq!(json, "\"gateway_loop\"");
         let json = serde_json::to_string(&InboundMode::Webhook).unwrap();
         assert_eq!(json, "\"webhook\"");
     }

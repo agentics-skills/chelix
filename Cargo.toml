@@ -6,7 +6,6 @@ default-members = [
   "crates/auto-reply",
   "crates/benchmarks",
   "crates/browser",
-  "crates/caldav",
   "crates/call-bus",
   "crates/channels",
   "crates/chat",
@@ -42,7 +41,6 @@ default-members = [
   "crates/secret-store",
   "crates/service-traits",
   "crates/sessions",
-  "crates/signal",
   "crates/skills",
   "crates/telegram",
   "crates/telephony",
@@ -53,7 +51,6 @@ default-members = [
   "crates/voice",
   "crates/web",
   "crates/webhooks",
-  "crates/whatsapp",
 ]
 members = [
   "apps/courier",
@@ -62,7 +59,6 @@ members = [
   "crates/auto-reply",
   "crates/benchmarks",
   "crates/browser",
-  "crates/caldav",
   "crates/call-bus",
   "crates/channels",
   "crates/chat",
@@ -97,7 +93,6 @@ members = [
   "crates/secret-store",
   "crates/service-traits",
   "crates/sessions",
-  "crates/signal",
   "crates/skills",
   "crates/splitter",
   "crates/telegram",
@@ -109,7 +104,6 @@ members = [
   "crates/voice",
   "crates/web",
   "crates/webhooks",
-  "crates/whatsapp",
 ]
 resolver = "2"
 
@@ -146,7 +140,6 @@ askama     = "0.15"
 axum       = { features = ["ws"], version = "0.8" }
 axum-extra = "0.10"
 # Serialization
-postcard   = { features = ["alloc"], version = "1.1" }
 serde      = { features = ["derive"], version = "1" }
 serde_json = { features = ["preserve_order"], version = "1" }
 # Error handling
@@ -199,17 +192,8 @@ ring     = "0.17"
 secrecy  = { features = ["serde"], version = "0.8" }
 sha1     = "0.10"
 sha2     = "0.10"
-sled     = "0.34"
 sysinfo  = "0.34"
 teloxide = { features = ["macros"], version = "0.17" }
-wacore                         = { default-features = false, version = "0.5" }
-wacore-binary                  = { default-features = false, version = "0.5" }
-waproto                        = "0.5"
-whatsapp-rust                  = { default-features = false, features = ["tokio-native", "tokio-runtime", "tokio-transport", "ureq-client"], version = "0.5" }
-whatsapp-rust-tokio-transport  = "0.5"
-whatsapp-rust-ureq-http-client = "0.5"
-# QR code rendering
-qrcode = "0.14"
 # TLS / certificate generation
 rcgen          = "0.13"
 rustls         = { features = ["ring"], version = "0.23" }
@@ -282,17 +266,12 @@ tempfile              = "3"
 walkdir               = "2"
 which                 = "8"
 wiremock              = "0.6"
-# CalDAV / iCalendar
-hyper-rustls = { features = ["http1", "native-tokio", "ring", "tls12"], version = "0.27" }
-icalendar    = "0.17"
-libdav       = "0.10"
-zeroize      = { features = ["derive"], version = "1" }
+zeroize               = { features = ["derive"], version = "1" }
 
 # Workspace crates
 chelix-agents           = { path = "crates/agents" }
 chelix-auth             = { path = "crates/auth" }
 chelix-browser          = { path = "crates/browser" }
-chelix-caldav           = { path = "crates/caldav" }
 chelix-call-bus         = { path = "crates/call-bus" }
 chelix-channels         = { path = "crates/channels" }
 chelix-chat             = { path = "crates/chat" }
@@ -326,7 +305,6 @@ chelix-providers        = { path = "crates/providers" }
 chelix-secret-store     = { default-features = false, path = "crates/secret-store" }
 chelix-service-traits   = { path = "crates/service-traits" }
 chelix-sessions         = { path = "crates/sessions" }
-chelix-signal           = { path = "crates/signal" }
 chelix-skills           = { path = "crates/skills" }
 chelix-splitter         = { path = "crates/splitter" }
 chelix-telegram         = { path = "crates/telegram" }
@@ -337,7 +315,6 @@ chelix-vault            = { path = "crates/vault" }
 chelix-voice            = { path = "crates/voice" }
 chelix-web              = { default-features = false, path = "crates/web" }
 chelix-webhooks         = { path = "crates/webhooks" }
-chelix-whatsapp         = { path = "crates/whatsapp" }
 
 [profile.release]
 codegen-units = 1

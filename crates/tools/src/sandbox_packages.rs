@@ -142,7 +142,6 @@ const CATEGORY_MAP: &[(&str, &[&str])] = &[
         "osmium-tool",
         "osmctools",
     ]),
-    ("CalDAV/CardDAV", &["vdirsyncer", "khal", "python3-caldav"]),
     ("Email", &[
         "isync",
         "offlineimap3",
@@ -321,7 +320,7 @@ impl AgentTool for SandboxPackagesTool {
     fn description(&self) -> &str {
         "List packages pre-installed in the sandbox container, grouped by category. \
          Call this before running commands that need specific tools (image processing, \
-         audio/video, document conversion, GIS, email, CalDAV, etc.) to check what's \
+         audio/video, document conversion, GIS, email, etc.) to check what's \
          available. Also reports extra packages installed at runtime if a container is running."
     }
 
@@ -557,8 +556,6 @@ mod tests {
     #[test]
     fn test_new_categories_exist() {
         let packages = vec![
-            "vdirsyncer".into(),
-            "khal".into(),
             "isync".into(),
             "aerc".into(),
             "notmuch".into(),
@@ -568,7 +565,6 @@ mod tests {
         let grouped = categorize_packages(&packages);
         let cat_names: Vec<&str> = grouped.iter().map(|(c, _)| *c).collect();
 
-        assert!(cat_names.contains(&"CalDAV/CardDAV"));
         assert!(cat_names.contains(&"Email"));
         assert!(cat_names.contains(&"Newsgroups (NNTP)"));
     }

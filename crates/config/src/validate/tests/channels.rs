@@ -66,9 +66,9 @@ fn channels_unknown_account_type_rejected() {
 fn channels_offered_configured_known_type_accepted() {
     let toml = r#"
 [channels]
-offered = ["telegram", "signal"]
+offered = ["telegram", "telephony"]
 
-[channels.signal.my-bot]
+[channels.telephony.my-bot]
 account = "+15551234567"
 "#;
     let result = validate_toml_str(toml);

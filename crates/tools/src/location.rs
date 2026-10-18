@@ -659,7 +659,7 @@ mod tests {
 
     #[test]
     fn session_key_supports_channel_location_accepts_channel_like_prefixes() {
-        assert!(session_key_supports_channel_location("signal:bot:room"));
+        assert!(session_key_supports_channel_location("telephony:bot:room"));
         assert!(session_key_supports_channel_location("telegram:bot:chat"));
     }
 

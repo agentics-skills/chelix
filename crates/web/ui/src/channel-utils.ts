@@ -39,33 +39,6 @@ export function validateChannelFields(accountId: string, credential: string): Va
 	return { valid: true };
 }
 
-function randomSuffix(length: number): string {
-	if (typeof window !== "undefined" && window.crypto?.getRandomValues) {
-		const bytes = new Uint8Array(length);
-		window.crypto.getRandomValues(bytes);
-		return Array.from(bytes, (byte) => (byte % 36).toString(36)).join("");
-	}
-	let value = "";
-	while (value.length < length) {
-		value += Math.floor(Math.random() * 36).toString(36);
-	}
-	return value.slice(0, length);
-}
-
-/**
- * Generate a local Signal account identifier for Chelix.
- * Derive from the phone number when present, otherwise use a random suffix.
- */
-export function deriveSignalAccountId(account?: string): string {
-	const slug = String(account || "")
-		.trim()
-		.replace(/^\+/, "")
-		.replace(/[^a-z0-9]+/gi, "-")
-		.replace(/^-|-$/g, "");
-	if (slug) return `signal-${slug}`.slice(0, 80);
-	return `signal-${randomSuffix(6)}`;
-}
-
 interface ParseOk {
 	ok: true;
 	value: Record<string, unknown>;

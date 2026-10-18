@@ -91,13 +91,7 @@ async fn is_sender_on_allowlist(
     if allowlist.is_empty() {
         return false;
     }
-    // Check the full sender_id first, then try the user part before '@'
-    // (WhatsApp JIDs are e.g. "15551234567@s.whatsapp.net" but allowlists
-    // use plain phone numbers like "15551234567").
     chelix_channels::gating::is_allowed(sender_id, allowlist)
-        || sender_id
-            .split_once('@')
-            .is_some_and(|(user, _)| chelix_channels::gating::is_allowed(user, allowlist))
 }
 
 fn is_attachable_session(entry: &SessionEntry) -> bool {

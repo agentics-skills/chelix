@@ -156,9 +156,6 @@ impl LiveChannelService {
         if let Some(cfg) = config {
             entry["config"] = cfg;
         }
-        if let Some(extra) = snap.extra {
-            entry["extra"] = extra;
-        }
 
         let ct = channel_type.as_str();
         let bound = self
@@ -359,54 +356,20 @@ impl ChannelService for LiveChannelService {
             channel_type = channel_type.as_str(),
             "updating channel account"
         );
-        let mut live_update_warning = None;
-        match channel_type {
-            ChannelType::Whatsapp => {
-                // WhatsApp keeps a persistent sled DB lock while running; for
-                // policy/config-only changes, apply hot updates in-place to
-                // avoid stop/start lock races.
-                //
-                // Only suppress UnknownAccount (account not running) — config
-                // validation errors (SerdeJson, InvalidInput) must fail the
-                // request so we don't persist bad config to the store.
-                match self
-                    .registry
-                    .update_account_config(account_id, config.clone())
-                    .await
-                {
-                    Ok(()) => {},
-                    Err(chelix_channels::Error::UnknownAccount { .. }) => {
-                        warn!(
-                            account_id,
-                            channel_type = ct,
-                            "WhatsApp account not running; config will apply on next start"
-                        );
-                        live_update_warning =
-                            Some("config saved to store but live session was not updated");
-                    },
-                    Err(e) => {
-                        error!(error = %e, account_id, channel_type = ct, "invalid config");
-                        return Err(e.to_string().into());
-                    },
-                }
-            },
-            _ => {
-                self.registry
-                    .stop_account(ct, account_id)
-                    .await
-                    .map_err(|e| {
-                        error!(error = %e, account_id, channel_type = ct, "failed to stop account");
-                        e.to_string()
-                    })?;
-                self.registry
-                    .start_account(ct, account_id, config.clone())
-                    .await
-                    .map_err(|e| {
-                        error!(error = %e, account_id, channel_type = ct, "failed to start account");
-                        e.to_string()
-                    })?;
-            },
-        }
+        self.registry
+            .stop_account(ct, account_id)
+            .await
+            .map_err(|e| {
+                error!(error = %e, account_id, channel_type = ct, "failed to stop account");
+                e.to_string()
+            })?;
+        self.registry
+            .start_account(ct, account_id, config.clone())
+            .await
+            .map_err(|e| {
+                error!(error = %e, account_id, channel_type = ct, "failed to start account");
+                e.to_string()
+            })?;
 
         let now = unix_now();
         if let Err(e) = self
@@ -423,14 +386,10 @@ impl ChannelService for LiveChannelService {
             warn!(error = %e, account_id, "failed to persist channel update");
         }
 
-        let mut result = serde_json::json!({
+        Ok(serde_json::json!({
             "updated": account_id,
             "type": channel_type.to_string()
-        });
-        if let Some(warning) = live_update_warning {
-            result["warning"] = Value::String(warning.to_string());
-        }
-        Ok(result)
+        }))
     }
 
     async fn send(&self, params: Value) -> ServiceResult {

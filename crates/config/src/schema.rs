@@ -256,7 +256,6 @@ pub struct ChelixConfig {
     pub voice: VoiceConfig,
     pub phone: PhoneConfig,
     pub cron: CronConfig,
-    pub caldav: CalDavConfig,
     pub home_assistant: HomeAssistantConfig,
     /// Session title generation model and reasoning configuration.
     pub auxiliary: AuxiliaryModelsConfig,

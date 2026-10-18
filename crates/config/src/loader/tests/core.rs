@@ -1076,7 +1076,7 @@ offered = ["telegram"]
 [channels.telegram]
 token = "abc"
 
-[channels.whatsapp]
+[channels.telephony]
 token = "xyz"
 
 [memory]
@@ -1091,15 +1091,15 @@ enabled = true
 
     let sections: Vec<&str> = result.lines().filter(|l| l.starts_with('[')).collect();
 
-    // Expected order: server, channels, channels.telegram, channels.whatsapp, memory
+    // Expected order: server, channels, channels.telegram, channels.telephony, memory
     let channels_idx = sections.iter().position(|s| *s == "[channels]").unwrap();
     let telegram_idx = sections
         .iter()
         .position(|s| *s == "[channels.telegram]")
         .unwrap();
-    let whatsapp_idx = sections
+    let telephony_idx = sections
         .iter()
-        .position(|s| *s == "[channels.whatsapp]")
+        .position(|s| *s == "[channels.telephony]")
         .unwrap();
     let memory_idx = sections.iter().position(|s| *s == "[memory]").unwrap();
 
@@ -1108,11 +1108,11 @@ enabled = true
         "[channels.telegram] must come after [channels]"
     );
     assert!(
-        telegram_idx < whatsapp_idx,
-        "[channels.whatsapp] must come after [channels.telegram]"
+        telegram_idx < telephony_idx,
+        "[channels.telephony] must come after [channels.telegram]"
     );
     assert!(
-        whatsapp_idx < memory_idx,
+        telephony_idx < memory_idx,
         "[memory] must come after channel sub-tables"
     );
 }

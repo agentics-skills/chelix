@@ -27,33 +27,6 @@ pub(super) async fn emit(
             },
         };
 
-        // Render QR data as an SVG so the frontend can display it directly.
-        #[cfg(feature = "whatsapp")]
-        let payload = {
-            let mut payload = payload;
-            if let ChannelEvent::PairingQrCode { ref qr_data, .. } = event
-                && let Ok(code) = qrcode::QrCode::new(qr_data)
-            {
-                let svg = code
-                    .render::<qrcode::render::svg::Color>()
-                    .min_dimensions(200, 200)
-                    .quiet_zone(true)
-                    .build();
-                if let serde_json::Value::Object(ref mut map) = payload {
-                    map.insert("qr_svg".into(), serde_json::Value::String(svg));
-                }
-            }
-            payload
-        };
-
-        // QR code events are large and frequent — drop them if the client
-        // is slow.  Pairing result events (complete/failed) are critical
-        // one-shots that must not be lost.
-        let droppable = matches!(event, ChannelEvent::PairingQrCode { .. });
-        broadcast(state, "channel", payload, BroadcastOpts {
-            drop_if_slow: droppable,
-            ..Default::default()
-        })
-        .await;
+        broadcast(state, "channel", payload, BroadcastOpts::default()).await;
     }
 }

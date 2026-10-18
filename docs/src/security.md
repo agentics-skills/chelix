@@ -33,7 +33,7 @@ When the agent wants to run a command:
 
 For channel-backed sessions, operators can also use `/approvals` to list the
 pending requests for the current session, then `/approve N` or `/deny N`
-directly from Telegram or WhatsApp.
+directly from Telegram.
 
 ### Approval Policies
 
