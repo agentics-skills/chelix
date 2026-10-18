@@ -9,7 +9,7 @@ use {
     flate2::read::GzDecoder,
     serde::{Deserialize, Serialize},
     tar::Archive,
-    tracing::{debug, info, warn},
+    tracing::{debug, error, info},
 };
 
 use crate::manifest::{ExportManifest, FORMAT_VERSION};
@@ -383,18 +383,55 @@ fn record_action(
     }
 }
 
+struct MergeTable {
+    name: &'static str,
+    skip: &'static str,
+    overwrite: &'static str,
+}
+
 /// Tables to merge from the imported chelix.db, in dependency order.
 /// Auth tables are intentionally excluded.
-const MERGE_TABLES: &[&str] = &[
-    "projects",
-    "sessions",
-    "channel_sessions",
-    "cron_jobs",
-    "cron_runs",
-    "env_variables",
-    "channels",
-    "agents",
-    "message_log",
+const MERGE_TABLES: &[MergeTable] = &[
+    MergeTable {
+        name: "projects",
+        skip: "INSERT OR IGNORE INTO main.[projects] SELECT * FROM import_db.[projects]",
+        overwrite: "INSERT OR REPLACE INTO main.[projects] SELECT * FROM import_db.[projects]",
+    },
+    MergeTable {
+        name: "sessions",
+        skip: "INSERT OR IGNORE INTO main.[sessions] SELECT * FROM import_db.[sessions]",
+        overwrite: "INSERT OR REPLACE INTO main.[sessions] SELECT * FROM import_db.[sessions]",
+    },
+    MergeTable {
+        name: "channel_sessions",
+        skip: "INSERT OR IGNORE INTO main.[channel_sessions] SELECT * FROM import_db.[channel_sessions]",
+        overwrite: "INSERT OR REPLACE INTO main.[channel_sessions] SELECT * FROM import_db.[channel_sessions]",
+    },
+    MergeTable {
+        name: "cron_jobs",
+        skip: "INSERT OR IGNORE INTO main.[cron_jobs] SELECT * FROM import_db.[cron_jobs]",
+        overwrite: "INSERT OR REPLACE INTO main.[cron_jobs] SELECT * FROM import_db.[cron_jobs]",
+    },
+    MergeTable {
+        name: "cron_runs",
+        skip: "INSERT OR IGNORE INTO main.[cron_runs] SELECT * FROM import_db.[cron_runs]",
+        overwrite: "INSERT OR REPLACE INTO main.[cron_runs] SELECT * FROM import_db.[cron_runs]",
+    },
+    MergeTable {
+        name: "env_variables",
+        skip: "INSERT OR IGNORE INTO main.[env_variables] SELECT * FROM import_db.[env_variables]",
+        overwrite: "INSERT OR REPLACE INTO main.[env_variables] SELECT * FROM import_db.[env_variables]",
+    },
+    MergeTable {
+        name: "channels",
+        skip: "INSERT OR IGNORE INTO main.[channels] SELECT * FROM import_db.[channels]",
+        overwrite: "INSERT OR REPLACE INTO main.[channels] SELECT * FROM import_db.[channels]",
+    },
+    MergeTable {
+        name: "message_log",
+        skip: "INSERT OR IGNORE INTO main.[message_log] SELECT * FROM import_db.[message_log]",
+        overwrite: "INSERT OR REPLACE INTO main.[message_log] SELECT * FROM import_db.[message_log]",
+    },
 ];
 
 /// Merge rows from an imported chelix.db into the live database.
@@ -418,65 +455,64 @@ async fn merge_chelix_db(
 
     let db_url = format!("sqlite:{}?mode=rwc", live_db.display());
     let pool = sqlx::SqlitePool::connect(&db_url).await?;
-
-    // Attach the imported database.
+    let mut conn = pool.acquire().await?;
     let import_path_str = import_path.display().to_string();
-    let escaped = import_path_str.replace('\'', "''");
-    sqlx::query(&format!("ATTACH DATABASE '{escaped}' AS import_db"))
-        .execute(&pool)
-        .await?;
 
-    let insert_mode = match conflict {
-        ConflictStrategy::Skip => "INSERT OR IGNORE",
-        ConflictStrategy::Overwrite => "INSERT OR REPLACE",
-    };
-
-    let mut counts = Vec::new();
-
-    for table in MERGE_TABLES {
-        // Check if the table exists in the imported DB.
-        let exists: bool = sqlx::query_scalar::<_, i32>(
-            "SELECT COUNT(*) FROM import_db.sqlite_master WHERE type='table' AND name=?",
-        )
-        .bind(table)
-        .fetch_one(&pool)
-        .await
-        .map(|n| n > 0)
-        .unwrap_or(false);
-
-        if !exists {
-            debug!(table, "table not in imported db, skipping");
-            continue;
-        }
-
-        let result = sqlx::query(&format!(
-            "{insert_mode} INTO main.[{table}] SELECT * FROM import_db.[{table}]"
-        ))
-        .execute(&pool)
+    let attached = sqlx::query("ATTACH DATABASE ? AS import_db")
+        .bind(&import_path_str)
+        .execute(&mut *conn)
         .await;
-
-        match result {
-            Ok(r) => {
-                counts.push(((*table).to_owned(), r.rows_affected()));
-                if r.rows_affected() > 0 {
-                    debug!(table, rows = r.rows_affected(), "merged table");
+    let outcome = match attached {
+        Err(error) => Err(anyhow::Error::from(error)),
+        Ok(_) => {
+            let merged = async {
+                let mut tx = sqlx::Connection::begin_with(&mut *conn, "BEGIN IMMEDIATE").await?;
+                let mut counts = Vec::new();
+                for table in MERGE_TABLES {
+                    let count: i32 = sqlx::query_scalar(
+                        "SELECT COUNT(*) FROM import_db.sqlite_master WHERE type='table' AND name=?",
+                    )
+                    .bind(table.name)
+                    .fetch_one(&mut *tx)
+                    .await?;
+                    if count == 0 {
+                        debug!(table = table.name, "table not in imported db, skipping");
+                        continue;
+                    }
+                    let statement = match conflict {
+                        ConflictStrategy::Skip => table.skip,
+                        ConflictStrategy::Overwrite => table.overwrite,
+                    };
+                    let merged = sqlx::query(statement).execute(&mut *tx).await?;
+                    counts.push((table.name.to_owned(), merged.rows_affected()));
+                    if merged.rows_affected() > 0 {
+                        debug!(
+                            table = table.name,
+                            rows = merged.rows_affected(),
+                            "merged table"
+                        );
+                    }
                 }
-            },
-            Err(e) => {
-                // Schema mismatch between versions — warn but continue.
-                warn!(table, error = %e, "failed to merge table");
-                counts.push(((*table).to_owned(), 0));
-            },
-        }
+                tx.commit().await?;
+                Ok::<_, anyhow::Error>(counts)
+            }
+            .await;
+            let detached = sqlx::query("DETACH DATABASE import_db")
+                .execute(&mut *conn)
+                .await;
+            if let Err(error) = &detached {
+                error!(%error, "failed to detach imported chelix database");
+            }
+            merged
+        },
+    };
+    if let Err(error) = conn.close().await {
+        error!(%error, "failed to close chelix import connection");
     }
-
-    sqlx::query("DETACH DATABASE import_db")
-        .execute(&pool)
-        .await?;
     pool.close().await;
 
     // _guard drops here, removing the temp file.
-    Ok(counts)
+    outcome
 }
 
 /// Import memory.db — copy if missing, merge if exists.

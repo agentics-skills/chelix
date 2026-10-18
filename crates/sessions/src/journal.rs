@@ -556,16 +556,13 @@ async fn max_role_index(pool: &SqlitePool, key: &str, role: &str) -> Result<Opti
 
 pub(crate) async fn clear_journal(pool: &SqlitePool, key: &str) -> Result<()> {
     let mut tx = begin_immediate(pool).await?;
-    for table in [
-        "session_records",
-        "session_tool_disclosures",
-        "session_assistant_segments",
-        "session_disclosure_errors",
+    for statement in [
+        "DELETE FROM session_records WHERE session_key = ?",
+        "DELETE FROM session_tool_disclosures WHERE session_key = ?",
+        "DELETE FROM session_assistant_segments WHERE session_key = ?",
+        "DELETE FROM session_disclosure_errors WHERE session_key = ?",
     ] {
-        sqlx::query(&format!("DELETE FROM {table} WHERE session_key = ?"))
-            .bind(key)
-            .execute(&mut *tx)
-            .await?;
+        sqlx::query(statement).bind(key).execute(&mut *tx).await?;
     }
     sqlx::query(
         "INSERT INTO session_journal (session_key, canonical_tail, last_checkpoint_index, first_user_index) VALUES (?, 0, NULL, NULL) ON CONFLICT(session_key) DO UPDATE SET canonical_tail = 0, last_checkpoint_index = NULL, first_user_index = NULL",
@@ -580,19 +577,17 @@ pub(crate) async fn clear_journal(pool: &SqlitePool, key: &str) -> Result<()> {
 pub(crate) async fn truncate_journal(pool: &SqlitePool, key: &str, boundary: usize) -> Result<()> {
     let boundary_i = i64::try_from(boundary).map_err(|error| Error::message(error.to_string()))?;
     let mut tx = begin_immediate(pool).await?;
-    for table in [
-        "session_records",
-        "session_tool_disclosures",
-        "session_assistant_segments",
-        "session_disclosure_errors",
+    for statement in [
+        "DELETE FROM session_records WHERE session_key = ? AND record_index >= ?",
+        "DELETE FROM session_tool_disclosures WHERE session_key = ? AND record_index >= ?",
+        "DELETE FROM session_assistant_segments WHERE session_key = ? AND record_index >= ?",
+        "DELETE FROM session_disclosure_errors WHERE session_key = ? AND record_index >= ?",
     ] {
-        sqlx::query(&format!(
-            "DELETE FROM {table} WHERE session_key = ? AND record_index >= ?"
-        ))
-        .bind(key)
-        .bind(boundary_i)
-        .execute(&mut *tx)
-        .await?;
+        sqlx::query(statement)
+            .bind(key)
+            .bind(boundary_i)
+            .execute(&mut *tx)
+            .await?;
     }
     sqlx::query(
         "UPDATE session_journal SET canonical_tail = ?, last_checkpoint_index = (SELECT MAX(record_index) FROM session_records WHERE session_key = ? AND role = 'checkpoint' AND record_index < ?), first_user_index = CASE WHEN first_user_index IS NOT NULL AND first_user_index < ? THEN first_user_index ELSE NULL END WHERE session_key = ?",
@@ -886,19 +881,16 @@ async fn delete_session_rows(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     key: &str,
 ) -> Result<()> {
-    for table in [
-        "ui_history_snapshots",
-        "ui_history_sessions",
-        "session_records",
-        "session_tool_disclosures",
-        "session_assistant_segments",
-        "session_disclosure_errors",
-        "session_journal",
+    for statement in [
+        "DELETE FROM ui_history_snapshots WHERE session_key = ?",
+        "DELETE FROM ui_history_sessions WHERE session_key = ?",
+        "DELETE FROM session_records WHERE session_key = ?",
+        "DELETE FROM session_tool_disclosures WHERE session_key = ?",
+        "DELETE FROM session_assistant_segments WHERE session_key = ?",
+        "DELETE FROM session_disclosure_errors WHERE session_key = ?",
+        "DELETE FROM session_journal WHERE session_key = ?",
     ] {
-        sqlx::query(&format!("DELETE FROM {table} WHERE session_key = ?"))
-            .bind(key)
-            .execute(&mut **tx)
-            .await?;
+        sqlx::query(statement).bind(key).execute(&mut **tx).await?;
     }
     Ok(())
 }

@@ -31,7 +31,7 @@ crates/
 │   └── src/lib.rs                     # run_migrations()
 ├── gateway/
 │   ├── migrations/
-│   │   └── 20240205100003_init.sql   # auth, message_log, channels, agents, ...
+│   │   └── 20240205100003_init.sql   # auth, message_log, channels, ...
 │   └── src/server/
 │       └── prepare_core.rs            # orchestrates chelix.db migrations
 ├── webhooks/
@@ -60,7 +60,7 @@ Each crate is autonomous and owns its schema:
 | `chelix-sessions` | `chelix.db` | `sessions`, `channel_sessions`, `session_state`                                                                                                                         | `20240205100001_init.sql` + later ADD COLUMN migrations |
 | `chelix-sessions` | `ui-history.sqlite` | `ui_history_sessions`, `ui_history_snapshots`, `session_records`, `session_journal`, `session_tool_disclosures`, `session_assistant_segments`, `session_disclosure_errors` | `ui-history/20260909113752_init.sql`, `ui-history/20260927174633_session_records.sql` |
 | `chelix-cron`     | `chelix.db` | `cron_jobs`, `cron_runs`                                                                                                                                                | `20240205100002_init.sql` + 1 migration             |
-| `chelix-gateway`  | `chelix.db` | `auth_*`, `passkeys`, `api_keys`, `env_variables`, `message_log`, `channels`, `agents`, `session_shares`, `device_pairing`, `ssh_keys`, `ssh_targets`, `auth_audit_log` | `20240205100003_init.sql` + 12 migrations           |
+| `chelix-gateway`  | `chelix.db` | `auth_*`, `passkeys`, `api_keys`, `env_variables`, `message_log`, `channels`, `session_shares`, `ssh_keys`, `ssh_targets`, `auth_audit_log`, `voice_personas` | `20240205100003_init.sql` + 13 migrations           |
 | `chelix-webhooks` | `chelix.db` | `webhooks`, `webhook_deliveries`, `webhook_response_actions`                                                                                                            | `20260407000000_initial.sql` + 1 migration          |
 | `chelix-vault`    | `chelix.db` | `vault_metadata`                                                                                                                                                        | `20260214000001_vault_metadata.sql` (feature-gated) |
 | `chelix-memory`   | `memory.db` | `files`, `chunks`, `embedding_cache`, `chunks_fts`                                                                                                                      | `20240205100004_init.sql`                           |

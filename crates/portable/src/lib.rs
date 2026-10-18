@@ -317,4 +317,336 @@ mod integration_tests {
             "original"
         );
     }
+
+    #[tokio::test]
+    async fn export_strips_secrets_from_a_quoted_path() {
+        let archive = secret_session_archive().await;
+        let db_bytes = exported_chelix_db(&archive);
+        for secret in [
+            "SECRET-PASSWORD",
+            "SECRET-SESSION",
+            "SECRET-API-KEY",
+            "SECRET-PASSKEY",
+            "SECRET-SHARE",
+        ] {
+            assert!(
+                !db_bytes
+                    .windows(secret.len())
+                    .any(|window| window == secret.as_bytes()),
+                "{secret} remains in the exported database"
+            );
+        }
+        let check_dir = tempfile::tempdir().unwrap();
+        let check_path = check_dir.path().join("chelix.db");
+        std::fs::write(&check_path, &db_bytes).unwrap();
+        let check = sqlx::sqlite::SqlitePoolOptions::new()
+            .connect_with(
+                sqlx::sqlite::SqliteConnectOptions::new()
+                    .filename(&check_path)
+                    .read_only(true),
+            )
+            .await
+            .unwrap();
+        for statement in [
+            "SELECT COUNT(*) FROM auth_password",
+            "SELECT COUNT(*) FROM auth_sessions",
+            "SELECT COUNT(*) FROM api_keys",
+            "SELECT COUNT(*) FROM passkeys",
+            "SELECT COUNT(*) FROM session_shares",
+        ] {
+            let count: i64 = sqlx::query_scalar(statement)
+                .fetch_one(&check)
+                .await
+                .unwrap();
+            assert_eq!(count, 0, "{statement}");
+        }
+        let exported_id: String = sqlx::query_scalar("SELECT id FROM sessions WHERE key = 'keep'")
+            .fetch_one(&check)
+            .await
+            .unwrap();
+        assert_eq!(exported_id, "exported");
+        check.close().await;
+    }
+
+    #[tokio::test]
+    async fn import_merges_sessions_for_a_quoted_path() {
+        let archive = secret_session_archive().await;
+        let dst_parent = tempfile::tempdir().unwrap();
+        let dst_data = dst_parent.path().join("o'quote");
+        std::fs::create_dir_all(&dst_data).unwrap();
+        let dst_config = tempfile::tempdir().unwrap();
+        let live_path = dst_data.join("chelix.db");
+        let live = sqlx::sqlite::SqlitePoolOptions::new()
+            .connect_with(
+                sqlx::sqlite::SqliteConnectOptions::new()
+                    .filename(&live_path)
+                    .create_if_missing(true),
+            )
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE sessions (key TEXT PRIMARY KEY, id TEXT NOT NULL)")
+            .execute(&live)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO sessions (key, id) VALUES ('keep', 'local')")
+            .execute(&live)
+            .await
+            .unwrap();
+        live.close().await;
+
+        let skipped = import_archive(
+            dst_config.path(),
+            &dst_data,
+            &ImportOptions {
+                conflict: ConflictStrategy::Skip,
+                dry_run: false,
+            },
+            Cursor::new(archive.clone()),
+        )
+        .await
+        .unwrap()
+        .result;
+        assert!(
+            !skipped
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("failed to merge chelix.db"))
+        );
+        let live = sqlx::sqlite::SqlitePoolOptions::new()
+            .connect_with(
+                sqlx::sqlite::SqliteConnectOptions::new()
+                    .filename(&live_path)
+                    .read_only(true),
+            )
+            .await
+            .unwrap();
+        let id: String = sqlx::query_scalar("SELECT id FROM sessions WHERE key = 'keep'")
+            .fetch_one(&live)
+            .await
+            .unwrap();
+        assert_eq!(id, "local");
+        live.close().await;
+
+        let overwritten = import_archive(
+            dst_config.path(),
+            &dst_data,
+            &ImportOptions {
+                conflict: ConflictStrategy::Overwrite,
+                dry_run: false,
+            },
+            Cursor::new(archive),
+        )
+        .await
+        .unwrap()
+        .result;
+        assert!(
+            !overwritten
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("failed to merge chelix.db"))
+        );
+        let live = sqlx::sqlite::SqlitePoolOptions::new()
+            .connect_with(
+                sqlx::sqlite::SqliteConnectOptions::new()
+                    .filename(&live_path)
+                    .read_only(true),
+            )
+            .await
+            .unwrap();
+        let id: String = sqlx::query_scalar("SELECT id FROM sessions WHERE key = 'keep'")
+            .fetch_one(&live)
+            .await
+            .unwrap();
+        assert_eq!(id, "exported");
+        live.close().await;
+    }
+
+    async fn secret_session_archive() -> Vec<u8> {
+        let parent = tempfile::tempdir().unwrap();
+        let src_data = parent.path().join("o'quote");
+        std::fs::create_dir_all(&src_data).unwrap();
+        let src_config = tempfile::tempdir().unwrap();
+        let db_path = src_data.join("chelix.db");
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .connect_with(
+                sqlx::sqlite::SqliteConnectOptions::new()
+                    .filename(&db_path)
+                    .create_if_missing(true),
+            )
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE sessions (key TEXT PRIMARY KEY, id TEXT NOT NULL)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        create_auth_tables(&pool).await;
+        sqlx::query("INSERT INTO sessions (key, id) VALUES ('keep', 'exported')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        for (statement, secret) in [
+            (
+                "INSERT INTO auth_password (secret) VALUES (?)",
+                "SECRET-PASSWORD",
+            ),
+            (
+                "INSERT INTO auth_sessions (secret) VALUES (?)",
+                "SECRET-SESSION",
+            ),
+            ("INSERT INTO api_keys (secret) VALUES (?)", "SECRET-API-KEY"),
+            ("INSERT INTO passkeys (secret) VALUES (?)", "SECRET-PASSKEY"),
+            (
+                "INSERT INTO session_shares (secret) VALUES (?)",
+                "SECRET-SHARE",
+            ),
+        ] {
+            sqlx::query(statement)
+                .bind(secret)
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+        pool.close().await;
+        let mut archive = Vec::new();
+        export_archive(
+            src_config.path(),
+            &src_data,
+            &ExportOptions::default(),
+            &mut archive,
+        )
+        .await
+        .unwrap();
+        archive
+    }
+
+    #[tokio::test]
+    async fn import_rolls_back_sessions_when_a_later_table_mismatches() {
+        let parent = tempfile::tempdir().unwrap();
+        let src_data = parent.path().join("o'quote");
+        std::fs::create_dir_all(&src_data).unwrap();
+        let src_config = tempfile::tempdir().unwrap();
+        let db_path = src_data.join("chelix.db");
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .connect_with(
+                sqlx::sqlite::SqliteConnectOptions::new()
+                    .filename(&db_path)
+                    .create_if_missing(true),
+            )
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE sessions (key TEXT PRIMARY KEY, id TEXT NOT NULL)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE channel_sessions (id TEXT PRIMARY KEY, extra TEXT NOT NULL)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        create_auth_tables(&pool).await;
+        sqlx::query("INSERT INTO sessions (key, id) VALUES ('keep', 'exported')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO channel_sessions (id, extra) VALUES ('row', 'extra')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        pool.close().await;
+        let mut archive = Vec::new();
+        export_archive(
+            src_config.path(),
+            &src_data,
+            &ExportOptions::default(),
+            &mut archive,
+        )
+        .await
+        .unwrap();
+
+        let dst_parent = tempfile::tempdir().unwrap();
+        let dst_data = dst_parent.path().join("o'quote");
+        std::fs::create_dir_all(&dst_data).unwrap();
+        let dst_config = tempfile::tempdir().unwrap();
+        let live_path = dst_data.join("chelix.db");
+        let live = sqlx::sqlite::SqlitePoolOptions::new()
+            .connect_with(
+                sqlx::sqlite::SqliteConnectOptions::new()
+                    .filename(&live_path)
+                    .create_if_missing(true),
+            )
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE sessions (key TEXT PRIMARY KEY, id TEXT NOT NULL)")
+            .execute(&live)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO sessions (key, id) VALUES ('keep', 'local')")
+            .execute(&live)
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE channel_sessions (id TEXT PRIMARY KEY)")
+            .execute(&live)
+            .await
+            .unwrap();
+        live.close().await;
+
+        let imported = import_archive(
+            dst_config.path(),
+            &dst_data,
+            &ImportOptions {
+                conflict: ConflictStrategy::Overwrite,
+                dry_run: false,
+            },
+            Cursor::new(archive),
+        )
+        .await
+        .unwrap()
+        .result;
+        assert!(
+            imported
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("failed to merge chelix.db"))
+        );
+        let live = sqlx::sqlite::SqlitePoolOptions::new()
+            .connect_with(
+                sqlx::sqlite::SqliteConnectOptions::new()
+                    .filename(&live_path)
+                    .read_only(true),
+            )
+            .await
+            .unwrap();
+        let id: String = sqlx::query_scalar("SELECT id FROM sessions WHERE key = 'keep'")
+            .fetch_one(&live)
+            .await
+            .unwrap();
+        assert_eq!(id, "local");
+        live.close().await;
+    }
+
+    async fn create_auth_tables(pool: &sqlx::SqlitePool) {
+        for statement in [
+            "CREATE TABLE auth_password (id INTEGER PRIMARY KEY, secret TEXT NOT NULL)",
+            "CREATE TABLE auth_sessions (id INTEGER PRIMARY KEY, secret TEXT NOT NULL)",
+            "CREATE TABLE api_keys (id INTEGER PRIMARY KEY, secret TEXT NOT NULL)",
+            "CREATE TABLE passkeys (id INTEGER PRIMARY KEY, secret TEXT NOT NULL)",
+            "CREATE TABLE session_shares (id INTEGER PRIMARY KEY, secret TEXT NOT NULL)",
+        ] {
+            sqlx::query(statement).execute(pool).await.unwrap();
+        }
+    }
+
+    fn exported_chelix_db(archive: &[u8]) -> Vec<u8> {
+        let decoder = flate2::read::GzDecoder::new(Cursor::new(archive));
+        let mut tar = tar::Archive::new(decoder);
+        for entry in tar.entries().unwrap() {
+            let mut entry = entry.unwrap();
+            let path = entry.path().unwrap().to_string_lossy().into_owned();
+            if path.ends_with("/db/chelix.db") {
+                let mut bytes = Vec::new();
+                std::io::Read::read_to_end(&mut entry, &mut bytes).unwrap();
+                return bytes;
+            }
+        }
+        panic!("archive has no chelix.db snapshot");
+    }
 }

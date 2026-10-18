@@ -158,7 +158,7 @@ tracing-subscriber = { features = ["env-filter", "json"], version = "0.3" }
 # CLI
 clap = { features = ["derive", "env"], version = "4" }
 # Database
-sqlx = { features = ["migrate", "runtime-tokio", "sqlite"], version = "0.8" }
+sqlx = { features = ["migrate", "runtime-tokio", "sqlite"], version = "0.9" }
 # HTTP client
 reqwest = { features = ["form", "json", "multipart", "query", "socks", "stream"], version = "0.13" }
 # UUID
@@ -202,8 +202,6 @@ sha2     = "0.10"
 sled     = "0.34"
 sysinfo  = "0.34"
 teloxide = { features = ["macros"], version = "0.17" }
-# WhatsApp (sqlite-storage disabled to avoid libsqlite3-sys conflict with sqlx;
-# re-enable once sqlx 0.9 stabilises).
 wacore                         = { default-features = false, version = "0.5" }
 wacore-binary                  = { default-features = false, version = "0.5" }
 waproto                        = "0.5"

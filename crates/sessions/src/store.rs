@@ -500,8 +500,8 @@ impl SessionStore {
     ) -> Result<Vec<String>> {
         let pool = self.pool().await?;
         let mut conn = pool.acquire().await?;
-        let escaped = snapshot.to_string_lossy().replace('\'', "''");
-        sqlx::query(&format!("ATTACH DATABASE '{escaped}' AS import_db"))
+        sqlx::query("ATTACH DATABASE ? AS import_db")
+            .bind(snapshot.to_string_lossy().into_owned())
             .execute(&mut *conn)
             .await?;
         let import_result = async {
@@ -817,8 +817,9 @@ mod tests {
             .await
             .unwrap();
         let good = dir.path().join("good.sqlite");
-        let good_sql = good.to_string_lossy().replace('\'', "''");
-        sqlx::query(&format!("VACUUM INTO '{good_sql}'"))
+        let good_sql = good.to_string_lossy().into_owned();
+        sqlx::query("VACUUM INTO ?")
+            .bind(good_sql)
             .execute(source.pool().await.unwrap())
             .await
             .unwrap();
@@ -921,8 +922,9 @@ mod tests {
             .await
             .unwrap();
         let snapshot = dir.path().join("snapshot.sqlite");
-        let snapshot_sql = snapshot.to_string_lossy().replace('\'', "''");
-        sqlx::query(&format!("VACUUM INTO '{snapshot_sql}'"))
+        let snapshot_sql = snapshot.to_string_lossy().into_owned();
+        sqlx::query("VACUUM INTO ?")
+            .bind(snapshot_sql)
             .execute(source.pool().await.unwrap())
             .await
             .unwrap();
@@ -1072,8 +1074,9 @@ mod tests {
             .await
             .unwrap();
         let snapshot = dir.path().join("snapshot.sqlite");
-        let snapshot_sql = snapshot.to_string_lossy().replace('\'', "''");
-        sqlx::query(&format!("VACUUM INTO '{snapshot_sql}'"))
+        let snapshot_sql = snapshot.to_string_lossy().into_owned();
+        sqlx::query("VACUUM INTO ?")
+            .bind(snapshot_sql)
             .execute(source.pool().await.unwrap())
             .await
             .unwrap();
@@ -1140,8 +1143,9 @@ mod tests {
             .await
             .unwrap();
         let snapshot = dir.path().join("snapshot.sqlite");
-        let snapshot_sql = snapshot.to_string_lossy().replace('\'', "''");
-        sqlx::query(&format!("VACUUM INTO '{snapshot_sql}'"))
+        let snapshot_sql = snapshot.to_string_lossy().into_owned();
+        sqlx::query("VACUUM INTO ?")
+            .bind(snapshot_sql)
             .execute(source.pool().await.unwrap())
             .await
             .unwrap();
