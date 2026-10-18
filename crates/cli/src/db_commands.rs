@@ -70,33 +70,24 @@ async fn clear_databases() -> anyhow::Result<()> {
         // Delete from child tables first.
         let tables = [
             // Sessions/channels (depends on projects)
-            "channel_sessions",
-            "sessions",
+            ("channel_sessions", "DELETE FROM channel_sessions"),
+            ("sessions", "DELETE FROM sessions"),
             // Cron (cron_runs depends on cron_jobs)
-            "cron_runs",
-            "cron_jobs",
+            ("cron_runs", "DELETE FROM cron_runs"),
+            ("cron_jobs", "DELETE FROM cron_jobs"),
             // Gateway tables (no dependencies between them)
-            "auth_sessions",
-            "api_keys",
-            "passkeys",
-            "auth_password",
-            "env_variables",
-            "message_log",
-            "channels",
+            ("auth_sessions", "DELETE FROM auth_sessions"),
+            ("api_keys", "DELETE FROM api_keys"),
+            ("passkeys", "DELETE FROM passkeys"),
+            ("auth_password", "DELETE FROM auth_password"),
+            ("env_variables", "DELETE FROM env_variables"),
+            ("message_log", "DELETE FROM message_log"),
+            ("channels", "DELETE FROM channels"),
             // Projects (other tables depend on this)
-            "projects",
+            ("projects", "DELETE FROM projects"),
         ];
 
-        for table in tables {
-            // Use raw query to avoid compile-time checks
-            let query = format!("DELETE FROM {table}");
-            if let Err(e) = sqlx::query(&query).execute(&pool).await {
-                // Table might not exist if migrations haven't run
-                eprintln!("Warning: could not clear {table}: {e}");
-            } else {
-                println!("Cleared table: {table}");
-            }
-        }
+        clear_tables(&pool, &tables).await?;
 
         pool.close().await;
         println!("Main database cleared.");
@@ -110,16 +101,13 @@ async fn clear_databases() -> anyhow::Result<()> {
         let pool = sqlx::SqlitePool::connect(&db_url).await?;
 
         // Order matters: chunks depends on files
-        let tables = ["embedding_cache", "chunks", "files"];
+        let tables = [
+            ("embedding_cache", "DELETE FROM embedding_cache"),
+            ("chunks", "DELETE FROM chunks"),
+            ("files", "DELETE FROM files"),
+        ];
 
-        for table in tables {
-            let query = format!("DELETE FROM {table}");
-            if let Err(e) = sqlx::query(&query).execute(&pool).await {
-                eprintln!("Warning: could not clear {table}: {e}");
-            } else {
-                println!("Cleared table: {table}");
-            }
-        }
+        clear_tables(&pool, &tables).await?;
 
         pool.close().await;
         println!("Memory database cleared.");
@@ -127,6 +115,17 @@ async fn clear_databases() -> anyhow::Result<()> {
         println!("Memory database not found: {}", memory_db.display());
     }
 
+    Ok(())
+}
+
+async fn clear_tables(
+    pool: &sqlx::SqlitePool,
+    tables: &[(&'static str, &'static str)],
+) -> anyhow::Result<()> {
+    for &(table, statement) in tables {
+        sqlx::query(statement).execute(pool).await?;
+        println!("Cleared table: {table}");
+    }
     Ok(())
 }
 
@@ -329,6 +328,32 @@ mod tests {
         chelix_cron::run_migrations(&pool).await.unwrap();
         chelix_gateway::run_migrations(&pool).await.unwrap();
 
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn clear_tables_stops_on_the_first_error() {
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::query("CREATE TABLE files (id INTEGER PRIMARY KEY)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO files (id) VALUES (1)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let error = clear_tables(&pool, &[
+            ("missing", "DELETE FROM missing"),
+            ("files", "DELETE FROM files"),
+        ])
+        .await
+        .unwrap_err();
+        assert!(!error.to_string().is_empty());
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM files")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(count, 1);
         pool.close().await;
     }
 }

@@ -32,16 +32,6 @@ pub struct ExportOptions {
     pub include_media: bool,
 }
 
-/// Auth tables to clear from the exported chelix.db snapshot.
-const AUTH_TABLES_TO_CLEAR: &[&str] = &[
-    "auth_password",
-    "auth_sessions",
-    "api_keys",
-    "passkeys",
-    "device_pairing",
-    "session_shares",
-];
-
 /// Export a `.tar.gz` archive to the given writer.
 ///
 /// Uses `VACUUM INTO` for SQLite snapshots so the live DB is never locked.
@@ -294,8 +284,8 @@ async fn vacuum_snapshot(db_path: &Path) -> anyhow::Result<PathBuf> {
     let pool = sqlx::SqlitePool::connect(&db_url).await?;
 
     let snapshot_str = snapshot_path.display().to_string();
-    let escaped = snapshot_str.replace('\'', "''");
-    sqlx::query(&format!("VACUUM INTO '{escaped}'"))
+    sqlx::query("VACUUM INTO ?")
+        .bind(snapshot_str)
         .execute(&pool)
         .await?;
     pool.close().await;
@@ -329,23 +319,16 @@ async fn strip_auth_tables(snapshot_path: &Path) -> anyhow::Result<()> {
     let db_url = format!("sqlite:{}?mode=rwc", snapshot_path.display());
     let pool = sqlx::SqlitePool::connect(&db_url).await?;
 
-    for table in AUTH_TABLES_TO_CLEAR {
-        // Tables may not exist if the user never set up auth.
-        let result = sqlx::query(&format!("DELETE FROM [{table}]"))
-            .execute(&pool)
-            .await;
-        match result {
-            Ok(r) => {
-                if r.rows_affected() > 0 {
-                    debug!(table, rows = r.rows_affected(), "cleared auth table");
-                }
-            },
-            Err(e) => {
-                // Table doesn't exist — fine.
-                debug!(table, error = %e, "skipped auth table (may not exist)");
-            },
-        }
+    for statement in [
+        "DELETE FROM [auth_password]",
+        "DELETE FROM [auth_sessions]",
+        "DELETE FROM [api_keys]",
+        "DELETE FROM [passkeys]",
+        "DELETE FROM [session_shares]",
+    ] {
+        sqlx::query(statement).execute(&pool).await?;
     }
+    sqlx::query("VACUUM").execute(&pool).await?;
 
     pool.close().await;
     Ok(())

@@ -1,11 +1,7 @@
 //! In-memory storage backend for whatsapp-rust.
 //!
-//! This is a temporary solution while `whatsapp-rust-sqlite-storage` has a
-//! `libsqlite3-sys` version conflict with `sqlx`. Session state does NOT
-//! persist across restarts — the user must re-scan the QR code.
-//!
-//! TODO: Replace with `whatsapp-rust-sqlite-storage` once sqlx 0.9 stabilises
-//! (it uses a range-based libsqlite3-sys dep that resolves the conflict).
+//! Session state does not persist across restarts.
+//! Production accounts open `SledStore`.
 
 use std::{fmt::Write, sync::Arc};
 

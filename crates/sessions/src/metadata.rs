@@ -248,6 +248,32 @@ fn require_existing_row(key: &str, rows_affected: u64) -> Result<()> {
     Err(Error::message(format!("session '{key}' not found")))
 }
 
+enum OptionalTextColumn {
+    ProjectId,
+    WorktreeBranch,
+    ChannelBinding,
+    SandboxOwnerKey,
+}
+
+impl OptionalTextColumn {
+    const fn statement(self) -> &'static str {
+        match self {
+            Self::ProjectId => {
+                "UPDATE sessions SET project_id = ?, updated_at = ?, version = version + 1 WHERE key = ?"
+            },
+            Self::WorktreeBranch => {
+                "UPDATE sessions SET worktree_branch = ?, updated_at = ?, version = version + 1 WHERE key = ?"
+            },
+            Self::ChannelBinding => {
+                "UPDATE sessions SET channel_binding = ?, updated_at = ?, version = version + 1 WHERE key = ?"
+            },
+            Self::SandboxOwnerKey => {
+                "UPDATE sessions SET sandbox_owner_key = ?, updated_at = ?, version = version + 1 WHERE key = ?"
+            },
+        }
+    }
+}
+
 impl SqliteSessionMetadata {
     #[must_use]
     pub fn new(pool: sqlx::SqlitePool) -> Self {
@@ -869,36 +895,33 @@ impl SqliteSessionMetadata {
     }
 
     pub async fn set_project_id(&self, key: &str, project_id: Option<&str>) -> Result<()> {
-        self.update_optional_text(key, "project_id", project_id)
+        self.update_optional_text(key, OptionalTextColumn::ProjectId, project_id)
             .await
     }
 
     pub async fn set_worktree_branch(&self, key: &str, branch: Option<&str>) -> Result<()> {
-        self.update_optional_text(key, "worktree_branch", branch)
+        self.update_optional_text(key, OptionalTextColumn::WorktreeBranch, branch)
             .await
     }
 
     pub async fn set_channel_binding(&self, key: &str, binding: Option<&str>) -> Result<()> {
-        self.update_optional_text(key, "channel_binding", binding)
+        self.update_optional_text(key, OptionalTextColumn::ChannelBinding, binding)
             .await
     }
 
     pub async fn set_sandbox_owner_key(&self, key: &str, owner_key: Option<&str>) -> Result<()> {
-        self.update_optional_text(key, "sandbox_owner_key", owner_key)
+        self.update_optional_text(key, OptionalTextColumn::SandboxOwnerKey, owner_key)
             .await
     }
 
     async fn update_optional_text(
         &self,
         key: &str,
-        column: &'static str,
+        column: OptionalTextColumn,
         value: Option<&str>,
     ) -> Result<()> {
         let now = now_ms();
-        let statement = format!(
-            "UPDATE sessions SET {column} = ?, updated_at = ?, version = version + 1 WHERE key = ?"
-        );
-        let result = sqlx::query(&statement)
+        let result = sqlx::query(column.statement())
             .bind(value)
             .bind(now)
             .bind(key)
