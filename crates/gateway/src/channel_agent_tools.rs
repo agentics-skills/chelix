@@ -37,7 +37,7 @@ impl AgentTool for SendMessageTool {
     }
 
     fn description(&self) -> &str {
-        "Send a proactive message to any configured channel account/chat (Telegram, WhatsApp). Use this for alerts, reminders, and scheduled outreach."
+        "Send a proactive message to any configured channel account/chat (Telegram). Use this for alerts, reminders, and scheduled outreach."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -59,7 +59,7 @@ impl AgentTool for SendMessageTool {
                 },
                 "type": {
                     "type": "string",
-                    "enum": ["telegram", "whatsapp"],
+                    "enum": ["telegram"],
                     "description": "Optional channel type hint when account ids may overlap across channel types."
                 },
                 "reply_to": {
@@ -228,8 +228,6 @@ impl AgentTool for UpdateChannelSettingsTool {
                     "type": "string",
                     "enum": [
                         "telegram",
-                        "whatsapp",
-                        "signal",
                         "telephony"
                     ],
                     "description": "Optional explicit channel type hint if account ids might overlap."
@@ -250,7 +248,7 @@ impl AgentTool for UpdateChannelSettingsTool {
                         "mention_mode": {
                             "type": "string",
                             "enum": ["mention", "always", "none"],
-                            "description": "Supported by Telegram and WhatsApp."
+                            "description": "Supported by Telegram."
                         },
                         "model_override": {
                             "description": "Set the complete canonical model/reasoning override for this account, or null to clear it.",
@@ -286,12 +284,12 @@ impl AgentTool for UpdateChannelSettingsTool {
                         },
                         "otp_self_approval": {
                             "type": "boolean",
-                            "description": "Supported by Telegram, and WhatsApp."
+                            "description": "Supported by Telegram."
                         },
                         "otp_cooldown_secs": {
                             "type": "integer",
                             "minimum": 0,
-                            "description": "Supported by Telegram, and WhatsApp."
+                            "description": "Supported by Telegram."
                         },
                         "reply_to_message": {
                             "type": "boolean",
@@ -303,10 +301,10 @@ impl AgentTool for UpdateChannelSettingsTool {
                             "description": "Supported by Telegram (`edit_in_place`, `off`)."
                         },
                         "channel_override": targeted_model_override_schema(
-                            "Set or clear model/reasoning, provider metadata, or agent overrides for a specific Telegram/WhatsApp channel or chat id."
+                            "Set or clear model/reasoning, provider metadata, or agent overrides for a specific Telegram channel or chat id."
                         ),
                         "user_override": targeted_model_override_schema(
-                            "Set or clear model/reasoning, provider metadata, or agent overrides for a specific Telegram/WhatsApp user id."
+                            "Set or clear model/reasoning, provider metadata, or agent overrides for a specific Telegram user id."
                         )
                     }
                 }
@@ -340,8 +338,7 @@ impl AgentTool for UpdateChannelSettingsTool {
             .ok_or_else(|| anyhow!("stored config for '{account_id}' is not an object"))?;
         let changes = apply_channel_settings_patch(config, channel_type, &patch)?;
 
-        let update_result = self
-            .channel_service
+        self.channel_service
             .update(json!({
                 "account_id": stored.account_id,
                 "type": channel_type.as_str(),
@@ -350,15 +347,12 @@ impl AgentTool for UpdateChannelSettingsTool {
             .await
             .map_err(|e| anyhow!(e.to_string()))?;
 
-        let mut result = json!({
+        let result = json!({
             "ok": true,
             "account_id": account_id,
             "type": channel_type.as_str(),
             "changes": changes,
         });
-        if let Some(warning) = update_result.get("warning").cloned() {
-            result["warning"] = warning;
-        }
         Ok(result)
     }
 }
@@ -539,11 +533,11 @@ fn ensure_supported(channel_type: ChannelType, field: &str, supported: bool) -> 
 }
 
 fn supports_mention_mode(channel_type: ChannelType) -> bool {
-    matches!(channel_type, ChannelType::Telegram | ChannelType::Whatsapp)
+    matches!(channel_type, ChannelType::Telegram)
 }
 
 fn supports_otp_settings(channel_type: ChannelType) -> bool {
-    matches!(channel_type, ChannelType::Telegram | ChannelType::Whatsapp)
+    matches!(channel_type, ChannelType::Telegram)
 }
 
 fn supports_reply_to_message(channel_type: ChannelType) -> bool {
@@ -551,7 +545,7 @@ fn supports_reply_to_message(channel_type: ChannelType) -> bool {
 }
 
 fn supports_model_overrides(channel_type: ChannelType) -> bool {
-    matches!(channel_type, ChannelType::Telegram | ChannelType::Whatsapp)
+    matches!(channel_type, ChannelType::Telegram)
 }
 
 fn set_optional_string(config: &mut Map<String, Value>, key: &str, value: &Option<String>) {
@@ -751,7 +745,6 @@ mod tests {
     struct RecordingChannelService {
         sent: Mutex<Option<Value>>,
         updated: Mutex<Option<Value>>,
-        update_result: Value,
     }
 
     impl RecordingChannelService {
@@ -759,7 +752,6 @@ mod tests {
             Self {
                 sent: Mutex::new(None),
                 updated: Mutex::new(None),
-                update_result: json!({ "ok": true }),
             }
         }
     }
@@ -789,7 +781,7 @@ mod tests {
 
         async fn update(&self, params: Value) -> ServiceResult {
             *self.updated.lock().await = Some(params);
-            Ok(self.update_result.clone())
+            Ok(json!({ "ok": true }))
         }
 
         async fn senders_list(&self, _params: Value) -> ServiceResult {
@@ -1104,44 +1096,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_channel_settings_updates_whatsapp_mentions_and_agent() {
-        let service = Arc::new(RecordingChannelService::new());
-        let store = Arc::new(MemoryChannelStore::new(vec![stored_channel(
-            "wa-main",
-            "whatsapp",
-            json!({
-                "paired": true,
-                "mention_mode": "always",
-                "allowlist": [],
-                "group_allowlist": []
-            }),
-        )]));
-        let tool = UpdateChannelSettingsTool::new(
-            service.clone() as Arc<dyn ChannelService>,
-            Some(store as Arc<dyn ChannelStore>),
-        );
-
-        tool.execute(json!({
-            "account_id": "wa-main",
-            "settings": {
-                "mention_mode": "mention",
-                "agent_id": "triage"
-            }
-        }))
-        .await
-        .expect("whatsapp mention_mode should be supported");
-
-        let updated = service
-            .updated
-            .lock()
-            .await
-            .clone()
-            .expect("captured update payload");
-        assert_eq!(updated["config"]["mention_mode"], "mention");
-        assert_eq!(updated["config"]["agent_id"], "triage");
-    }
-
-    #[tokio::test]
     async fn update_channel_settings_replaces_complete_model_override() {
         let service = Arc::new(RecordingChannelService::new());
         let store = Arc::new(MemoryChannelStore::new(vec![stored_channel(
@@ -1275,8 +1229,8 @@ mod tests {
     async fn update_channel_settings_rejects_stream_mode_for_unsupported_channel() {
         let service = Arc::new(RecordingChannelService::new());
         let store = Arc::new(MemoryChannelStore::new(vec![stored_channel(
-            "sig-main",
-            "signal",
+            "tel-main",
+            "telephony",
             json!({}),
         )]));
         let tool = UpdateChannelSettingsTool::new(
@@ -1286,23 +1240,23 @@ mod tests {
 
         let err = tool
             .execute(json!({
-                "account_id": "sig-main",
+                "account_id": "tel-main",
                 "settings": {
                     "stream_mode": "off"
                 }
             }))
             .await
-            .expect_err("signal should reject stream mode settings");
+            .expect_err("telephony should reject stream mode settings");
 
         assert_eq!(
             err.to_string(),
-            "'stream_mode' is not supported for channel type 'signal'"
+            "'stream_mode' is not supported for channel type 'telephony'"
         );
         assert!(service.updated.lock().await.is_none());
     }
 
     #[tokio::test]
-    async fn send_message_tool_schema_lists_telegram_and_whatsapp() {
+    async fn send_message_tool_schema_lists_telegram() {
         let tool = SendMessageTool::new(Arc::new(RecordingChannelService::new()));
         let schema = tool.parameters_schema();
         let channel_types = schema["properties"]["type"]["enum"]
@@ -1310,6 +1264,5 @@ mod tests {
             .expect("channel type enum");
 
         assert!(channel_types.iter().any(|value| value == "telegram"));
-        assert!(channel_types.iter().any(|value| value == "whatsapp"));
     }
 }

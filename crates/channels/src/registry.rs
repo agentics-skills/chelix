@@ -192,7 +192,6 @@ impl ChannelRegistry {
                             connected: false,
                             account_id: account_id.clone(),
                             details: Some(format!("probe error: {e}")),
-                            extra: None,
                         });
                     },
                 }
@@ -617,7 +616,6 @@ mod tests {
                 connected: self.has_account(account_id),
                 account_id: account_id.to_string(),
                 details: None,
-                extra: None,
             })
         }
     }
@@ -724,7 +722,7 @@ mod tests {
             .register(Arc::new(RwLock::new(TestPlugin::new("telegram"))))
             .await;
         registry
-            .register(Arc::new(RwLock::new(TestPlugin::new("signal"))))
+            .register(Arc::new(RwLock::new(TestPlugin::new("telephony"))))
             .await;
 
         registry
@@ -733,7 +731,7 @@ mod tests {
             .unwrap();
 
         let result = registry
-            .start_account("signal", "shared-id", serde_json::json!({}))
+            .start_account("telephony", "shared-id", serde_json::json!({}))
             .await;
         assert!(result.is_err());
     }
@@ -773,7 +771,7 @@ mod tests {
             .register(Arc::new(RwLock::new(TestPlugin::new("telegram"))))
             .await;
         registry
-            .register(Arc::new(RwLock::new(TestPlugin::new("signal"))))
+            .register(Arc::new(RwLock::new(TestPlugin::new("telephony"))))
             .await;
 
         registry
@@ -781,15 +779,15 @@ mod tests {
             .await
             .unwrap();
         registry
-            .start_account("signal", "sig1", serde_json::json!({}))
+            .start_account("telephony", "tel1", serde_json::json!({}))
             .await
             .unwrap();
 
         let mut accounts = registry.all_accounts();
         accounts.sort();
         assert_eq!(accounts, vec![
-            ("signal".into(), "sig1".into()),
             ("telegram".into(), "tg1".into()),
+            ("telephony".into(), "tel1".into()),
         ]);
     }
 
@@ -892,7 +890,7 @@ mod tests {
             .register(Arc::new(RwLock::new(TestPlugin::new("telegram"))))
             .await;
         registry
-            .register(Arc::new(RwLock::new(TestPlugin::new("signal"))))
+            .register(Arc::new(RwLock::new(TestPlugin::new("telephony"))))
             .await;
 
         let mut descs: Vec<String> = registry
@@ -901,7 +899,7 @@ mod tests {
             .map(|d| d.channel_type.to_string())
             .collect();
         descs.sort();
-        assert_eq!(descs, vec!["signal", "telegram"]);
+        assert_eq!(descs, vec!["telegram", "telephony"]);
     }
 
     #[test]

@@ -1,7 +1,7 @@
 # Slash Commands
 
 Slash commands are available in the **web UI chat input**, on all **messaging
-channels** (Telegram, WhatsApp, etc.), and where noted, via the
+channels** (Telegram), and where noted, via the
 **CLI**.
 
 Type `/` in the chat input to see the autocomplete popup.

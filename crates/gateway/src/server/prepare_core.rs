@@ -729,6 +729,7 @@ pub async fn prepare_gateway_core(
         vault.clone(),
         Arc::clone(&message_log),
         Arc::clone(&session_metadata),
+        #[cfg(any(feature = "telegram", feature = "telephony"))]
         Arc::clone(&deferred_state),
         &data_dir,
     )

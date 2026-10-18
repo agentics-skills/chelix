@@ -9,7 +9,7 @@ import { sendRpc } from "../../../helpers";
 import { targetValue } from "../../../typed-events";
 import { ChannelType } from "../../../types/channel";
 import { Modal } from "../../../ui";
-import { type ChannelConfig, channelLabel, channelType, editingChannel, loadChannels } from "../../ChannelsPage";
+import { type ChannelConfig, channelType, editingChannel, loadChannels } from "../../ChannelsPage";
 import {
 	AdvancedConfigPatchField,
 	AllowlistInput,
@@ -22,9 +22,6 @@ interface EditChannelDraft {
 	reasoningEffort: string;
 	agent: string;
 	allowlist: string[];
-	roomAllowlist: string[];
-	signalAccount: string;
-	signalHttpUrl: string;
 }
 
 function configString(value: unknown, fallback = ""): string {
@@ -41,9 +38,6 @@ function channelEditDraft(config: ChannelConfig): EditChannelDraft {
 		reasoningEffort: configString(config.model_override?.reasoning_effort),
 		agent: configString(config.agent_id),
 		allowlist: firstConfigArray([config.allowlist, config.allowed_pubkeys]),
-		roomAllowlist: firstConfigArray([config.group_allowlist]),
-		signalAccount: configString(config.account),
-		signalHttpUrl: configString(config.http_url, "http://127.0.0.1:8080"),
 	};
 }
 
@@ -53,32 +47,8 @@ function formFieldValue(form: HTMLElement, field: string, fallback: string): str
 	);
 }
 
-function applyChannelCredentials(
-	config: ChannelConfig,
-	channelKind: string,
-	current: ChannelConfig,
-	draft: EditChannelDraft,
-): void {
+function applyChannelCredentials(config: ChannelConfig, channelKind: string, current: ChannelConfig): void {
 	if (channelKind === ChannelType.Telegram) config.token = current.token || "";
-	if (channelKind === ChannelType.Signal) {
-		config.account = draft.signalAccount.trim();
-		config.http_url = draft.signalHttpUrl.trim() || "http://127.0.0.1:8080";
-	}
-}
-
-function applySignalPolicy(
-	config: ChannelConfig,
-	current: ChannelConfig,
-	draft: EditChannelDraft,
-	form: HTMLElement,
-): void {
-	config.group_policy = formFieldValue(form, "groupPolicy", configString(current.group_policy, "disabled"));
-	config.group_allowlist = draft.roomAllowlist;
-	config.otp_self_approval = current.otp_self_approval !== false;
-	config.otp_cooldown_secs = current.otp_cooldown_secs ?? 300;
-	config.ignore_stories = current.ignore_stories !== false;
-	config.text_chunk_limit = (current.text_chunk_limit as number) || 4000;
-	if (current.account_uuid) config.account_uuid = current.account_uuid as string;
 }
 
 function buildChannelUpdateConfig(
@@ -87,115 +57,52 @@ function buildChannelUpdateConfig(
 	current: ChannelConfig,
 	draft: EditChannelDraft,
 ): ChannelConfig {
-	const isWhatsApp = channelKind === ChannelType.WhatsApp;
 	const config: ChannelConfig = {
-		dm_policy: formFieldValue(form, "dmPolicy", isWhatsApp ? "open" : "allowlist"),
+		dm_policy: formFieldValue(form, "dmPolicy", "allowlist"),
 		allowlist: draft.allowlist,
 		agent_id: draft.agent || null,
+		mention_mode: formFieldValue(form, "mentionMode", "mention"),
 	};
-	if (channelKind === ChannelType.Signal) applySignalPolicy(config, current, draft, form);
-	if (!isWhatsApp) config.mention_mode = formFieldValue(form, "mentionMode", "mention");
-	applyChannelCredentials(config, channelKind, current, draft);
+	applyChannelCredentials(config, channelKind, current);
 	return config;
-}
-
-interface SignalEditFieldsProps {
-	account: Signal<string>;
-	httpUrl: Signal<string>;
-}
-
-function SignalEditFields({ account, httpUrl }: SignalEditFieldsProps): VNode {
-	return (
-		<>
-			<label>
-				<span className="text-xs text-[var(--muted)]">Signal Account</span>
-				<input
-					type="text"
-					className="channel-input w-full"
-					value={account.value}
-					onInput={(event) => {
-						account.value = targetValue(event);
-					}}
-					placeholder="+15551234567"
-				/>
-			</label>
-			<label>
-				<span className="text-xs text-[var(--muted)]">signal-cli Daemon URL</span>
-				<input
-					type="url"
-					className="channel-input w-full"
-					value={httpUrl.value}
-					onInput={(event) => {
-						httpUrl.value = targetValue(event);
-					}}
-					placeholder="http://127.0.0.1:8080"
-				/>
-			</label>
-		</>
-	);
 }
 
 interface ChannelPolicyFieldsProps {
 	config: ChannelConfig;
-	isWhatsApp: boolean;
-	isSignal: boolean;
 }
 
-function ChannelPolicyFields({ config, isWhatsApp, isSignal }: ChannelPolicyFieldsProps): VNode {
+function ChannelPolicyFields({ config }: ChannelPolicyFieldsProps): VNode {
 	return (
 		<>
 			<label>
 				<span className="text-xs text-[var(--muted)]">DM Policy</span>
-				<select
-					data-field="dmPolicy"
-					className="channel-select"
-					value={configString(config.dm_policy, isWhatsApp ? "open" : "allowlist")}
-				>
-					{isWhatsApp ? <option value="open">Open (anyone)</option> : null}
+				<select data-field="dmPolicy" className="channel-select" value={configString(config.dm_policy, "allowlist")}>
 					<option value="allowlist">Allowlist only</option>
-					{isWhatsApp ? null : <option value="open">Open (anyone)</option>}
+					<option value="open">Open (anyone)</option>
 					<option value="disabled">Disabled</option>
 				</select>
 			</label>
-			{isWhatsApp ? null : (
-				<label>
-					<span className="text-xs text-[var(--muted)]">Group Mention Mode</span>
-					<select
-						data-field="mentionMode"
-						className="channel-select"
-						value={configString(config.mention_mode, "mention")}
-					>
-						<option value="mention">Must @mention bot</option>
-						<option value="always">Always respond</option>
-						<option value="none">Don't respond in groups</option>
-					</select>
-				</label>
-			)}
-			{isSignal ? (
-				<label>
-					<span className="text-xs text-[var(--muted)]">Group Policy</span>
-					<select
-						data-field="groupPolicy"
-						className="channel-select"
-						value={configString(config.group_policy, "disabled")}
-					>
-						<option value="disabled">Disabled</option>
-						<option value="allowlist">Allowlist only</option>
-						<option value="open">Open (any group)</option>
-					</select>
-				</label>
-			) : null}
+			<label>
+				<span className="text-xs text-[var(--muted)]">Group Mention Mode</span>
+				<select
+					data-field="mentionMode"
+					className="channel-select"
+					value={configString(config.mention_mode, "mention")}
+				>
+					<option value="mention">Must @mention bot</option>
+					<option value="always">Always respond</option>
+					<option value="none">Don't respond in groups</option>
+				</select>
+			</label>
 		</>
 	);
 }
 
 interface ChannelAllowlistFieldsProps {
-	isSignal: boolean;
 	allowlist: Signal<string[]>;
-	roomAllowlist: Signal<string[]>;
 }
 
-function ChannelAllowlistFields({ isSignal, allowlist, roomAllowlist }: ChannelAllowlistFieldsProps): VNode {
+function ChannelAllowlistFields({ allowlist }: ChannelAllowlistFieldsProps): VNode {
 	return (
 		<>
 			<span className="text-xs text-[var(--muted)]">DM Allowlist</span>
@@ -206,18 +113,6 @@ function ChannelAllowlistFields({ isSignal, allowlist, roomAllowlist }: ChannelA
 					allowlist.value = value;
 				}}
 			/>
-			{isSignal ? (
-				<>
-					<span className="text-xs text-[var(--muted)]">Group Allowlist</span>
-					<AllowlistInput
-						ariaLabel="Group Allowlist"
-						value={roomAllowlist.value}
-						onChange={(value) => {
-							roomAllowlist.value = value;
-						}}
-					/>
-				</>
-			) : null}
 		</>
 	);
 }
@@ -231,9 +126,6 @@ export function EditChannelModal(): VNode | null {
 	const editAgent = useSignal("");
 	const agentsList = useSignal<Array<{ id: string; name: string; emoji?: string }>>([]);
 	const allowlistItems = useSignal<string[]>([]);
-	const roomAllowlistItems = useSignal<string[]>([]);
-	const editSignalAccount = useSignal("");
-	const editSignalHttpUrl = useSignal("http://127.0.0.1:8080");
 	const editAdvancedConfigPatch = useSignal("");
 
 	useEffect(() => {
@@ -242,9 +134,6 @@ export function EditChannelModal(): VNode | null {
 		editReasoningEffort.value = draft.reasoningEffort;
 		editAgent.value = draft.agent;
 		allowlistItems.value = draft.allowlist;
-		roomAllowlistItems.value = draft.roomAllowlist;
-		editSignalAccount.value = draft.signalAccount;
-		editSignalHttpUrl.value = draft.signalHttpUrl;
 		editAdvancedConfigPatch.value = "";
 	}, [ch]);
 
@@ -261,9 +150,7 @@ export function EditChannelModal(): VNode | null {
 
 	const cfg = ch.config || {};
 	const chType = channelType(ch.type);
-	const isWhatsApp = chType === ChannelType.WhatsApp;
 	const isTelegram = chType === ChannelType.Telegram;
-	const isSignal = chType === ChannelType.Signal;
 
 	function currentDraft(): EditChannelDraft {
 		return {
@@ -271,9 +158,6 @@ export function EditChannelModal(): VNode | null {
 			reasoningEffort: editReasoningEffort.value,
 			agent: editAgent.value,
 			allowlist: allowlistItems.value,
-			roomAllowlist: roomAllowlistItems.value,
-			signalAccount: editSignalAccount.value,
-			signalHttpUrl: editSignalHttpUrl.value,
 		};
 	}
 
@@ -320,7 +204,7 @@ export function EditChannelModal(): VNode | null {
 			onClose={() => {
 				editingChannel.value = null;
 			}}
-			title={`Edit ${channelLabel(ch.type)} Channel`}
+			title="Edit Telegram Channel"
 		>
 			<div className="channel-form">
 				<div className="text-sm text-[var(--text-strong)]">{ch.name || ch.account_id}</div>
@@ -334,8 +218,7 @@ export function EditChannelModal(): VNode | null {
 						t.me/{ch.account_id}
 					</a>
 				)}
-				{isSignal ? <SignalEditFields account={editSignalAccount} httpUrl={editSignalHttpUrl} /> : null}
-				<ChannelPolicyFields config={cfg} isWhatsApp={isWhatsApp} isSignal={isSignal} />
+				<ChannelPolicyFields config={cfg} />
 				<ChannelModelFields model={editModel} reasoningEffort={editReasoningEffort} />
 				<label>
 					<span className="text-xs text-[var(--muted)]">Agent</span>
@@ -355,7 +238,7 @@ export function EditChannelModal(): VNode | null {
 						))}
 					</select>
 				</label>
-				<ChannelAllowlistFields isSignal={isSignal} allowlist={allowlistItems} roomAllowlist={roomAllowlistItems} />
+				<ChannelAllowlistFields allowlist={allowlistItems} />
 				<AdvancedConfigPatchField
 					value={editAdvancedConfigPatch.value}
 					onInput={(value) => {

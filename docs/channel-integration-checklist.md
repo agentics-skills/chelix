@@ -31,14 +31,13 @@ Use this when adding a new channel crate or bringing an existing one to parity.
 
 ## Feature inventory across current channels
 
-- Inbound connection modes: `none`, polling, persistent gateway loop, and webhook.
+- Inbound connection modes: `none`, polling, and webhook.
 - Outbound text plus basic rich text or HTML rendering.
 - Configurable streaming responses.
 - Interactive flows, native in some channels and fallback-driven in others.
 - Reply support and thread support where the platform has a thread model.
-- Voice or audio ingest in Telegram, WhatsApp.
-- Pairing in WhatsApp.
-- OTP approval flow for unknown DM users in Telegram, WhatsApp.
+- Voice or audio ingest in Telegram.
+- OTP approval flow for unknown DM users in Telegram.
 - Location send or receive support in Telegram.
 - Access control patterns: DM policy, group policy, allowlists, mention mode.
 - Web UI support: add, edit, onboarding, icons, setup help, advanced JSON patch

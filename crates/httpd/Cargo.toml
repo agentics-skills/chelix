@@ -57,7 +57,6 @@ default = [
   "metrics",
   "prometheus",
   "push-notifications",
-  "signal",
   "telephony",
   "tls",
   "vault",
@@ -68,7 +67,6 @@ mdns = ["chelix-gateway/mdns", "dep:hostname"]
 metrics = ["chelix-gateway/metrics", "dep:chelix-metrics"]
 prometheus = ["chelix-gateway/prometheus", "metrics"]
 push-notifications = ["chelix-gateway/push-notifications", "dep:chrono"]
-signal = ["chelix-gateway/signal"]
 telephony = ["chelix-gateway/telephony", "dep:chelix-telephony"]
 tls = ["chelix-gateway/tls", "dep:chelix-tls", "dep:rustls"]
 vault = ["chelix-gateway/vault", "dep:chelix-vault"]

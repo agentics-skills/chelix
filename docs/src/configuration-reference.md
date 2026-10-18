@@ -81,8 +81,6 @@
   - [`memory`](#memory)
 - **Scheduling**
   - [`cron`](#cron)
-  - [`caldav`](#caldav)
-  - [`caldav.accounts.<name>`](#caldavaccountsname)
 - **LLM Providers**
   - [`providers`](#providers)
   - [`providers.<name>.policy`](#providersnamepolicy)
@@ -539,8 +537,8 @@ Docker `cp` into that rootfs fails explicitly. See
 
 | Key              | Type                       | Default                                                                                | Description                                                                                                                                                                    |
 | ---------------- | -------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `offered`        | array of string            | `["telegram", "whatsapp", "signal"]` | Which channel types are offered in the web UI (onboarding + channels page).                                                                                                    |
-| `<channel_type>` | map of `serde_json::Value` | `{}`                                                                          | Account configs keyed by account name. Known types: `telegram`, `whatsapp`, `signal`, `telephony`. Channel types are validated against this set. |
+| `offered`        | array of string            | `["telegram"]` | Which channel types are offered in the web UI (onboarding + channels page).                                                                                                    |
+| `<channel_type>` | map of `serde_json::Value` | `{}`                                                                          | Account configs keyed by account name. Known types: `telegram`, `telephony`. Channel types are validated against this set. |
 
 Each channel account (`channels.<channel_type>.<account_name>`) is an arbitrary
 JSON object that may contain provider-specific keys plus a `tools` sub-block
@@ -657,28 +655,6 @@ JSON object that may contain provider-specific keys plus a `tools` sub-block
 | `rate_limit_window_secs`     | integer          | `60`    | Rate limit window in seconds.                                                  |
 | `session_retention_days`     | optional integer | `7`     | Days to retain cron session data before auto-cleanup. `None` disables pruning. |
 | `auto_prune_cron_containers` | bool             | `true`  | Whether to auto-prune sandbox containers after cron job completion.            |
-
-### `caldav`
-
-**Struct:** `CalDavConfig`
-
-| Key               | Type                                | Default | Description                                         |
-| ----------------- | ----------------------------------- | ------- | --------------------------------------------------- |
-| `enabled`         | bool                                | `false` | Whether CalDAV integration is enabled.              |
-| `default_account` | optional string                     | —       | Default account name to use when none is specified. |
-| `accounts`        | map of name → `CalDavAccountConfig` | `{}`    | Named CalDAV accounts.                              |
-
-### `caldav.accounts.<name>`
-
-**Struct:** `CalDavAccountConfig`
-
-| Key               | Type                     | Default | Description                                              |
-| ----------------- | ------------------------ | ------- | -------------------------------------------------------- |
-| `url`             | optional string          | —       | CalDAV server URL.                                       |
-| `username`        | optional string          | —       | Username for authentication.                             |
-| `password`        | optional string (secret) | —       | Password or app-specific password.                       |
-| `provider`        | optional string          | —       | Provider hint: `"fastmail"`, `"icloud"`, or `"generic"`. |
-| `timeout_seconds` | integer                  | `30`    | HTTP request timeout in seconds.                         |
 
 ---
 

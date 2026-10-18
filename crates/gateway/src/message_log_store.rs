@@ -272,8 +272,8 @@ mod tests {
 
         let entry = MessageLogEntry {
             id: 0,
-            account_id: "signal-bot".into(),
-            channel_type: "signal".into(),
+            account_id: "telephony-bot".into(),
+            channel_type: "telephony".into(),
             peer_id: "+15551234567".into(),
             username: Some("+15551234567".into()),
             sender_name: Some("Alice".into()),
@@ -286,7 +286,10 @@ mod tests {
 
         store.log(entry).await.unwrap();
 
-        let senders = store.unique_senders("signal", "signal-bot").await.unwrap();
+        let senders = store
+            .unique_senders("telephony", "telephony-bot")
+            .await
+            .unwrap();
         assert_eq!(senders.len(), 1);
         assert_eq!(senders[0].peer_id, "+15551234567");
         assert!(!senders[0].last_access_granted);

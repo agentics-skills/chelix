@@ -1,24 +1,17 @@
 // ── Channel form sub-components for onboarding ───────────────
 //
-// Shared helpers and simple channel forms (Telegram, Signal).
-// Complex forms (WhatsApp) live in ChannelStep.tsx.
+// Shared helpers and the Telegram form.
 
 import type { VNode } from "preact";
 import { useState } from "preact/hooks";
-import {
-	addChannel,
-	channelStorageNote,
-	deriveSignalAccountId,
-	parseChannelConfigPatch,
-	validateChannelFields,
-} from "../../channel-utils";
+import { addChannel, channelStorageNote, parseChannelConfigPatch, validateChannelFields } from "../../channel-utils";
 import { targetValue } from "../../typed-events";
 import { ErrorPanel } from "../shared";
 
 // ── Types ───────────────────────────────────────────────────
 
 export interface ChannelFormProps {
-	onConnected: (name: string, type: string) => void;
+	onConnected: (name: string) => void;
 	error: string | null;
 	setError: (e: string | null) => void;
 }
@@ -73,11 +66,7 @@ interface ChannelTypeSelectorProps {
 
 export function ChannelTypeSelector({ onSelect, offered }: ChannelTypeSelectorProps): VNode {
 	const channelOptions: [string, string, string][] = (
-		[
-			["telegram", "icon-telegram", "Telegram"],
-			["whatsapp", "icon-whatsapp", "WhatsApp"],
-			["signal", "icon-signal", "Signal"],
-		] as [string, string, string][]
+		[["telegram", "icon-telegram", "Telegram"]] as [string, string, string][]
 	).filter(([type]) => offered.has(type));
 
 	return (
@@ -99,22 +88,7 @@ export function ChannelTypeSelector({ onSelect, offered }: ChannelTypeSelectorPr
 
 // ── Channel success display ─────────────────────────────────
 
-export function channelDisplayLabel(type: string): string {
-	if (type === "whatsapp") return "WhatsApp";
-	if (type === "signal") return "Signal";
-	return "Telegram";
-}
-
-export function ChannelSuccess({
-	channelName,
-	channelType: type,
-	onAnother,
-}: {
-	channelName: string;
-	channelType: string;
-	onAnother: () => void;
-}): VNode {
-	const label = channelDisplayLabel(type);
+export function ChannelSuccess({ channelName, onAnother }: { channelName: string; onAnother: () => void }): VNode {
 	return (
 		<div className="flex flex-col gap-3">
 			<div className="rounded-md border border-[var(--ok)] bg-[var(--surface)] p-4 flex gap-3 items-center">
@@ -122,7 +96,7 @@ export function ChannelSuccess({
 				<div>
 					<div className="text-sm font-medium text-[var(--text-strong)]">Channel connected</div>
 					<div className="text-xs text-[var(--muted)] mt-0.5">
-						{channelName} ({label}) is now linked to your agent.
+						{channelName} (Telegram) is now linked to your agent.
 					</div>
 				</div>
 			</div>
@@ -181,7 +155,7 @@ export function TelegramForm({ onConnected, error, setError }: ChannelFormProps)
 		).then((res) => {
 			setSaving(false);
 			if (res?.ok) {
-				onConnected(accountId.trim(), "telegram");
+				onConnected(accountId.trim());
 			} else {
 				setError((res?.error && (res.error.message || res.error.detail)) || "Failed to connect bot.");
 			}
@@ -270,178 +244,6 @@ export function TelegramForm({ onConnected, error, setError }: ChannelFormProps)
 			{error && <ErrorPanel message={error} />}
 			<button type="submit" className="provider-btn" disabled={saving}>
 				{saving ? "Connecting\u2026" : "Connect Bot"}
-			</button>
-		</form>
-	);
-}
-
-// ── Signal form ──────────────────────────────────────────────
-
-export function SignalForm({ onConnected, error, setError }: ChannelFormProps): VNode {
-	const [account, setAccount] = useState("");
-	const [httpUrl, setHttpUrl] = useState("http://127.0.0.1:8080");
-	const [dmPolicy, setDmPolicy] = useState("allowlist");
-	const [groupPolicy, setGroupPolicy] = useState("disabled");
-	const [allowlist, setAllowlist] = useState("");
-	const [groupAllowlist, setGroupAllowlist] = useState("");
-	const [advancedConfig, setAdvancedConfig] = useState("");
-	const [saving, setSaving] = useState(false);
-
-	function splitLines(value: string): string[] {
-		return value
-			.trim()
-			.split(/\n/)
-			.map((s) => s.trim())
-			.filter(Boolean);
-	}
-
-	function onSubmit(e: Event): void {
-		e.preventDefault();
-		if (!account.trim()) {
-			setError("Signal account (phone number) is required.");
-			return;
-		}
-		if (!httpUrl.trim()) {
-			setError("signal-cli daemon URL is required.");
-			return;
-		}
-		const advancedPatch = parseChannelConfigPatch(advancedConfig);
-		if (!advancedPatch.ok) {
-			setError(advancedPatch.error);
-			return;
-		}
-		setError(null);
-		setSaving(true);
-		const accountId = deriveSignalAccountId(account);
-		const config: Record<string, unknown> = {
-			http_url: httpUrl.trim(),
-			dm_policy: dmPolicy,
-			allowlist: splitLines(allowlist),
-			group_policy: groupPolicy,
-			group_allowlist: splitLines(groupAllowlist),
-			mention_mode: "mention",
-			account: account.trim(),
-		};
-		Object.assign(config, advancedPatch.value);
-		(
-			addChannel("signal", accountId, config) as Promise<{
-				ok?: boolean;
-				error?: { message?: string; detail?: string };
-			}>
-		).then((res) => {
-			setSaving(false);
-			if (res?.ok) {
-				onConnected(accountId, "signal");
-			} else {
-				setError((res?.error && (res.error.message || res.error.detail)) || "Failed to connect Signal.");
-			}
-		});
-	}
-
-	return (
-		<form onSubmit={onSubmit} className="flex flex-col gap-3">
-			<div className="rounded-md border border-[var(--border)] bg-[var(--surface2)] p-3 text-xs text-[var(--muted)] flex flex-col gap-1">
-				<span className="font-medium text-[var(--text-strong)]">Requires signal-cli</span>
-				<span>
-					Signal integration requires a running{" "}
-					<a
-						href="https://github.com/AsamK/signal-cli"
-						target="_blank"
-						rel="noopener noreferrer"
-						className="underline text-[var(--text-strong)]"
-					>
-						signal-cli
-					</a>{" "}
-					daemon with JSON-RPC HTTP enabled. Install it, register or link your Signal account, then start the daemon:
-				</span>
-				<code className="text-[10px] bg-[var(--surface1)] px-1.5 py-0.5 rounded mt-0.5">
-					signal-cli daemon --http localhost:8080
-				</code>
-			</div>
-			<div>
-				<label>
-					<span className="text-xs text-[var(--muted)] mb-1 block">Signal Account (phone number)</span>
-					<input
-						type="text"
-						className="provider-key-input w-full"
-						value={account}
-						onInput={(e) => setAccount(targetValue(e))}
-						placeholder="+15551234567"
-						autoComplete="off"
-						autoCapitalize="none"
-						autoCorrect="off"
-						spellcheck={false}
-						name="signal_account"
-					/>
-				</label>
-			</div>
-			<div>
-				<label>
-					<span className="text-xs text-[var(--muted)] mb-1 block">signal-cli Daemon URL</span>
-					<input
-						type="url"
-						className="provider-key-input w-full"
-						value={httpUrl}
-						onInput={(e) => setHttpUrl(targetValue(e))}
-						placeholder="http://127.0.0.1:8080"
-						name="signal_http_url"
-					/>
-				</label>
-			</div>
-			<div>
-				<label>
-					<span className="text-xs text-[var(--muted)] mb-1 block">DM Policy</span>
-					<select className="channel-select w-full" value={dmPolicy} onChange={(e) => setDmPolicy(targetValue(e))}>
-						<option value="allowlist">Allowlist only</option>
-						<option value="open">Open (anyone)</option>
-						<option value="disabled">Disabled</option>
-					</select>
-				</label>
-			</div>
-			<div>
-				<label>
-					<span className="text-xs text-[var(--muted)] mb-1 block">Group Policy</span>
-					<select
-						className="channel-select w-full"
-						value={groupPolicy}
-						onChange={(e) => setGroupPolicy(targetValue(e))}
-					>
-						<option value="disabled">Disabled</option>
-						<option value="allowlist">Allowlist only</option>
-						<option value="open">Open (any group)</option>
-					</select>
-				</label>
-			</div>
-			<div>
-				<label>
-					<span className="text-xs text-[var(--muted)] mb-1 block">DM Allowlist</span>
-					<textarea
-						className="provider-key-input w-full"
-						rows={2}
-						value={allowlist}
-						onInput={(e) => setAllowlist(targetValue(e))}
-						placeholder={"+15551234567\n550e8400-e29b-41d4-a716-446655440000"}
-						name="signal_allowlist"
-					/>
-				</label>
-			</div>
-			<div>
-				<label>
-					<span className="text-xs text-[var(--muted)] mb-1 block">Group Allowlist</span>
-					<textarea
-						className="provider-key-input w-full"
-						rows={2}
-						value={groupAllowlist}
-						onInput={(e) => setGroupAllowlist(targetValue(e))}
-						placeholder="base64-encoded Signal group ID"
-						name="signal_group_allowlist"
-					/>
-				</label>
-			</div>
-			<AdvancedConfigPatchField value={advancedConfig} onInput={setAdvancedConfig} />
-			{error && <div className="text-xs text-[var(--error)]">{error}</div>}
-			<button type="submit" className="provider-btn self-start" disabled={saving}>
-				{saving ? "Connecting\u2026" : "Connect Signal"}
 			</button>
 		</form>
 	);

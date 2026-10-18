@@ -607,13 +607,6 @@ pub(super) async fn complete_startup(
         #[cfg(feature = "duckduckgo")]
         chelix_duckduckgo::register_tools(&mut tool_registry, &config.tools.duckduckgo)?;
 
-        #[cfg(feature = "caldav")]
-        {
-            if let Some(t) = chelix_caldav::tool::CalDavTool::from_config(&config.caldav) {
-                tool_registry.register(Box::new(t));
-            }
-        }
-
         #[cfg(feature = "home-assistant")]
         {
             if let Some(t) =

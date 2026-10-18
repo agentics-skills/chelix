@@ -355,8 +355,6 @@ pub(crate) fn build_schema_map() -> KnownKeys {
             Struct(HashMap::from([
                 ("offered", Array(Box::new(Leaf))),
                 ("telegram", Map(Box::new(channel_account()))),
-                ("whatsapp", Map(Box::new(channel_account()))),
-                ("signal", Map(Box::new(channel_account()))),
                 ("telephony", Map(Box::new(channel_account()))),
             ]))
         }),
@@ -436,23 +434,6 @@ pub(crate) fn build_schema_map() -> KnownKeys {
         ),
         ("env", Map(Box::new(Leaf))),
         ("upstream_proxy", Leaf),
-        (
-            "caldav",
-            Struct(HashMap::from([
-                ("enabled", Leaf),
-                ("default_account", Leaf),
-                (
-                    "accounts",
-                    Map(Box::new(Struct(HashMap::from([
-                        ("url", Leaf),
-                        ("username", Leaf),
-                        ("password", Leaf),
-                        ("provider", Leaf),
-                        ("timeout_seconds", Leaf),
-                    ])))),
-                ),
-            ])),
-        ),
         (
             "home_assistant",
             Struct(HashMap::from([

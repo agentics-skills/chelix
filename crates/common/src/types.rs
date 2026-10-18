@@ -9,7 +9,7 @@ pub type AccountId = String;
 /// Unique identifier for a peer (user on a channel).
 pub type PeerId = String;
 
-/// Channel identifier (e.g. "telegram", "whatsapp").
+/// Channel identifier (e.g. "telegram").
 pub type ChannelId = String;
 
 /// Chat type for routing and session scoping.

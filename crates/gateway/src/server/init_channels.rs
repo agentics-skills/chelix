@@ -26,7 +26,9 @@ pub(crate) async fn init_channels(
     #[cfg(feature = "vault")] vault: Option<Arc<chelix_vault::Vault>>,
     message_log: Arc<dyn chelix_channels::message_log::MessageLog>,
     session_metadata: Arc<chelix_sessions::metadata::SqliteSessionMetadata>,
-    deferred_state: Arc<tokio::sync::OnceCell<Arc<crate::state::GatewayState>>>,
+    #[cfg(any(feature = "telegram", feature = "telephony"))] deferred_state: Arc<
+        tokio::sync::OnceCell<Arc<crate::state::GatewayState>>,
+    >,
     data_dir: &std::path::Path,
 ) -> anyhow::Result<ChannelInitResult> {
     use chelix_channels::{
@@ -49,6 +51,7 @@ pub(crate) async fn init_channels(
         crate::channel_store::VaultChannelStore::new(channel_store, vault.clone()),
     );
 
+    #[cfg(any(feature = "telegram", feature = "telephony"))]
     let channel_sink: Arc<dyn chelix_channels::ChannelEventSink> = Arc::new(
         crate::channel_events::GatewayChannelEventSink::new(Arc::clone(&deferred_state)),
     );
@@ -67,36 +70,6 @@ pub(crate) async fn init_channels(
             .register(tg_plugin as Arc<tokio::sync::RwLock<dyn ChannelPlugin>>)
             .await;
     }
-
-    #[cfg(feature = "signal")]
-    {
-        let signal_plugin = Arc::new(tokio::sync::RwLock::new(
-            chelix_signal::SignalPlugin::new()
-                .with_message_log(Arc::clone(&message_log))
-                .with_event_sink(Arc::clone(&channel_sink)),
-        ));
-        registry
-            .register(signal_plugin as Arc<tokio::sync::RwLock<dyn ChannelPlugin>>)
-            .await;
-    }
-
-    #[cfg(feature = "whatsapp")]
-    {
-        let wa_data_dir = data_dir.join("whatsapp");
-        if let Err(e) = std::fs::create_dir_all(&wa_data_dir) {
-            tracing::warn!("failed to create whatsapp data dir: {e}");
-        }
-        let whatsapp_plugin = Arc::new(tokio::sync::RwLock::new(
-            chelix_whatsapp::WhatsAppPlugin::new(wa_data_dir)
-                .with_message_log(Arc::clone(&message_log))
-                .with_event_sink(Arc::clone(&channel_sink)),
-        ));
-        registry
-            .register(whatsapp_plugin as Arc<tokio::sync::RwLock<dyn ChannelPlugin>>)
-            .await;
-    }
-    #[cfg(not(feature = "whatsapp"))]
-    let _ = &channel_sink; // silence unused warning
 
     #[cfg(feature = "telephony")]
     let telephony_webhook_plugin: Arc<tokio::sync::RwLock<chelix_telephony::TelephonyPlugin>>;

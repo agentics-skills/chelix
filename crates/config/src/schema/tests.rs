@@ -592,29 +592,21 @@ fn provider_entry_defaults_models_empty() {
 #[test]
 fn channels_config_defaults_offered() {
     let config = ChannelsConfig::default();
-    assert_eq!(config.offered, vec![
-        "telegram".to_string(),
-        "whatsapp".to_string(),
-        "signal".to_string(),
-    ]);
+    assert_eq!(config.offered, vec!["telegram".to_string()]);
 }
 
 #[test]
 fn channels_config_empty_toml_defaults_offered() {
     let config: ChannelsConfig = toml::from_str("").unwrap();
-    assert_eq!(config.offered, vec![
-        "telegram".to_string(),
-        "whatsapp".to_string(),
-        "signal".to_string(),
-    ]);
+    assert_eq!(config.offered, vec!["telegram".to_string()]);
 }
 
 #[test]
 fn channels_config_explicit_offered() {
-    let config: ChannelsConfig = toml::from_str(r#"offered = ["telegram", "signal"]"#).unwrap();
+    let config: ChannelsConfig = toml::from_str(r#"offered = ["telegram", "telephony"]"#).unwrap();
     assert_eq!(config.offered, vec![
         "telegram".to_string(),
-        "signal".to_string()
+        "telephony".to_string()
     ]);
 }
 

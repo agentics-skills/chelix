@@ -244,7 +244,7 @@ fn format_channel_error_message(error_obj: &Value) -> String {
 /// Format a user-facing notice announcing that a session was summarized
 /// into a checkpoint.
 ///
-/// Shown verbatim to channel users (Telegram, WhatsApp, etc.) and
+/// Shown verbatim to channel users (Telegram, Telephony) and
 /// kept short so small mobile clients don't wrap the whole thing.
 fn format_channel_compaction_notice(outcome: &compaction::CheckpointOutcome) -> String {
     let total = outcome.input_tokens.saturating_add(outcome.output_tokens);
