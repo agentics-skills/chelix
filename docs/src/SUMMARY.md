@@ -30,7 +30,6 @@
 - [Channels](channels.md)
   - [Telegram](telegram.md)
   - [Telephony (Phone Calls)](channels/telephony.md)
-- [Browser Automation](browser-automation.md)
 - [DuckDuckGo Search](duckduckgo-search.md)
 - [Session State](session-state.md)
 - [Session Message Deletion](session-message-deletion.md)

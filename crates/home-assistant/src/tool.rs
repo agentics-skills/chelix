@@ -455,35 +455,6 @@ impl AgentTool for HomeAssistantTool {
             other => Err(anyhow::anyhow!("unknown operation: '{other}'")),
         }
     }
-
-    async fn warmup(&self) -> anyhow::Result<()> {
-        // Pre-build clients for all configured instances.
-        // Construct outside the lock to avoid holding it during I/O.
-        let built: Vec<(String, SharedClient)> = self
-            .config
-            .instances
-            .iter()
-            .filter(|(_, a)| a.url.is_some() && a.token.is_some())
-            .filter_map(|(name, account)| match HomeAssistantClient::new(account) {
-                Ok(client) => {
-                    #[cfg(feature = "tracing")]
-                    tracing::info!(instance = %name, "HA client pre-connected");
-                    Some((name.clone(), Arc::new(client)))
-                },
-                Err(e) => {
-                    #[cfg(feature = "tracing")]
-                    tracing::warn!(instance = %name, error = %e, "HA client warmup failed");
-                    None
-                },
-            })
-            .collect();
-
-        let mut clients = self.clients.write().await;
-        for (name, client) in built {
-            clients.insert(name, client);
-        }
-        Ok(())
-    }
 }
 
 #[cfg(test)]
@@ -1133,18 +1104,6 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.to_string().contains("500"));
-    }
-
-    // --- warmup ---
-
-    #[tokio::test]
-    async fn warmup_preconnects_clients() {
-        let server = MockServer::start().await;
-        let tool = make_tool(&server);
-        tool.warmup().await.unwrap();
-        // After warmup, the client should be cached (no HTTP call needed)
-        // The next call should work without hitting the mock server again
-        // (we just verify warmup itself doesn't fail)
     }
 
     // --- instance resolution ---

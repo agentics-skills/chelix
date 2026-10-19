@@ -57,8 +57,8 @@ service.
 The global `sandbox.mode` controls every command execution path. With `"On"`,
 Chelix starts only when it can select a filesystem-isolated Apple Container,
 Podman, or Docker runtime. With `"Off"`, commands execute directly on the
-host. There are no agent, session, project, chat, cron, skill, or
-browser sandbox overrides.
+host. There are no agent, session, project, chat, cron, or
+skill sandbox overrides.
 
 Filesystem isolation protects your host system from:
 

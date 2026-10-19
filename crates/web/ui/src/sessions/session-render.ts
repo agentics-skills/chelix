@@ -610,10 +610,6 @@ function renderToolSnapshot(message: UiSnapshot): void {
 		runId: lifecycle.runId,
 		contextBudget: lifecycle.contextBudget,
 		accumulatedArguments: lifecycle.accumulatedArguments,
-		executionMode:
-			typeof message.presentation.metadata?.executionMode === "string"
-				? message.presentation.metadata.executionMode
-				: undefined,
 	});
 	renderToolLifecycleSnapshot(snapshot, S.activeSessionKey, {
 		interactive: true,

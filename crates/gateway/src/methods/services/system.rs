@@ -445,21 +445,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         }),
     );
 
-    // Browser
-    reg.register(
-        "browser.request",
-        Box::new(|ctx| {
-            Box::pin(async move {
-                ctx.state
-                    .services
-                    .browser
-                    .request(ctx.params.clone())
-                    .await
-                    .map_err(ErrorShape::from)
-            })
-        }),
-    );
-
     // Usage
     reg.register(
         "usage.status",

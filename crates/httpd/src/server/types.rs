@@ -51,7 +51,5 @@ pub struct BannerMeta {
     pub data_dir: PathBuf,
     pub setup_code_display: Option<String>,
     pub webauthn_registry: Option<SharedWebAuthnRegistry>,
-    pub browser_for_lifecycle: Arc<dyn chelix_gateway::services::BrowserService>,
-    pub browser_tool_for_warmup: Option<Arc<dyn chelix_agents::tool_registry::AgentTool>>,
     pub config: chelix_config::schema::ChelixConfig,
 }

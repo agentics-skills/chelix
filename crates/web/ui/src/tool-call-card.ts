@@ -19,7 +19,6 @@ export interface ToolCardOptions {
 	assistantId?: string;
 	toolName?: string;
 	arguments?: unknown;
-	executionMode?: string;
 	status?: ToolCardStatus;
 	expanded?: boolean;
 }
@@ -60,11 +59,10 @@ function compactOneLine(value: unknown): string {
 	return stringifyValue(value).replace(/\s+/g, " ").trim();
 }
 
-function buildToolSummary(toolName: string | undefined, args: unknown, executionMode?: string): string {
+function buildToolSummary(toolName: string | undefined, args: unknown): string {
 	const specialized = toolCallSummary(
 		toolName,
 		args && typeof args === "object" ? (args as Parameters<typeof toolCallSummary>[1]) : undefined,
-		executionMode,
 	);
 	const normalizedName = toolName || "tool";
 	if (specialized && specialized !== normalizedName && specialized !== "tool") return specialized;
@@ -277,18 +275,11 @@ export function createToolCallCard(options: ToolCardOptions): HTMLElement {
 	actionsEl.className = "tool-call-permission-actions";
 	metaRow.appendChild(actionsEl);
 
-	if (options.executionMode) {
-		const modeEl = document.createElement("span");
-		modeEl.className = "tool-call-mode";
-		modeEl.textContent = options.executionMode;
-		metaRow.appendChild(modeEl);
-	}
-
 	header.appendChild(metaRow);
 
 	const summaryEl = document.createElement("span");
 	summaryEl.className = "command-prompt tool-call-summary";
-	renderCommand(summaryEl, buildToolSummary(toolName, options.arguments, options.executionMode));
+	renderCommand(summaryEl, buildToolSummary(toolName, options.arguments));
 	header.appendChild(summaryEl);
 
 	card.appendChild(header);
@@ -348,14 +339,14 @@ export function createToolCallCard(options: ToolCardOptions): HTMLElement {
 	return card;
 }
 
-export function updateToolCardParameters(card: HTMLElement, argumentsValue: unknown, executionMode?: string): void {
+export function updateToolCardParameters(card: HTMLElement, argumentsValue: unknown): void {
 	const toolName = card.dataset.toolName || "tool";
 	const parameters = card.querySelector<HTMLElement>(".tool-call-params-details .tool-call-raw-json");
 	if (!parameters) throw new Error("tool card Parameters content is unavailable");
 	parameters.textContent = stringifyValue(argumentsValue);
 	const summary = card.querySelector<HTMLElement>(".tool-call-summary");
 	if (!summary) throw new Error("tool card summary is unavailable");
-	renderCommand(summary, buildToolSummary(toolName, argumentsValue, executionMode));
+	renderCommand(summary, buildToolSummary(toolName, argumentsValue));
 }
 
 export function setToolCardProgress(card: HTMLElement, message: string): void {
@@ -515,7 +506,7 @@ function renderToolMessage(content: HTMLElement, result: ToolResult): void {
 
 function renderToolScreenshot(content: HTMLElement, result: ToolResult, options: ToolResultRenderOptions): boolean {
 	if (!result.screenshot) return false;
-	renderScreenshot(content, resolveScreenshotSrc(result.screenshot, options), result.screenshot_scale || 1);
+	renderScreenshot(content, resolveScreenshotSrc(result.screenshot, options));
 	return true;
 }
 

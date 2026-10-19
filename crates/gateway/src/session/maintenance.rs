@@ -439,12 +439,6 @@ impl LiveSessionService {
             deleted += 1;
         }
 
-        // Close all browser containers since all user sessions are being cleared.
-        if let Some(ref browser) = self.browser_service {
-            info!("closing all browser sessions after clear_all");
-            browser.close_all().await;
-        }
-
         if failures.is_empty() {
             Ok(serde_json::json!({ "deleted": deleted }))
         } else {

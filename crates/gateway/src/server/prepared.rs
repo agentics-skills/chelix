@@ -22,16 +22,12 @@ pub struct PreparedGatewayCore {
     pub push_service: Option<Arc<crate::push::PushService>>,
     /// Sandbox router for container backends.
     pub sandbox_router: Arc<chelix_tools::sandbox::SandboxRouter>,
-    /// Browser service for lifecycle management.
-    pub browser_for_lifecycle: Arc<dyn crate::services::BrowserService>,
     /// Cron scheduler service. **Callers must invoke
     /// [`CronService::start()`] to activate the scheduler**; without it,
     /// scheduled jobs will not execute.
     pub cron_service: Arc<chelix_cron::service::CronService>,
     /// Log buffer for real-time log streaming.
     pub log_buffer: Option<crate::logs::LogBuffer>,
-    /// Browser tool for warmup after listener is ready.
-    pub browser_tool_for_warmup: Option<Arc<dyn chelix_agents::tool_registry::AgentTool>>,
     /// Loaded configuration snapshot.
     pub config: chelix_config::schema::ChelixConfig,
     /// Resolved data directory.

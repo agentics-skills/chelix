@@ -69,7 +69,6 @@ pub(crate) enum OrderedRunnerEvent {
 pub(crate) fn ordered_runner_event_callbacks(
     ui_run: Option<chelix_sessions::ui_history_engine::UiHistoryRun>,
     cancellation: tokio_util::sync::CancellationToken,
-    sandbox_enabled: bool,
 ) -> (
     OnEvent,
     OnToolLifecycle,
@@ -100,8 +99,7 @@ pub(crate) fn ordered_runner_event_callbacks(
     let lifecycle_barrier = barrier.clone();
     let on_tool_lifecycle: OnToolLifecycle = Arc::new(move |event| {
         if let Some(run) = &ui_run
-            && let Err(error) =
-                crate::ui_history_ingress::copy_lifecycle(run, &event, sandbox_enabled)
+            && let Err(error) = crate::ui_history_ingress::copy_lifecycle(run, &event)
         {
             tracing::error!(%error, "UI lifecycle copy failed");
             cancellation.cancel();
@@ -146,7 +144,7 @@ mod lifecycle_receipt_tests {
     #[tokio::test]
     async fn lifecycle_callback_waits_for_forwarder_receipt() {
         let (_on_event, on_tool_lifecycle, mut receiver, _barrier) =
-            ordered_runner_event_callbacks(None, tokio_util::sync::CancellationToken::new(), false);
+            ordered_runner_event_callbacks(None, tokio_util::sync::CancellationToken::new());
         let event =
             RunnerToolLifecycleEvent::new(chelix_common::tool_lifecycle::ToolLifecycleEvent {
                 tool_call_id: "call-1".to_owned(),
@@ -182,7 +180,7 @@ mod lifecycle_receipt_tests {
     #[tokio::test]
     async fn input_streaming_callback_completes_after_ordered_enqueue() {
         let (_on_event, on_tool_lifecycle, mut receiver, _barrier) =
-            ordered_runner_event_callbacks(None, tokio_util::sync::CancellationToken::new(), false);
+            ordered_runner_event_callbacks(None, tokio_util::sync::CancellationToken::new());
         let event =
             RunnerToolLifecycleEvent::new(chelix_common::tool_lifecycle::ToolLifecycleEvent {
                 tool_call_id: "call-1".to_owned(),
@@ -210,7 +208,7 @@ mod lifecycle_receipt_tests {
     #[tokio::test]
     async fn event_receiver_closes_after_both_callbacks_are_dropped() {
         let (on_event, on_tool_lifecycle, mut receiver, _barrier) =
-            ordered_runner_event_callbacks(None, tokio_util::sync::CancellationToken::new(), false);
+            ordered_runner_event_callbacks(None, tokio_util::sync::CancellationToken::new());
 
         drop(on_event);
         drop(on_tool_lifecycle);

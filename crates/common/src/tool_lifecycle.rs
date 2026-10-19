@@ -135,8 +135,6 @@ pub struct ActiveToolInvocation {
     #[serde(flatten)]
     pub lifecycle: ToolLifecycleEvent,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub execution_mode: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub accumulated_arguments: Option<String>,
     /// Current budget retained internally so cancellation can publish terminal metadata.
     #[serde(skip)]
@@ -231,7 +229,6 @@ mod tests {
                     arguments_delta: "report".to_owned(),
                 },
             },
-            execution_mode: None,
             accumulated_arguments: Some(r#"{"content":"report"#.to_owned()),
             context_budget: None,
         };
@@ -249,7 +246,6 @@ mod tests {
                     message: "wait for result [10] sec.".to_owned(),
                 },
             },
-            execution_mode: Some("sandbox".to_owned()),
             accumulated_arguments: None,
             context_budget: None,
         };
@@ -262,7 +258,6 @@ mod tests {
         assert_eq!(streamed_value["runId"], "run-1");
         let progress_value = serde_json::to_value(&progress)?;
         assert_eq!(progress_value["elapsedMs"], 10_000);
-        assert_eq!(progress_value["executionMode"], "sandbox");
         assert_eq!(
             progress.arguments(),
             Some(&serde_json::json!({"command": "sleep 10"}))

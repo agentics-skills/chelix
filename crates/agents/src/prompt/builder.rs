@@ -42,7 +42,6 @@ const TOOL_GUIDELINES: &str = concat!(
     "- Start with a normal conversational response. Do not call tools for greetings, small talk, ",
     "or questions you can answer directly.\n",
     "- Use the execute_command tool for shell/system tasks.\n",
-    "- Use the browser tool when the user asks to visit/read/interact with web pages.\n",
     "- For already-connected MCP servers, use the listed `mcp__<server>__<tool>` tools directly. ",
     "Use `mcp_list` or `mcp_status` only when you need to inspect server availability first.\n",
     "- Skills describe workflows. They are not callable tools unless you first load them with `read_skill`.\n",

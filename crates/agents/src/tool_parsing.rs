@@ -918,12 +918,12 @@ Done."#;
 
     #[test]
     fn parse_invoke_multiple_args() {
-        let text = r#"<invoke name="browser"><arg name="action">navigate</arg><arg name="url">https://example.com</arg></invoke>"#;
+        let text = r#"<invoke name="overwrite_file"><arg name="path">/tmp/a</arg><arg name="content">hello</arg></invoke>"#;
         let (calls, remaining) = parse_tool_calls_from_text(text);
         assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].name, "browser");
-        assert_eq!(calls[0].arguments["action"], "navigate");
-        assert_eq!(calls[0].arguments["url"], "https://example.com");
+        assert_eq!(calls[0].name, "overwrite_file");
+        assert_eq!(calls[0].arguments["path"], "/tmp/a");
+        assert_eq!(calls[0].arguments["content"], "hello");
         assert!(
             remaining.is_none() || remaining.as_deref() == Some(""),
             "remaining: {remaining:?}"

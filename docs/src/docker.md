@@ -184,12 +184,8 @@ host_data_dir = "/absolute/host/path/to/data"
 ```
 
 For a bind mount like `-v ./data:/home/chelix/.chelix`, use the resolved host
-path to `./data`. This setting is also used by sandboxed browser containers for
-their persistent Chrome profile directory. If browser startup logs show
-`/data/browser-profile/SingletonLock: Permission denied`, Chelix probably fell
-back to the in-container path (`/home/chelix/.chelix/...`) instead of the real
-host path. Set `host_data_dir` to the host-visible data directory and restart
-Chelix so new sandbox and browser containers pick up the corrected mount source.
+path to `./data`. Set `host_data_dir` to the host-visible data directory and restart
+Chelix so new sandbox containers pick up the corrected mount source.
 
 ### Security Consideration
 
@@ -242,24 +238,6 @@ you create the secret file before the vault is initialized, Docker will accept
 the mount but Chelix cannot auto-unseal from an empty file. After you initialize
 the vault in **Settings > Encryption**, copy the one-time recovery key into this
 file before relying on unattended auto-unseal.
-
-## Browser Sandbox in Docker
-
-When global sandbox mode is `On`, Chelix starts the browser container with the
-same Docker or Podman backend and `[sandbox].network` as the command sandbox.
-Container port `3000` is published with `-p 127.0.0.1::3000`. Chelix reads
-`<cli> port` and `<cli> inspect`, then uses the first candidate that answers
-`GET /json/version`: the host loopback publication, or the container address on
-port `3000`.
-
-A containerized gateway reaches the browser address when both containers share
-a network that allows container-to-container traffic. Use the same
-`[sandbox] network` setup as the managed tools service.
-
-The persistent Chrome profile mount still uses `[sandbox].host_data_dir` when
-Chelix's data directory is not the host path `/home/chelix/.chelix`. Without
-that override, Chrome may fail with `SingletonLock: Permission denied` when the
-browser container tries to write `/data/browser-profile`.
 
 ## Podman Support
 

@@ -140,8 +140,6 @@ pub async fn prepare_gateway(
         #[cfg(feature = "push-notifications")]
         push_service,
         sandbox_router,
-        browser_for_lifecycle,
-        browser_tool_for_warmup,
         cron_service,
         log_buffer,
         config,
@@ -1031,8 +1029,6 @@ pub async fn prepare_gateway(
         port,
         tls_enabled_for_gateway,
         state,
-        browser_for_lifecycle,
-        browser_tool_for_warmup,
         sandbox_router,
         cron_service,
         log_buffer,

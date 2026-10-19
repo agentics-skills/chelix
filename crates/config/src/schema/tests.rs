@@ -684,36 +684,6 @@ mode = "rw"
 }
 
 #[test]
-fn browserless_api_version_deserialize_v2() {
-    let config: BrowserConfig = toml::from_str(
-        r#"
-browserless_api_version = "v2"
-"#,
-    )
-    .unwrap();
-    assert_eq!(config.browserless_api_version, BrowserlessApiVersion::V2);
-}
-
-#[test]
-fn browserless_api_version_rejects_non_lowercase_variants() {
-    let parsed: Result<BrowserConfig, _> = toml::from_str(
-        r#"
-browserless_api_version = "V2"
-"#,
-    );
-    assert!(
-        parsed.is_err(),
-        "uppercase value should fail serde enum deserialization"
-    );
-}
-
-#[test]
-fn browser_config_rejects_sandbox_override() {
-    let parsed: Result<BrowserConfig, _> = toml::from_str("sandbox = false");
-    assert!(parsed.is_err());
-}
-
-#[test]
 fn tool_mode_serde_round_trip() {
     for (variant, expected_str) in [
         (ToolMode::Native, r#""native""#),

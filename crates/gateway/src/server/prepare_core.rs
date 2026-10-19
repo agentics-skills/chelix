@@ -80,7 +80,6 @@ pub async fn prepare_gateway_core(
     );
     let config_env_overrides = config.env.clone();
     let instance_slug_value = super::helpers::instance_slug(&config)?;
-    let browser_container_prefix = super::helpers::browser_container_prefix(&instance_slug_value);
     let sandbox_container_prefix = super::helpers::sandbox_container_prefix(&instance_slug_value);
     let mut startup_mem_probe = StartupMemProbe::new();
     startup_mem_probe.checkpoint("prepare_gateway.start");
@@ -151,13 +150,6 @@ pub async fn prepare_gateway_core(
     services.command_approval = Arc::new(LiveCommandApprovalService::new(Arc::clone(
         &approval_manager,
     )));
-
-    // Wire browser service if enabled.
-    if let Some(browser_svc) =
-        crate::services::RealBrowserService::from_config(&config, browser_container_prefix)
-    {
-        services.browser = Arc::new(browser_svc);
-    }
 
     // Wire live onboarding service.
     let onboarding_config_path = chelix_config::find_or_default_config_path();
@@ -784,7 +776,6 @@ pub async fn prepare_gateway_core(
         .with_project_store(Arc::clone(&project_store))
         .with_state_store(Arc::clone(&session_state_store))
         .with_queued_prompts(Arc::clone(&queued_prompts))
-        .with_browser_service(Arc::clone(&services.browser))
         .with_session_mutations(Arc::clone(&session_mutations));
         if let Some(ref hooks) = hook_registry {
             session_svc = session_svc.with_hooks(Arc::clone(hooks));

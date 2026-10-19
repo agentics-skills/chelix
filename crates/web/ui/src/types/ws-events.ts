@@ -98,7 +98,6 @@ export interface ToolResult {
 	terminalId?: string;
 	message?: string;
 	screenshot?: string;
-	screenshot_scale?: number;
 	document_ref?: string;
 	filename?: string;
 	mime_type?: string;
@@ -202,7 +201,6 @@ export type ToolLifecycleEvent = ToolLifecycleBase &
 
 export type ActiveToolInvocation = ToolLifecycleEvent & {
 	runId: string;
-	executionMode?: string;
 	accumulatedArguments?: string;
 };
 

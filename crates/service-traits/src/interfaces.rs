@@ -694,30 +694,6 @@ pub trait SkillsService: Send + Sync {
 }
 
 #[async_trait]
-pub trait BrowserService: Send + Sync {
-    async fn request(&self, params: Value) -> ServiceResult;
-
-    async fn warmup(&self) {}
-    async fn cleanup_idle(&self) {}
-    async fn shutdown(&self) {}
-
-    async fn shutdown_with_grace(&self, grace: std::time::Duration) -> bool {
-        tokio::time::timeout(grace, self.shutdown()).await.is_ok()
-    }
-
-    async fn close_all(&self) {}
-}
-
-pub struct NoopBrowserService;
-
-#[async_trait]
-impl BrowserService for NoopBrowserService {
-    async fn request(&self, _p: Value) -> ServiceResult {
-        Err("browser not available".into())
-    }
-}
-
-#[async_trait]
 pub trait UsageService: Send + Sync {
     async fn status(&self) -> ServiceResult;
     async fn cost(&self, params: Value) -> ServiceResult;

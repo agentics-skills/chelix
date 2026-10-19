@@ -3,7 +3,7 @@
 // Domain modules:
 // - location:      GatewayLocationRequester trait impl
 // - helpers:        utility fns, env helpers, mem probe, diagnostics
-// - startup:        warmup, WebAuthn sync, feature stubs
+// - startup:        WebAuthn sync, feature stubs
 // - prepared:       PreparedGatewayCore struct definition
 // - prepare_core:   prepare_gateway_core entry point
 // - hooks:          hook discovery and seeding
@@ -35,8 +35,6 @@ mod tests_legacy;
 
 pub(crate) use hooks::discover_and_build_hooks;
 pub use {
-    helpers::approval_manager_from_config,
-    prepare_core::prepare_gateway_core,
-    prepared::PreparedGatewayCore,
-    startup::{start_browser_warmup_after_listener, sync_runtime_webauthn_host_and_notice},
+    helpers::approval_manager_from_config, prepare_core::prepare_gateway_core,
+    prepared::PreparedGatewayCore, startup::sync_runtime_webauthn_host_and_notice,
 };

@@ -116,31 +116,6 @@ pub(crate) fn build_schema_map() -> KnownKeys {
         ]))
     };
 
-    let browser = || {
-        Struct(HashMap::from([
-            ("enabled", Leaf),
-            ("chrome_path", Leaf),
-            ("obscura_path", Leaf),
-            ("lightpanda_path", Leaf),
-            ("headless", Leaf),
-            ("viewport_width", Leaf),
-            ("viewport_height", Leaf),
-            ("device_scale_factor", Leaf),
-            ("max_instances", Leaf),
-            ("memory_limit_percent", Leaf),
-            ("idle_timeout_secs", Leaf),
-            ("navigation_timeout_ms", Leaf),
-            ("user_agent", Leaf),
-            ("chrome_args", Leaf),
-            ("sandbox_image", Leaf),
-            ("allowed_domains", Leaf),
-            ("low_memory_threshold_mb", Leaf),
-            ("persist_profile", Leaf),
-            ("profile_dir", Leaf),
-            ("browserless_api_version", Leaf),
-        ]))
-    };
-
     let context7 = || {
         Struct(HashMap::from([
             ("token", Array(Box::new(Leaf))),
@@ -167,7 +142,6 @@ pub(crate) fn build_schema_map() -> KnownKeys {
     let tools = || {
         Struct(HashMap::from([
             ("execute_command", execute_command()),
-            ("browser", browser()),
             ("context7", context7()),
             ("linkup", linkup()),
             ("exa", linkup()),

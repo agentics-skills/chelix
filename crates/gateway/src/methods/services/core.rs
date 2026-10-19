@@ -1124,7 +1124,6 @@ mod tests {
                     started_at_ms: 1,
                 },
             },
-            execution_mode: None,
             accumulated_arguments: None,
             context_budget: None,
         }

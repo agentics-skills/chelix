@@ -1,13 +1,11 @@
 use serde_json::json;
 
 use crate::{
-    BrowserService, ChatCompactRequest, ChatContextRequest, ChatExecutionContext,
-    ChatFullContextRequest, ChatRawPromptRequest, ChatSendMessage, ChatSendRequest,
-    ChatSendSyncRequest, ChatService, NoopBrowserService, ServiceResult, SessionBusyReason,
-    SessionMutationCoordinator, interfaces::model_service_not_configured_error,
+    ChatCompactRequest, ChatContextRequest, ChatExecutionContext, ChatFullContextRequest,
+    ChatRawPromptRequest, ChatSendMessage, ChatSendRequest, ChatSendSyncRequest, ChatService,
+    ServiceResult, SessionBusyReason, SessionMutationCoordinator,
+    interfaces::model_service_not_configured_error,
 };
-
-struct SlowShutdownBrowserService;
 
 struct DefaultRefreshChatService;
 
@@ -76,45 +74,6 @@ impl ChatService for DefaultRefreshChatService {
     ) -> ServiceResult {
         Ok(json!({}))
     }
-}
-
-#[async_trait::async_trait]
-impl BrowserService for SlowShutdownBrowserService {
-    async fn request(&self, _p: serde_json::Value) -> ServiceResult {
-        Err("not used".into())
-    }
-
-    async fn shutdown(&self) {
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    }
-}
-
-#[tokio::test]
-async fn noop_browser_service_lifecycle_methods() {
-    let svc = NoopBrowserService;
-    svc.cleanup_idle().await;
-    svc.shutdown().await;
-    assert!(
-        svc.shutdown_with_grace(std::time::Duration::from_millis(10))
-            .await
-    );
-    svc.close_all().await;
-}
-
-#[tokio::test]
-async fn noop_browser_service_request_returns_error() {
-    let svc = NoopBrowserService;
-    let result = svc.request(serde_json::json!({})).await;
-    assert!(result.is_err());
-}
-
-#[tokio::test]
-async fn browser_shutdown_with_grace_times_out() {
-    let svc = SlowShutdownBrowserService;
-    assert!(
-        !svc.shutdown_with_grace(std::time::Duration::from_millis(5))
-            .await
-    );
 }
 
 #[test]

@@ -40,7 +40,7 @@ higher-priority layer on top of a lower one:
 Both `allow` and `deny` entries support glob-style patterns:
 
 - `"*"` — matches every tool name
-- `"browser*"` — matches any tool whose name starts with `browser`
+- `"memory*"` — matches any tool whose name starts with `memory`
 - `"execute_command"` — matches only the exact tool name `execute_command`
 
 ## Profiles
@@ -51,7 +51,7 @@ to a predefined allow list before the explicit allow/deny entries are applied.
 | Profile     | Allow list                             |
 | ----------- | -------------------------------------- |
 | `"minimal"` | `execute_command`                      |
-| `"coding"`  | `execute_command`, `browser`, `memory` |
+| `"coding"`  | `execute_command`, `memory` |
 | `"full"`    | `*` (everything)                       |
 
 When a profile is set, its allow list is applied first, then the explicit
@@ -65,7 +65,7 @@ The base policy for all sessions. Set in `chelix.toml` under `[tools.policy]`:
 ```toml
 [tools.policy]
 allow = []           # empty = permit all tools not denied
-deny = ["browser"]   # deny browser in every session
+deny = ["memory_search"]   # deny memory_search in every session
 # profile = "full"   # optional named profile
 ```
 
@@ -111,10 +111,10 @@ untrusted users.
 
 ```toml
 [channels.telegram.my-bot.tools.groups.group]
-deny = ["execute_command", "browser"]
+deny = ["execute_command", "memory_search"]
 ```
 
-In this example, `execute_command` and `browser` are denied in Telegram group
+In this example, `execute_command` and `memory_search` are denied in Telegram group
 chats handled by the `my-bot` account. Private chats and web UI sessions are
 unaffected.
 
@@ -125,7 +125,7 @@ trust specific users in an otherwise restricted group.
 
 ```toml
 [channels.telegram.my-bot.tools.groups.group]
-deny = ["execute_command", "browser"]
+deny = ["execute_command", "memory_search"]
 
 [channels.telegram.my-bot.tools.groups.group.by_sender."123456"]
 allow = ["*"]
@@ -133,7 +133,7 @@ allow = ["*"]
 
 Sender `123456` gets `allow = ["*"]`, which replaces the previous allow list.
 However, because **deny always accumulates**, the `execute_command` and
-`browser` denials from the group layer still apply. The sender override is
+`memory_search` denials from the group layer still apply. The sender override is
 useful for widening the allow list (e.g., granting access to tools that were not
 in the previous allow set) or for applying a different profile.
 
@@ -162,7 +162,7 @@ It lets you restrict tools for sandbox execution without affecting global
 ```toml
 [sandbox.tools_policy]
 allow = ["execute_command"]         # only execute_command inside sandbox
-deny = ["browser"]       # never allow browser in sandbox
+deny = ["memory_search"]       # never allow memory_search in sandbox
 ```
 
 This layer is skipped entirely when global sandbox mode is `Off`.
@@ -183,10 +183,10 @@ retain their normal tool access.
 
 ```toml
 [channels.telegram.my-bot.tools.groups.group]
-deny = ["execute_command", "browser*"]
+deny = ["execute_command", "memory*"]
 ```
 
-Group chats cannot use `execute_command` or any tool starting with `browser`.
+Group chats cannot use `execute_command` or any tool starting with `memory`.
 Private chats are unaffected.
 
 ### Trust a sender in a restricted group
@@ -228,8 +228,8 @@ deny = ["send_message"]
 ```
 
 The `coding` profile expands to
-`allow = ["execute_command", "browser", "memory"]`. Then `send_message` is denied.
-The effective policy allows `execute_command`, `browser`, and `memory`, and
+`allow = ["execute_command", "memory"]`. Then `send_message` is denied.
+The effective policy allows `execute_command` and `memory`, and
 denies `send_message`. All other tools are not in the allow list and are therefore
 blocked.
 

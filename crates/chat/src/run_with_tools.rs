@@ -63,8 +63,6 @@ use crate::{
 #[cfg(feature = "push-notifications")]
 use crate::channels::send_chat_push_notification;
 
-use crate::ui_history_ingress::tool_execution_mode;
-
 async fn persist_tool_segment(
     session_store: Option<&Arc<SessionStore>>,
     active_partial_assistant: Option<&Arc<RwLock<HashMap<String, ActiveAssistantDraft>>>>,
@@ -246,7 +244,6 @@ async fn process_tool_lifecycle_event(
     terminal_runs: &Arc<RwLock<HashSet<String>>>,
     session_key: &str,
     run_id: &str,
-    sandbox_enabled: bool,
     event: chelix_agents::runner::RunnerToolLifecycleEvent,
     persisted_tool_batches: &mut HashMap<String, (usize, Value)>,
     pending_inputs: &mut HashMap<String, ToolLifecycleEvent>,
@@ -352,7 +349,6 @@ async fn process_tool_lifecycle_event(
                 _ => None,
             };
             let snapshot = ActiveToolInvocation {
-                execution_mode: tool_execution_mode(&lifecycle.tool_name, sandbox_enabled),
                 lifecycle: lifecycle.clone(),
                 accumulated_arguments,
                 context_budget: event.context_budget.clone(),
@@ -912,9 +908,6 @@ pub(crate) async fn run_with_tools(
     let base_system_prompt = apply_voice_reply_suffix(system_prompt, desired_reply_medium);
     let mut system_prompt = compaction_reminder.render(&base_system_prompt);
 
-    // Sandbox policy is global and cannot be changed by an agent or session.
-    let sandbox_enabled = state.sandbox_router().enabled();
-
     // Broadcast tool events to the UI in the order emitted by the runner.
     let state_for_events = Arc::clone(state);
     let run_id_for_events = run_id.to_string();
@@ -924,7 +917,7 @@ pub(crate) async fn run_with_tools(
     let active_partial_for_events = active_partial_assistant.as_ref().map(Arc::clone);
     let terminal_runs_for_events = Arc::clone(terminal_runs);
     let (on_event, on_tool_lifecycle, mut event_rx, event_barrier) =
-        ordered_runner_event_callbacks(ui_run.clone(), cancellation_token.clone(), sandbox_enabled);
+        ordered_runner_event_callbacks(ui_run.clone(), cancellation_token.clone());
     let event_barrier_for_forwarder = event_barrier.clone();
     let channel_stream_dispatcher = ChannelStreamDispatcher::for_session(state, session_key)
         .await
@@ -952,7 +945,6 @@ pub(crate) async fn run_with_tools(
                         &terminal_runs_for_events,
                         &sk,
                         &run_id,
-                        sandbox_enabled,
                         *event,
                         &mut persisted_tool_batches,
                         &mut pending_inputs,

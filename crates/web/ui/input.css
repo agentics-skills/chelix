@@ -585,15 +585,6 @@
     font-weight: 700;
     line-height: 1.2;
   }
-  .tool-call-mode {
-    flex: 0 0 auto;
-    color: var(--muted);
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    padding: 0 4px;
-    font-size: 0.6rem;
-    line-height: 1.2;
-  }
   .tool-call-summary {
     min-width: 0;
     width: 100%;
@@ -757,7 +748,7 @@
     margin: 0;
     overflow: auto;
   }
-  /* Browser screenshot thumbnail */
+  /* Screenshot thumbnail */
   .screenshot-container {
     margin-top: 8px;
     position: relative;

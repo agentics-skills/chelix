@@ -49,8 +49,6 @@ pub(super) struct FinalizeGatewayArgs<'a> {
     pub port: u16,
     pub tls_enabled_for_gateway: bool,
     pub state: Arc<GatewayState>,
-    pub browser_for_lifecycle: Arc<dyn chelix_gateway::services::BrowserService>,
-    pub browser_tool_for_warmup: Option<Arc<dyn chelix_agents::tool_registry::AgentTool>>,
     pub sandbox_router: Arc<chelix_tools::sandbox::SandboxRouter>,
     pub cron_service: Arc<chelix_cron::service::CronService>,
     pub log_buffer: Option<chelix_gateway::logs::LogBuffer>,
@@ -77,8 +75,6 @@ pub(super) async fn finalize_prepared_gateway(
         port,
         tls_enabled_for_gateway,
         state,
-        browser_for_lifecycle,
-        browser_tool_for_warmup,
         sandbox_router,
         cron_service,
         log_buffer,
@@ -160,19 +156,6 @@ pub(super) async fn finalize_prepared_gateway(
     // NOTE: the startup banner and GatewayStart hook dispatch are handled
     // by start_gateway (the CLI entry point) after prepare_gateway returns.
     // prepare_gateway only spawns background tasks and returns PreparedGateway.
-
-    // Spawn periodic browser cleanup task (every 30s, removes idle instances).
-    {
-        let browser_for_cleanup = Arc::clone(&browser_for_lifecycle);
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
-            interval.tick().await; // skip immediate first tick
-            loop {
-                interval.tick().await;
-                browser_for_cleanup.cleanup_idle().await;
-            }
-        });
-    }
 
     // Spawn tick timer.
     let tick_state = Arc::clone(&state);
@@ -653,8 +636,6 @@ pub(super) async fn finalize_prepared_gateway(
             data_dir,
             setup_code_display,
             webauthn_registry,
-            browser_for_lifecycle,
-            browser_tool_for_warmup,
             config,
         },
     })
@@ -766,8 +747,6 @@ pub async fn start_gateway(
     let mut rustls_config: Option<rustls::ServerConfig> = None;
 
     let app = prepared.app;
-    let browser_for_warmup = Arc::clone(&banner.browser_for_lifecycle);
-    let browser_tool_for_warmup = banner.browser_tool_for_warmup.clone();
 
     #[cfg(feature = "tls")]
     if tls_active {
@@ -939,10 +918,9 @@ pub async fn start_gateway(
     }
 
     // Spawn shutdown handler:
-    // - SIGTERM / SIGHUP (Docker/systemd): graceful — drain browser pool, unregister services
+    // - SIGTERM / SIGHUP (Docker/systemd): graceful — close the call bus and exit
     // - SIGINT  (ctrl-c): immediate exit
     {
-        let browser_for_shutdown = Arc::clone(&banner.browser_for_lifecycle);
         let call_bus_for_shutdown = state.call_bus.get().cloned();
         tokio::spawn(async move {
             #[cfg(unix)]
@@ -992,26 +970,6 @@ pub async fn start_gateway(
                 chelix_gateway::mdns::shutdown(daemon);
             }
 
-            let shutdown_grace = std::time::Duration::from_secs(5);
-            info!(
-                grace_secs = shutdown_grace.as_secs(),
-                "shutting down browser pool"
-            );
-            if browser_for_shutdown
-                .shutdown_with_grace(shutdown_grace)
-                .await
-            {
-                info!(
-                    grace_secs = shutdown_grace.as_secs(),
-                    "browser pool shut down"
-                );
-            } else {
-                warn!(
-                    grace_secs = shutdown_grace.as_secs(),
-                    "browser pool shutdown exceeded grace period, forcing process exit"
-                );
-            }
-
             std::process::exit(0);
         });
     }
@@ -1037,10 +995,6 @@ pub async fn start_gateway(
         // Plain HTTP requests to this port get a 301 redirect instead of a TLS error.
         let tls_cfg = rustls_config.expect("rustls config must be set when TLS is active");
         let tcp_listener = tokio::net::TcpListener::bind(addr).await?;
-        chelix_gateway::server::start_browser_warmup_after_listener(
-            Arc::clone(&browser_for_warmup),
-            browser_tool_for_warmup.clone(),
-        );
         chelix_tls::serve_tls_with_http_redirect(tcp_listener, Arc::new(tls_cfg), app, port, bind)
             .await
             .map_err(|e| crate::Error::Tls(e.to_string()))?;
@@ -1049,10 +1003,6 @@ pub async fn start_gateway(
 
     // Plain HTTP server (existing behavior, or TLS feature disabled).
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    chelix_gateway::server::start_browser_warmup_after_listener(
-        Arc::clone(&browser_for_warmup),
-        browser_tool_for_warmup,
-    );
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),

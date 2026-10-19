@@ -135,8 +135,8 @@ export function toolsOverviewCategory(name: string | undefined): string {
 	}
 	if (name.startsWith("session") || name.startsWith("sessions_")) return "Sessions";
 	if (name.startsWith("memory") || name.includes("memory")) return "Memory";
-	if (name.startsWith("browser") || name.startsWith("web_") || name.includes("screenshot") || name.includes("fetch")) {
-		return "Web & Browser";
+	if (name.startsWith("web_") || name.includes("screenshot") || name.includes("fetch")) {
+		return "Web";
 	}
 	if (name.startsWith("skill") || name.includes("skill")) return "Skills";
 	return "Core";
@@ -149,7 +149,7 @@ export function groupToolsForOverview(tools: ToolEntry[]): ToolGroup[] {
 		if (!grouped.has(category)) grouped.set(category, []);
 		grouped.get(category)?.push(tool);
 	}
-	const order = ["Execution", "Sessions", "Memory", "Web & Browser", "Skills", "MCP", "Core"];
+	const order = ["Execution", "Sessions", "Memory", "Web", "Skills", "MCP", "Core"];
 	const groups: ToolGroup[] = [];
 	for (const label of order) {
 		const entries = grouped.get(label);

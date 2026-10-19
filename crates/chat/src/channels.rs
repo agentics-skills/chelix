@@ -898,39 +898,6 @@ fn format_tool_result_message(
 /// Format a human-readable tool execution message.
 fn format_tool_status_message(tool_name: &str, arguments: &Value) -> String {
     match tool_name {
-        "browser" => {
-            let action = arguments
-                .get("action")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown");
-            let url = arguments.get("url").and_then(|v| v.as_str());
-            let ref_ = arguments.get("ref_").and_then(|v| v.as_u64());
-
-            match action {
-                "navigate" => {
-                    if let Some(u) = url {
-                        format!("🌐 Navigating to {}", truncate_url(u))
-                    } else {
-                        "🌐 Navigating...".to_string()
-                    }
-                },
-                "screenshot" => "📸 Taking screenshot...".to_string(),
-                "snapshot" => "📋 Getting page snapshot...".to_string(),
-                "click" => {
-                    if let Some(r) = ref_ {
-                        format!("👆 Clicking element #{}", r)
-                    } else {
-                        "👆 Clicking...".to_string()
-                    }
-                },
-                "type" => "⌨️ Typing...".to_string(),
-                "scroll" => "📜 Scrolling...".to_string(),
-                "evaluate" => "⚡ Running JavaScript...".to_string(),
-                "wait" => "⏳ Waiting for element...".to_string(),
-                "close" => "🚪 Closing browser...".to_string(),
-                _ => format!("🌐 Browser: {}", action),
-            }
-        },
         "execute_command" => {
             let command = arguments.get("command").and_then(|v| v.as_str());
             if let Some(cmd) = command {
@@ -950,22 +917,6 @@ fn format_tool_status_message(tool_name: &str, arguments: &Value) -> String {
         "memory_forget" => "🧠 Forgetting memory...".to_string(),
         "memory_store" => "🧠 Storing to memory...".to_string(),
         _ => format!("🔧 {}", tool_name),
-    }
-}
-
-/// Truncate a URL for display (show domain + short path).
-fn truncate_url(url: &str) -> String {
-    // Try to extract domain from URL
-    let without_scheme = url
-        .strip_prefix("https://")
-        .or_else(|| url.strip_prefix("http://"))
-        .unwrap_or(url);
-
-    // Take first 50 chars max
-    if without_scheme.len() > 50 {
-        format!("{}...", truncate_at_char_boundary(without_scheme, 50))
-    } else {
-        without_scheme.to_string()
     }
 }
 

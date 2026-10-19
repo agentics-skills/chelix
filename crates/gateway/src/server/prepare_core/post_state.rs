@@ -31,7 +31,7 @@ use crate::{
 };
 
 use crate::server::{
-    helpers::{StartupMemProbe, browser_tool_container_prefix, env_flag_enabled, instance_slug},
+    helpers::{StartupMemProbe, env_flag_enabled, instance_slug},
     prepared::PreparedGatewayCore,
 };
 
@@ -313,7 +313,6 @@ pub(super) async fn complete_startup(
         }
     };
 
-    let browser_for_lifecycle = Arc::clone(&services.browser);
     #[cfg(feature = "tls")]
     let tls_enabled_for_gateway = config.tls.enabled;
     #[cfg(not(feature = "tls"))]
@@ -577,15 +576,6 @@ pub(super) async fn complete_startup(
         {
             tool_registry.register(Box::new(t));
         }
-        let browser_tool_prefix = browser_tool_container_prefix(&instance_slug(&config)?);
-        if let Some(t) = chelix_tools::browser::BrowserTool::from_config(
-            &config.tools.browser,
-            &config.sandbox,
-            &browser_tool_prefix,
-        ) {
-            tool_registry.register(Box::new(t));
-        }
-
         #[cfg(feature = "context7")]
         chelix_context7::register_tools(&mut tool_registry, &config.tools.context7);
 
@@ -896,7 +886,6 @@ pub(super) async fn complete_startup(
         #[cfg(feature = "push-notifications")]
         push_service,
         sandbox_router,
-        browser_for_lifecycle,
         cron_service,
         log_buffer,
         config,
@@ -906,6 +895,5 @@ pub(super) async fn complete_startup(
         setup_code_display,
         port,
         tls_enabled: tls_enabled_for_gateway,
-        browser_tool_for_warmup: None,
     })
 }

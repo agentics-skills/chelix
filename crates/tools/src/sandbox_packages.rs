@@ -94,7 +94,6 @@ const CATEGORY_MAP: &[(&str, &[&str])] = &[
         "patchelf",
     ]),
     ("Text processing", &["ripgrep", "fd-find", "yq"]),
-    ("Browser automation", &["chromium"]),
     ("Image processing", &[
         "imagemagick",
         "graphicsmagick",
@@ -167,10 +166,6 @@ fn is_infrastructure_package(pkg: &str) -> bool {
         || pkg == "ruby-dev"
         // LLVM dev
         || pkg == "llvm-dev"
-        // Browser automation support libs (not the browser itself)
-        || pkg.starts_with("libx")
-        || pkg.starts_with("libn")
-        || pkg.starts_with("liba")
 }
 
 /// Well-known base OS packages that are always present and not useful to list.
@@ -464,8 +459,6 @@ mod tests {
             "fonts-liberation".into(),
             "libvips-tools".into(),
             "curl".into(),
-            "libxss1".into(),
-            "libnss3".into(),
             "python3-dev".into(),
         ]);
 
@@ -539,13 +532,10 @@ mod tests {
     #[test]
     fn test_is_infrastructure_package() {
         assert!(is_infrastructure_package("libssl-dev"));
-        assert!(is_infrastructure_package("libxss1"));
-        assert!(is_infrastructure_package("libnss3"));
         assert!(is_infrastructure_package("fonts-liberation"));
         assert!(is_infrastructure_package("python3-dev"));
         assert!(is_infrastructure_package("ruby-dev"));
         assert!(is_infrastructure_package("llvm-dev"));
-        assert!(is_infrastructure_package("libatk1.0-0t64"));
 
         assert!(!is_infrastructure_package("curl"));
         assert!(!is_infrastructure_package("ffmpeg"));

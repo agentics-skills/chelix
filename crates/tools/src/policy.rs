@@ -21,7 +21,7 @@ pub fn profile_tools(profile: &str) -> ToolPolicy {
             deny: Vec::new(),
         },
         "coding" => ToolPolicy {
-            allow: vec!["execute_command".into(), "browser".into(), "memory".into()],
+            allow: vec!["execute_command".into(), "memory".into()],
             deny: Vec::new(),
         },
         "full" => ToolPolicy {
@@ -180,7 +180,7 @@ mod tests {
             deny: Vec::new(),
         };
         assert!(policy.is_allowed("execute_command"));
-        assert!(policy.is_allowed("browser"));
+        assert!(policy.is_allowed("memory_search"));
     }
 
     #[test]
@@ -190,17 +190,17 @@ mod tests {
             deny: vec!["execute_command".into()],
         };
         assert!(!policy.is_allowed("execute_command"));
-        assert!(policy.is_allowed("browser"));
+        assert!(policy.is_allowed("memory_search"));
     }
 
     #[test]
     fn test_prefix_pattern() {
         let policy = ToolPolicy {
-            allow: vec!["browser*".into()],
+            allow: vec!["memory*".into()],
             deny: Vec::new(),
         };
-        assert!(policy.is_allowed("browser"));
-        assert!(policy.is_allowed("browser.fetch"));
+        assert!(policy.is_allowed("memory_search"));
+        assert!(policy.is_allowed("memory_get"));
         assert!(!policy.is_allowed("execute_command"));
     }
 
@@ -226,14 +226,14 @@ mod tests {
         let merged = base.merge_with(&overlay);
         assert!(!merged.is_allowed("dangerous"));
         assert!(!merged.is_allowed("execute_command"));
-        assert!(merged.is_allowed("browser"));
+        assert!(merged.is_allowed("memory_search"));
     }
 
     #[test]
     fn test_profiles() {
         let minimal = profile_tools("minimal");
         assert!(minimal.is_allowed("execute_command"));
-        assert!(!minimal.is_allowed("browser"));
+        assert!(!minimal.is_allowed("memory_search"));
 
         let coding = profile_tools("coding");
         assert!(coding.is_allowed("execute_command"));
@@ -257,7 +257,7 @@ mod tests {
         let policy = resolve_effective_policy(&cfg, &ctx);
         assert!(policy.is_allowed("execute_command"));
         assert!(!policy.is_allowed("dangerous"));
-        assert!(!policy.is_allowed("browser"));
+        assert!(!policy.is_allowed("memory_search"));
     }
 
     #[test]
@@ -283,7 +283,7 @@ mod tests {
         };
         let policy = resolve_effective_policy(&cfg, &ctx);
         assert!(!policy.is_allowed("execute_command"));
-        assert!(policy.is_allowed("browser"));
+        assert!(policy.is_allowed("memory_search"));
     }
 
     #[test]
@@ -326,7 +326,7 @@ mod tests {
             "tools": {
                 "groups": {
                     "group": {
-                        "deny": ["execute_command", "browser"],
+                        "deny": ["execute_command", "memory_search"],
                         "by_sender": {
                             "trusted_user_123": {
                                 "allow": ["*"],
@@ -352,7 +352,7 @@ mod tests {
         };
         let policy = resolve_effective_policy(&cfg, &ctx);
         assert!(!policy.is_allowed("execute_command"));
-        assert!(!policy.is_allowed("browser"));
+        assert!(!policy.is_allowed("memory_search"));
         assert!(policy.is_allowed("read_file"));
 
         // Trusted sender — execute_command allowed via by_sender override.
@@ -362,9 +362,9 @@ mod tests {
         };
         let policy_trusted = resolve_effective_policy(&cfg, &ctx_trusted);
         // Deny from group layer accumulates, but sender layer replaces allow.
-        // Deny always wins: group denied execute_command+browser, sender can't override denies.
+        // Deny always wins: group denied execute_command+memory_search, sender can't override denies.
         assert!(!policy_trusted.is_allowed("execute_command"));
-        assert!(!policy_trusted.is_allowed("browser"));
+        assert!(!policy_trusted.is_allowed("memory_search"));
         // But a new allow pattern from sender layer works for non-denied tools.
         assert!(policy_trusted.is_allowed("read_file"));
     }
@@ -401,7 +401,7 @@ mod tests {
         };
         let policy = resolve_effective_policy(&cfg, &ctx);
         assert!(policy.is_allowed("execute_command"));
-        assert!(policy.is_allowed("browser"));
+        assert!(policy.is_allowed("memory_search"));
         assert!(policy.is_allowed("read_file"));
     }
 
@@ -436,10 +436,10 @@ mod tests {
         let mut cfg = chelix_config::ChelixConfig::default();
         cfg.tools.policy.allow = vec!["*".into()];
 
-        // Configure sandbox-specific tool policy that denies browser.
+        // Configure sandbox-specific tool policy that denies memory_search.
         cfg.sandbox.tools_policy = Some(chelix_config::schema::ToolPolicyConfig {
             allow: vec!["execute_command".into()],
-            deny: vec!["browser".into()],
+            deny: vec!["memory_search".into()],
             profile: None,
         });
 
@@ -450,12 +450,12 @@ mod tests {
         };
         let policy = resolve_effective_policy(&cfg, &ctx);
         assert!(policy.is_allowed("execute_command"));
-        assert!(policy.is_allowed("browser")); // Not denied — sandbox layer skipped.
+        assert!(policy.is_allowed("memory_search")); // Not denied — sandbox layer skipped.
 
         cfg.sandbox.mode = chelix_config::schema::SandboxMode::On;
         let policy_sandboxed = resolve_effective_policy(&cfg, &ctx);
         assert!(policy_sandboxed.is_allowed("execute_command"));
-        assert!(!policy_sandboxed.is_allowed("browser")); // Denied by sandbox layer.
+        assert!(!policy_sandboxed.is_allowed("memory_search")); // Denied by sandbox layer.
         assert!(!policy_sandboxed.is_allowed("read_file")); // Not in sandbox allow list.
     }
 
@@ -636,6 +636,6 @@ mod tests {
         let policy2 = resolve_effective_policy(&cfg2, &ctx2);
         // Sender's "full" profile expands to allow = ["*"].
         assert!(policy2.is_allowed("execute_command"));
-        assert!(policy2.is_allowed("browser"));
+        assert!(policy2.is_allowed("memory_search"));
     }
 }
