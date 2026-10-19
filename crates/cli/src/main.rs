@@ -25,7 +25,6 @@ static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 static malloc_conf: &[u8] = b"dirty_decay_ms:1000,muzzy_decay_ms:1000,background_thread:true\0";
 
 mod auth_commands;
-mod browser_commands;
 mod config_commands;
 mod data_commands;
 mod db_commands;
@@ -134,11 +133,6 @@ enum Commands {
         #[command(subcommand)]
         action: sandbox_commands::SandboxAction,
     },
-    /// Browser configuration management.
-    Browser {
-        #[command(subcommand)]
-        action: browser_commands::BrowserAction,
-    },
     /// Export and import Chelix data archives.
     Data {
         #[command(subcommand)]
@@ -196,21 +190,11 @@ enum SkillAction {
     },
 }
 
-fn default_telemetry_filter(log_level: &str) -> EnvFilter {
-    let mut filter = EnvFilter::new(log_level);
-    for directive in ["chromiumoxide=off"] {
-        if let Ok(directive) = directive.parse() {
-            filter = filter.add_directive(directive);
-        }
-    }
-    filter
-}
-
 /// Initialise tracing and optionally attach a [`LogBroadcastLayer`] that
 /// captures events into an in-memory ring buffer for the web UI.
 fn init_telemetry(cli: &Cli, log_buffer: Option<LogBuffer>) {
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| default_telemetry_filter(&cli.log_level));
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&cli.log_level));
 
     if let Some(ref buffer) = log_buffer {
         let levels = EnabledLogLevels::from_max_level_hint(filter.max_level_hint());
@@ -410,7 +394,6 @@ async fn main() -> anyhow::Result<()> {
         },
         Some(Commands::Auth { action }) => auth_commands::handle_auth(action).await,
         Some(Commands::Sandbox { action }) => sandbox_commands::handle_sandbox(action).await,
-        Some(Commands::Browser { action }) => browser_commands::handle_browser(action),
         Some(Commands::Data { action }) => data_commands::handle_data(action).await,
         Some(Commands::Db { action }) => db_commands::handle_db(action).await,
         Some(Commands::Memory { action }) => memory_commands::handle_memory(action).await,
@@ -477,16 +460,8 @@ async fn handle_skills(action: SkillAction) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        Commands, ReadOnlyDiagnostic, config_commands::ConfigAction, default_telemetry_filter,
-        read_only_diagnostic,
+        Commands, ReadOnlyDiagnostic, config_commands::ConfigAction, read_only_diagnostic,
     };
-
-    #[test]
-    fn default_telemetry_filter_quiets_noisy_targets() {
-        let filter = default_telemetry_filter("info").to_string();
-        assert!(filter.contains("info"));
-        assert!(filter.contains("chromiumoxide=off"));
-    }
 
     #[test]
     fn read_only_diagnostics_bypass_strict_startup_initialization() {

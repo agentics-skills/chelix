@@ -53,7 +53,6 @@
   - [`sandbox`](#sandbox)
   - [`sandbox.resource_limits`](#sandboxresource_limits)
   - [`sandbox.tools_policy`](#sandboxtools_policy)
-  - [`tools.browser`](#toolsbrowser)
 - **Tools — Web & Data**
   - [`tools.web.firecrawl`](#toolswebfirecrawl)
   - [`tools.context7`](#toolscontext7)
@@ -347,15 +346,15 @@ loading the configuration.
 | `archived_session_retention_days` | optional integer (`u32`) | unset; required for `"On"` | Archived owner container retention in days. Mandatory only when `mode = "On"`; no runtime default. `0` removes an eligible archived owner's container at the first reconciliation scan. |
 | `scope`                  | string                                 | `"session"`       | Container lifetime (`"session"`, `"agent"`, or `"shared"`).                                                                                                                          |
 | `workspace_sysmount`     | string                                 | `"ro"`            | Sandbox hardening mode for rootfs/capabilities (`"ro"` keeps `--cap-drop ALL`, `--security-opt no-new-privileges`, and `--read-only` for prebuilt images; `"rw"` skips those flags). |
-| `host_data_dir`          | optional string                        | `null`            | Host-visible path for Chelix `data_dir()` when creating sandbox or browser containers from inside another container.                                                                 |
+| `host_data_dir`          | optional string                        | `null`            | Host-visible path for Chelix `data_dir()` when creating sandbox containers from inside another container.                                                                            |
 | `home_persistence`       | enum: `"off"`, `"session"`, `"shared"` | `"shared"`        | Persistence strategy for `/home/sandbox` in sandbox containers.                                                                                                                      |
 | `shared_home_dir`        | optional string                        | `null`            | Host directory for shared `/home/sandbox` persistence. Relative paths resolved against `data_dir()`.                                                                                 |
 | `image`                  | optional string                        | `null`            | Docker/Podman image for sandbox containers.                                                                                                                                          |
 | `container_prefix`       | optional string                        | `null`            | Name prefix for created containers.                                                                                                                                                  |
-| `network`                | string                                 | `"bridge"`        | Docker/Podman network name passed as `--network=<name>` to sandbox and sandboxed browser containers.                                                                                |
+| `network`                | string                                 | `"bridge"`        | Docker/Podman network name passed as `--network=<name>` to sandbox containers.                                                                                                     |
 | `backend`                | enum                                   | `"docker"`        | Isolated backend: `"docker"`, `"podman"`, or `"apple-container"`. A missing key uses `"docker"`. Chelix does not select another runtime. |
 | `mounts`                 | array of tables                        | `[]`              | Additional mounts with `host`, absolute `guest`, and `mode` (`"ro"` or `"rw"`).                                                                                                      |
-| `packages`               | array                                  | _(~130 packages)_ | Packages to install via `apt-get` in the sandbox image. Empty list to skip.                                                                                                          |
+| `packages`               | array                                  | _(~122 packages)_ | Packages to install via `apt-get` in the sandbox image. Empty list to skip.                                                                                                          |
 
 Chelix always mounts `data_dir()` read-write at the identical absolute path
 inside the sandbox. This invariant is not configurable. Add other mounts with
@@ -405,31 +404,6 @@ Docker `cp` into that rootfs fails explicitly. See
 | `allow`   | array           | `[]`    | Tool names explicitly allowed inside the sandbox.    |
 | `deny`    | array           | `[]`    | Tool names explicitly denied inside the sandbox.     |
 | `profile` | optional string | `null`  | Named policy profile to apply (e.g. `"restricted"`). |
-
-### `tools.browser` — BrowserConfig
-
-| Key                       | Type                 | Default                          | Description                                                                                                                 |
-| ------------------------- | -------------------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `enabled`                 | bool                 | `true`                           | Whether browser support is enabled.                                                                                         |
-| `chrome_path`             | optional string      | `null`                           | Path to Chrome/Chromium binary (auto-detected if not set).                                                                  |
-| `obscura_path`            | optional string      | `null`                           | Path to the Obscura binary for `browser = "obscura"` requests (auto-detected from `OBSCURA` or `PATH` if not set).          |
-| `lightpanda_path`         | optional string      | `null`                           | Path to the Lightpanda binary for `browser = "lightpanda"` requests (auto-detected from `LIGHTPANDA` or `PATH` if not set). |
-| `headless`                | bool                 | `true`                           | Whether to run in headless mode.                                                                                            |
-| `viewport_width`          | integer              | `2560`                           | Default viewport width in pixels.                                                                                           |
-| `viewport_height`         | integer              | `1440`                           | Default viewport height in pixels.                                                                                          |
-| `device_scale_factor`     | float                | `2.0`                            | Device scale factor for HiDPI/Retina displays (1.0, 2.0, 3.0).                                                              |
-| `max_instances`           | integer              | `0`                              | Maximum concurrent browser instances (0 = unlimited, limited by memory).                                                    |
-| `memory_limit_percent`    | integer              | `90`                             | System memory usage threshold (0–100) above which new instances are blocked.                                                |
-| `idle_timeout_secs`       | integer              | `300`                            | Instance idle timeout in seconds before closing.                                                                            |
-| `navigation_timeout_ms`   | integer              | `30000`                          | Default navigation timeout in milliseconds.                                                                                 |
-| `user_agent`              | optional string      | `null`                           | Custom user agent string (uses Chrome default if not set).                                                                  |
-| `chrome_args`             | array                | `[]`                             | Additional Chrome command-line arguments.                                                                                   |
-| `sandbox_image`           | string               | `"docker.io/browserless/chrome"` | Docker image for sandboxed browser instances.                                                                               |
-| `allowed_domains`         | array                | `[]`                             | Allowed navigation domains (empty = all allowed). Supports wildcards (`"*.example.com"`).                                   |
-| `low_memory_threshold_mb` | integer              | `2048`                           | System RAM threshold (MB) below which memory-saving Chrome flags are injected (0 to disable).                               |
-| `persist_profile`         | bool                 | `true`                           | Persist Chrome user profile (cookies, auth, local storage) across sessions.                                                 |
-| `profile_dir`             | optional string      | `null`                           | Custom path for persistent Chrome profile directory. Implies `persist_profile = true`.                                      |
-| `browserless_api_version` | enum: `"v1"`, `"v2"` | `"v1"`                           | Browserless API compatibility mode for websocket endpoints.                                                                 |
 
 ---
 

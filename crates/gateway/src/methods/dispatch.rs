@@ -178,7 +178,6 @@ const WRITE_METHODS: &[&str] = &[
     "tool.permission.resolve",
     "chat.clear",
     "chat.compact",
-    "browser.request",
     "logs.ack",
     "providers.upsert_openai_compatible",
     "providers.delete_openai_compatible",

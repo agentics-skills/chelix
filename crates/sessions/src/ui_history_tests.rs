@@ -71,7 +71,8 @@ async fn schema_migration_is_tracked_and_validated_on_reopen() {
         .unwrap();
         assert_eq!(migrations, vec![
             (20260909113752, true),
-            (20260927174633, true)
+            (20260927174633, true),
+            (20261019172719, true)
         ]);
         pool.close().await;
     }

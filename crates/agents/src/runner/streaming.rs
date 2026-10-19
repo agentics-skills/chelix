@@ -289,7 +289,7 @@ pub async fn run_agent_loop_streaming_with_limits(
     let mut unknown_retries_remaining: u8 = UNKNOWN_MAX_RETRIES;
     let mut raw_llm_responses: Vec<serde_json::Value> = Vec::new();
     // Track answer text from iterations that also contained tool calls.
-    // When the final iteration is empty (e.g. model stop after browser close),
+    // When the final iteration is empty (e.g. model stop after a tool call),
     // this is used as the final response text instead of returning silent.
     let mut last_answer_text = String::new();
     let mut last_answer_tool_call_id: Option<String> = None;

@@ -65,10 +65,6 @@ pub trait AgentTool: Send + Sync {
     ) -> Result<Option<chelix_sessions::ui_history_types::UiPresentation>> {
         Ok(None)
     }
-    /// Opportunistic post-start initialization hook.
-    async fn warmup(&self) -> Result<()> {
-        Ok(())
-    }
     /// Truncation behavior for this call's result. Tools can override this
     /// per tool (ignore `params`) or per call (inspect `params`). This is an
     /// internal knob — it is never exposed through the tool's JSON schema.

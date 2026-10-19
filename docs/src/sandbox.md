@@ -1,6 +1,6 @@
 # Sandbox Backends
 
-Chelix has one global sandbox policy for command, filesystem, browser, cron,
+Chelix has one global sandbox policy for command, filesystem, cron,
 skill, and managed-tools execution. Enabled sandboxing always uses a
 filesystem-isolated runtime; direct host execution is available only when the
 global policy is explicitly `"Off"`.
@@ -175,7 +175,7 @@ The values are case-sensitive. Other spellings and legacy values are rejected.
 With `"On"`, gateway startup requires a filesystem-isolated runtime. With
 `"Off"`, execution runs directly on the host and no sandbox runtime is created.
 
-There are no agent, session, project, chat, cron, skill, or browser
+There are no agent, session, project, chat, cron, or skill
 sandbox overrides.
 
 The Sandboxes settings page displays this value as a read-only `On`/`Off`

@@ -553,18 +553,6 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
         }
     }
 
-    // Browser profile_dir should be an absolute path
-    if let Some(ref dir) = config.tools.browser.profile_dir
-        && !Path::new(dir).is_absolute()
-    {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Warning,
-            category: "invalid-value",
-            path: "tools.browser.profile_dir".into(),
-            message: "profile_dir should be an absolute path".into(),
-        });
-    }
-
     // port == 0
     if config.server.port == 0 {
         diagnostics.push(Diagnostic {

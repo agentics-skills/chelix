@@ -501,34 +501,6 @@ pub async fn update(
 fn validate_config(config: &chelix_config::ChelixConfig) -> Vec<String> {
     let mut warnings = Vec::new();
 
-    // Check browser config
-    if config.tools.browser.enabled {
-        // Browser isolation follows the global sandbox mode.
-        if config.sandbox.mode != chelix_config::schema::SandboxMode::Off
-            && !chelix_browser::container::configured_backend_available(config.sandbox.backend)
-        {
-            warnings.push(format!(
-                "Sandbox backend {} is not available.",
-                config.sandbox.backend.as_str()
-            ));
-        }
-
-        if config.tools.browser.allowed_domains.is_empty() {
-            warnings.push(
-                "No allowed_domains set for browser. All domains are accessible. \
-                 Consider restricting to trusted domains for security."
-                    .to_string(),
-            );
-        }
-
-        if config.tools.browser.max_instances > 10 {
-            warnings.push(format!(
-                "max_instances={} is high. Consider reducing to prevent resource exhaustion.",
-                config.tools.browser.max_instances
-            ));
-        }
-    }
-
     // Check command execution sandbox config
     if config.sandbox.mode == chelix_config::schema::SandboxMode::Off {
         warnings.push(

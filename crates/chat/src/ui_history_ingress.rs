@@ -95,35 +95,14 @@ pub(crate) fn copy_event(run: &UiHistoryRun, event: &RunnerEvent) -> chelix_sess
 pub(crate) fn copy_lifecycle(
     run: &UiHistoryRun,
     event: &RunnerToolLifecycleEvent,
-    sandbox_enabled: bool,
 ) -> chelix_sessions::Result<()> {
     let mut lifecycle = event.lifecycle.clone();
     lifecycle.context_budget = event.context_budget.clone().or(lifecycle.context_budget);
-    let execution_mode = tool_execution_mode(&lifecycle.tool_name, sandbox_enabled);
     let id = run.copy(PersistedMessage::ToolLifecycle { lifecycle })?;
     if let Some(presentation) = &event.ui_presentation {
         run.present(&id, presentation.clone())?;
     }
-    if let Some(mode) = execution_mode {
-        run.merge_metadata(
-            &id,
-            std::collections::BTreeMap::from([(
-                "executionMode".into(),
-                serde_json::Value::String(mode),
-            )]),
-        )?;
-    }
     Ok(())
-}
-
-pub(crate) fn tool_execution_mode(tool_name: &str, sandbox_enabled: bool) -> Option<String> {
-    (tool_name == "browser").then(|| {
-        if sandbox_enabled {
-            "sandbox".to_string()
-        } else {
-            "host".to_string()
-        }
-    })
 }
 
 pub(crate) async fn fail_run(

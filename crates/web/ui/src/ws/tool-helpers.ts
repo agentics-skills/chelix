@@ -218,7 +218,6 @@ export function renderToolLifecycleSnapshot(
 			assistantId: options.assistantId,
 			toolName: snapshot.lifecycle.toolName,
 			arguments: toolLifecycleArguments(snapshot.lifecycle, snapshot.accumulatedArguments),
-			executionMode: snapshot.executionMode,
 			status: "running",
 			expanded: true,
 		});
@@ -230,7 +229,7 @@ export function renderToolLifecycleSnapshot(
 	card.dataset.toolSequence = String(snapshot.lifecycle.sequence);
 	if (options.assistantId) card.dataset.assistantId = options.assistantId;
 	const argumentsValue = toolLifecycleArguments(snapshot.lifecycle, snapshot.accumulatedArguments);
-	if (argumentsValue !== undefined) updateToolCardParameters(card, argumentsValue, snapshot.executionMode);
+	if (argumentsValue !== undefined) updateToolCardParameters(card, argumentsValue);
 	if (isTerminalToolLifecycle(snapshot.lifecycle)) {
 		completeToolCard(card, snapshot, eventSession, options.screenshotMode || "inline-base64");
 	} else {

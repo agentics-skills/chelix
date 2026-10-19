@@ -1,6 +1,6 @@
 //! Tool implementations and policy enforcement.
 //!
-//! Tools: command execution, browser, canvas, message, cron, sessions,
+//! Tools: command execution, canvas, message, cron, sessions,
 //! memory, image gen, plus channel and plugin tools.
 //!
 //! Policy: multi-layered allow/deny (global, per-agent, per-provider,
@@ -8,7 +8,6 @@
 
 pub mod approval;
 pub mod branch_session;
-pub mod browser;
 mod client;
 pub mod command;
 #[cfg(test)]

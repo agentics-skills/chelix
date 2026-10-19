@@ -245,24 +245,6 @@ pub mod auto_reply {
     pub const DELIVERY_FAILURES_TOTAL: &str = "chelix_auto_reply_delivery_failures_total";
 }
 
-/// Browser automation metrics
-pub mod browser {
-    /// Active browser instances
-    pub const INSTANCES_ACTIVE: &str = "chelix_browser_instances_active";
-    /// Total browser instances created
-    pub const INSTANCES_CREATED_TOTAL: &str = "chelix_browser_instances_created_total";
-    /// Total browser instances destroyed
-    pub const INSTANCES_DESTROYED_TOTAL: &str = "chelix_browser_instances_destroyed_total";
-    /// Total screenshots taken
-    pub const SCREENSHOTS_TOTAL: &str = "chelix_browser_screenshots_total";
-    /// Navigation duration in seconds
-    pub const NAVIGATION_DURATION_SECONDS: &str = "chelix_browser_navigation_duration_seconds";
-    /// Browser errors by type
-    pub const ERRORS_TOTAL: &str = "chelix_browser_errors_total";
-    /// Browser pool utilization (0-1)
-    pub const POOL_UTILIZATION: &str = "chelix_browser_pool_utilization";
-}
-
 /// Media pipeline metrics
 pub mod media {
     /// Total downloads attempted

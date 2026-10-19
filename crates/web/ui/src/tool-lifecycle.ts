@@ -3,14 +3,12 @@ import type { ContextBudgetMetadata, ToolLifecycleEvent, ToolResult } from "./ty
 export interface ToolInvocationSnapshot {
 	lifecycle: ToolLifecycleEvent;
 	runId?: string;
-	executionMode?: string;
 	contextBudget?: ContextBudgetMetadata;
 	accumulatedArguments?: string;
 }
 
 export interface ToolInvocationMetadata {
 	runId?: string;
-	executionMode?: string;
 	contextBudget?: ContextBudgetMetadata;
 	accumulatedArguments?: string;
 }

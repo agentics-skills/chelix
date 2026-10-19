@@ -562,7 +562,7 @@ mod tests {
         assert_eq!(
             detector.record_round(&[
                 success("execute_command", failed_args.clone()),
-                failure("browser", json!({"action": "open"}), Some("unavailable")),
+                failure("ripgrep", json!({"pattern": "q"}), Some("unavailable")),
             ]),
             LoopDetectorAction::None
         );
@@ -610,18 +610,18 @@ mod tests {
         );
         assert_eq!(
             detector.record_round(&[failure(
-                "browser",
-                json!({"action": "open"}),
-                Some("browser unavailable"),
+                "ripgrep",
+                json!({"pattern": "q"}),
+                Some("unavailable"),
             )]),
             LoopDetectorAction::None
         );
         assert_eq!(detector.stage(), InterventionStage::None);
         assert_eq!(
             detector.record_round(&[failure(
-                "browser",
-                json!({"action": "open"}),
-                Some("browser unavailable"),
+                "ripgrep",
+                json!({"pattern": "q"}),
+                Some("unavailable"),
             )]),
             LoopDetectorAction::InjectNudge
         );
@@ -643,7 +643,7 @@ mod tests {
         let mut detector = ToolLoopDetector::new(2, true);
         let _ = detector.record_round(&[failure("execute_command", json!({}), Some("error"))]);
         assert_eq!(
-            detector.record_round(&[failure("browser", json!({}), Some("error"))]),
+            detector.record_round(&[failure("ripgrep", json!({}), Some("error"))]),
             LoopDetectorAction::None
         );
     }
@@ -671,12 +671,12 @@ mod tests {
         assert_eq!(detector.stage(), InterventionStage::Nudged);
 
         assert_eq!(
-            detector.record_round(&[failure("browser", json!({}), Some("offline"))]),
+            detector.record_round(&[failure("ripgrep", json!({}), Some("offline"))]),
             LoopDetectorAction::None
         );
         assert_eq!(detector.stage(), InterventionStage::None);
         assert_eq!(
-            detector.record_round(&[failure("browser", json!({}), Some("offline"))]),
+            detector.record_round(&[failure("ripgrep", json!({}), Some("offline"))]),
             LoopDetectorAction::InjectNudge
         );
     }
@@ -689,7 +689,7 @@ mod tests {
             json!({"command": "stable"}),
             Some("command execution failed"),
         );
-        let sibling = failure("browser", json!({"action": "open"}), Some("offline"));
+        let sibling = failure("ripgrep", json!({"pattern": "q"}), Some("offline"));
 
         let _ = detector.record_round(std::slice::from_ref(&established));
         assert_eq!(
@@ -748,7 +748,7 @@ mod tests {
     #[test]
     fn failure_without_error_string_matches_by_arguments_across_rounds() {
         let mut detector = ToolLoopDetector::new(2, true);
-        let failed = failure("browser", json!({"action": "open"}), None);
+        let failed = failure("ripgrep", json!({"pattern": "q"}), None);
         assert_eq!(
             detector.record_round(&[failed.clone(), failed.clone()]),
             LoopDetectorAction::None

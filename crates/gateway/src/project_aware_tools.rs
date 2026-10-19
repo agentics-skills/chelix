@@ -57,10 +57,6 @@ impl AgentTool for ProjectAwareCodeIndexTool {
         self.inner.parameters_schema()
     }
 
-    async fn warmup(&self) -> anyhow::Result<()> {
-        self.inner.warmup().await
-    }
-
     async fn execute(&self, params: serde_json::Value) -> anyhow::Result<serde_json::Value> {
         if let Some(ref pid) = Self::project_id(&params)
             && !self.is_enabled(pid).await

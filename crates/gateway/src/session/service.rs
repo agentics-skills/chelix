@@ -50,7 +50,6 @@ pub struct LiveSessionService {
     pub(super) hook_registry: Option<Arc<HookRegistry>>,
     pub(super) state_store: Option<Arc<SessionStateStore>>,
     pub(super) queued_prompts: Option<Arc<QueuedPrompts>>,
-    pub(super) browser_service: Option<Arc<dyn crate::services::BrowserService>>,
     pub(super) session_mutations: Arc<chelix_service_traits::SessionMutationCoordinator>,
     pub(super) call_bus: Arc<chelix_call_bus::CallBus>,
 }
@@ -77,7 +76,6 @@ impl LiveSessionService {
             hook_registry: None,
             state_store: None,
             queued_prompts: None,
-            browser_service: None,
             session_mutations: Arc::new(
                 chelix_service_traits::SessionMutationCoordinator::default(),
             ),
@@ -198,14 +196,6 @@ impl LiveSessionService {
     #[must_use]
     pub fn with_queued_prompts(mut self, queued_prompts: Arc<QueuedPrompts>) -> Self {
         self.queued_prompts = Some(queued_prompts);
-        self
-    }
-
-    pub fn with_browser_service(
-        mut self,
-        browser: Arc<dyn crate::services::BrowserService>,
-    ) -> Self {
-        self.browser_service = Some(browser);
         self
     }
 

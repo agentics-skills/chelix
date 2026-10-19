@@ -11,7 +11,6 @@ base64                  = { workspace = true }
 bytes                   = { workspace = true }
 chelix-agents           = { workspace = true }
 chelix-auth             = { workspace = true }
-chelix-browser          = { workspace = true }
 chelix-call-bus         = { workspace = true }
 chelix-channels         = { workspace = true }
 chelix-chat             = { workspace = true }

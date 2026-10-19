@@ -189,7 +189,7 @@ cancelled
 `src/tool-lifecycle.ts` validates the lifecycle contract. The server engine
 accumulates input fragments and sends `accumulatedArguments` alongside the
 latest lifecycle stage. Snapshot metadata includes `runId`, `assistantId`,
-execution mode, and received context budget. Reconnecting during argument
+and received context budget. Reconnecting during argument
 streaming uses this same accumulated snapshot.
 
 One rendering path in `src/ws/tool-helpers.ts` applies those snapshots to tool

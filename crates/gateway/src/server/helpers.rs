@@ -19,20 +19,6 @@ pub(crate) fn sandbox_container_prefix(instance_slug: &str) -> String {
     format!("chelix-{instance_slug}-sandbox")
 }
 
-pub(crate) fn browser_container_prefix(instance_slug: &str) -> String {
-    format!("chelix-{instance_slug}-browser")
-}
-
-pub(crate) fn browser_tool_container_prefix(instance_slug: &str) -> String {
-    use sha2::{Digest, Sha256};
-    let digest = Sha256::digest(instance_slug.as_bytes());
-    let mut hex = String::with_capacity(16);
-    for byte in digest.iter().take(8) {
-        hex.push_str(&format!("{byte:02x}"));
-    }
-    format!("ct_{hex}")
-}
-
 pub(crate) fn env_var_or_unset(name: &str) -> String {
     std::env::var(name)
         .ok()

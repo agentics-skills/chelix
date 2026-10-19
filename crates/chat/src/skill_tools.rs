@@ -118,10 +118,6 @@ impl AgentTool for AgentScopedSkillTool {
         self.inner.ui_presentation(lifecycle)
     }
 
-    async fn warmup(&self) -> anyhow::Result<()> {
-        self.inner.warmup().await
-    }
-
     fn truncation(&self, params: &Value) -> Truncation {
         self.inner.truncation(params)
     }

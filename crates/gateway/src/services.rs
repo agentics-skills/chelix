@@ -13,12 +13,11 @@ pub use {
     skills::{NoopSkillsService, UnwiredSkillsService},
 };
 
-use {async_trait::async_trait, serde_json::Value, std::sync::Arc};
+use {serde_json::Value, std::sync::Arc};
 
-mod browser;
 mod gateway;
 
-pub use {browser::RealBrowserService, gateway::GatewayServices};
+pub use gateway::GatewayServices;
 
 fn security_audit(event: &str, details: Value) {
     let dir = chelix_config::data_dir().join("logs");

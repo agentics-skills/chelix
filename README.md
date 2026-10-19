@@ -22,7 +22,7 @@ Please [open an issue](https://github.com/agentics-skills/chelix/issues) for any
 
 **Your hardware** — Runs on a Mac Mini, a Raspberry Pi, or any server you own. The Rust gateway has no Node.js or npm runtime; native filesystem tools run in the required `chelix-tools-service` managed sidecar, and semantic memory calls a remote embedding provider.
 
-**Full-featured** — Voice, memory, cross-session recall, scheduling, Telegram, browser automation, standards-based A2UI generative interfaces, MCP servers, managed SSH deploy keys and targets with host pinning in the web UI, a live Settings → Tools inventory, Cursor-compatible project context, and context-file threat scanning — all built-in. No plugin marketplace to get supply-chain attacked through.
+**Full-featured** — Voice, memory, cross-session recall, scheduling, Telegram, standards-based A2UI generative interfaces, MCP servers, managed SSH deploy keys and targets with host pinning in the web UI, a live Settings → Tools inventory, Cursor-compatible project context, and context-file threat scanning — all built-in. No plugin marketplace to get supply-chain attacked through.
 
 **Auditable** — The agent runner and model interface fit in ~7.5K lines, with providers in ~19K more. The Rust workspace is ~270K lines across 60 modular crates you can audit independently, with 470+ Rust files containing tests. Unsafe code is isolated to FFI and precompiled runtime boundaries, not the core agent loop.
 
@@ -66,7 +66,7 @@ Current Rust workspace: ~271K LoC across 60 crates. The table below groups the m
 | Web and APIs | `chelix-web`, `chelix-webhooks` | 10.8K |
 | Extensibility | `chelix-mcp`, `chelix-mcp-agent-bridge`, `chelix-skills`, `chelix-plugins`, `chelix-github` | 12.9K |
 | Memory and context | `chelix-memory`, `chelix-code-index`, `chelix-projects` | 11.7K |
-| Voice and browser | `chelix-voice`, `chelix-browser` | 9.2K |
+| Voice | `chelix-voice` | 6.8K |
 | Auth and security | `chelix-auth`, `chelix-oauth`, `chelix-vault`, `chelix-secret-store`, `chelix-tls` | 8.5K |
 | Scheduling and automation | `chelix-cron`, `chelix-auto-reply` | 3.4K |
 | Setup and import | `chelix-provider-setup`, `chelix-onboarding` | 11.7K |

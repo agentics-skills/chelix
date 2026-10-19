@@ -291,7 +291,7 @@ terminal_size = "115x58"             # 115 chars x 58
 
 # [tools.policy]
 # allow = []                        # Tools to always allow (e.g., ["execute_command", "read_file"])
-# deny = []                         # Tools to always deny (e.g., ["browser"])
+# deny = []                         # Tools to always deny (e.g., ["memory_search"])
 
 # ── Firecrawl (API-based web scraping) ────────────────────────────────────────
 
@@ -345,22 +345,6 @@ terminal_size = "115x58"             # 115 chars x 58
 # [tools.github]
 # pat = "ghp_..."                   # GitHub personal access token
 # request_timeout_secs = 300         # Per-request HTTP timeout; must be at least 1
-
-# ── Browser Automation ────────────────────────────────────────────────────────
-
-# [tools.browser]
-# enabled = true                    # Enable browser tool
-# headless = true                   # Run without visible window
-# viewport_width = 2560             # Default viewport width in pixels
-# viewport_height = 1440            # Default viewport height
-# device_scale_factor = 2.0         # HiDPI/Retina scaling
-# max_instances = 3                 # Maximum concurrent browser instances
-# idle_timeout_secs = 300           # Close idle browsers after this many seconds
-# sandbox = false                   # Run browser in container for isolation
-# allowed_domains = []              # Domain restrictions (empty = all allowed)
-# chrome_path = "/path/to/chrome"   # Custom Chrome binary path
-# obscura_path = "/path/to/obscura" # Custom Obscura binary path for browser = "obscura"
-# lightpanda_path = "/path/to/lightpanda" # Custom Lightpanda binary path for browser = "lightpanda"
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SKILLS

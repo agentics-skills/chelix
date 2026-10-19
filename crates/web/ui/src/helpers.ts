@@ -57,9 +57,7 @@ interface ApiPayload {
 interface ToolCallArgs {
 	command?: string;
 	node?: string;
-	url?: string;
 	query?: string;
-	action?: string;
 	[key: string]: unknown;
 }
 
@@ -530,25 +528,12 @@ function summarizeCommandTool(args: ToolCallArgs): string {
 	return args.command || "execute_command";
 }
 
-function summarizeBrowserTool(args: ToolCallArgs, executionMode?: string): string {
-	const action = args.action || "browser";
-	const mode = executionMode ? ` (${executionMode})` : "";
-	const url = args.url ? ` ${args.url}` : "";
-	return `browser ${action}${mode}${url}`.trim();
-}
-
 /** Build a short summary string for a tool call card. */
-export function toolCallSummary(
-	name: string | undefined,
-	args: ToolCallArgs | undefined,
-	executionMode?: string,
-): string {
+export function toolCallSummary(name: string | undefined, args: ToolCallArgs | undefined): string {
 	if (!args) return name || "tool";
 	switch (name) {
 		case "execute_command":
 			return summarizeCommandTool(args);
-		case "browser":
-			return summarizeBrowserTool(args, executionMode);
 		default:
 			return name || "tool";
 	}
@@ -558,26 +543,15 @@ export function toolCallSummary(
  * Render a screenshot thumbnail with lightbox and download into `container`.
  * @param container - parent element to append into
  * @param imgSrc - image URL (data URI or HTTP URL)
- * @param scale - HiDPI scale factor
  */
-export function renderScreenshot(container: HTMLElement, imgSrc: string, scale?: number): void {
-	if (!scale) scale = 1;
+export function renderScreenshot(container: HTMLElement, imgSrc: string): void {
 	const imgContainer = document.createElement("div");
 	imgContainer.className = "screenshot-container";
 	const img = document.createElement("img");
 	img.src = imgSrc;
 	img.className = "screenshot-thumbnail";
-	img.alt = "Browser screenshot";
+	img.alt = "Screenshot";
 	img.title = "Click to view full size";
-
-	const effectiveScale = scale;
-	img.onload = (): void => {
-		if (effectiveScale > 1) {
-			const logicalWidth = img.naturalWidth / effectiveScale;
-			const logicalHeight = img.naturalHeight / effectiveScale;
-			img.style.aspectRatio = `${logicalWidth} / ${logicalHeight}`;
-		}
-	};
 
 	const downloadScreenshot = (e: Event): void => {
 		e.stopPropagation();
@@ -621,8 +595,8 @@ export function renderScreenshot(container: HTMLElement, imgSrc: string, scale?:
 		fullImg.className = "screenshot-lightbox-img";
 
 		fullImg.onload = (): void => {
-			const logicalWidth = fullImg.naturalWidth / effectiveScale;
-			const logicalHeight = fullImg.naturalHeight / effectiveScale;
+			const logicalWidth = fullImg.naturalWidth;
+			const logicalHeight = fullImg.naturalHeight;
 			const viewportWidth = window.innerWidth - 80;
 			const displayWidth = Math.min(logicalWidth, viewportWidth);
 			fullImg.style.width = `${displayWidth}px`;

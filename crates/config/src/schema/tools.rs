@@ -6,7 +6,7 @@ use {
 
 pub use crate::container_mounts::{MountMode, SandboxMount};
 
-/// Tools configuration (command execution, policy, web, browser).
+/// Tools configuration (command execution, policy, web).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ToolsConfig {
@@ -14,7 +14,6 @@ pub struct ToolsConfig {
     pub policy: ToolPolicyConfig,
     pub web: WebConfig,
     pub maps: MapsConfig,
-    pub browser: BrowserConfig,
     pub context7: Context7Config,
     pub linkup: LinkupConfig,
     pub exa: ExaConfig,
@@ -63,7 +62,6 @@ impl Default for ToolsConfig {
             policy: ToolPolicyConfig::default(),
             web: WebConfig::default(),
             maps: MapsConfig::default(),
-            browser: BrowserConfig::default(),
             context7: Context7Config::default(),
             linkup: LinkupConfig::default(),
             exa: ExaConfig::default(),
@@ -403,124 +401,6 @@ impl Default for GitHubConfig {
     }
 }
 
-/// Browser automation configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct BrowserConfig {
-    /// Whether browser support is enabled.
-    pub enabled: bool,
-    /// Path to Chrome/Chromium binary (auto-detected if not set).
-    pub chrome_path: Option<String>,
-    /// Path to the Obscura binary (auto-detected from PATH if not set).
-    /// Set `browser = "obscura"` in requests to use this lightweight headless browser.
-    pub obscura_path: Option<String>,
-    /// Path to the Lightpanda binary (auto-detected from PATH if not set).
-    /// Set `browser = "lightpanda"` in requests to use this lightweight headless browser.
-    pub lightpanda_path: Option<String>,
-    /// Whether to run in headless mode.
-    pub headless: bool,
-    /// Default viewport width.
-    pub viewport_width: u32,
-    /// Default viewport height.
-    pub viewport_height: u32,
-    /// Device scale factor for HiDPI/Retina displays.
-    /// 1.0 = standard, 2.0 = Retina/HiDPI, 3.0 = 3x scaling.
-    pub device_scale_factor: f64,
-    /// Maximum concurrent browser instances (0 = unlimited, limited by memory).
-    pub max_instances: usize,
-    /// System memory usage threshold (0-100) above which new instances are blocked.
-    /// Default is 90 (block new instances when memory > 90% used).
-    pub memory_limit_percent: u8,
-    /// Instance idle timeout in seconds before closing.
-    pub idle_timeout_secs: u64,
-    /// Default navigation timeout in milliseconds.
-    pub navigation_timeout_ms: u64,
-    /// User agent string (uses default if not set).
-    pub user_agent: Option<String>,
-    /// Additional Chrome arguments.
-    #[serde(default)]
-    pub chrome_args: Vec<String>,
-    /// Docker image to use for sandboxed browser.
-    /// Default: "browserless/chrome" - a purpose-built headless Chrome container.
-    /// Browser isolation is controlled by the global sandbox policy.
-    #[serde(default = "default_sandbox_image")]
-    pub sandbox_image: String,
-    /// Allowed domains for navigation. Empty list means all domains allowed.
-    /// When set, the browser will refuse to navigate to non-matching domains.
-    /// Supports wildcards: "*.example.com" matches subdomains.
-    #[serde(default)]
-    pub allowed_domains: Vec<String>,
-    /// Total system RAM threshold (MB) below which memory-saving Chrome flags
-    /// are injected automatically. Set to 0 to disable. Default: 2048.
-    #[serde(default = "default_low_memory_threshold_mb")]
-    pub low_memory_threshold_mb: u64,
-    /// Whether to persist the Chrome user profile across sessions.
-    /// When enabled, cookies, auth state, and local storage survive browser restarts.
-    /// Profile is stored at `data_dir()/browser/profile/` unless `profile_dir` overrides it.
-    #[serde(default = "default_persist_profile")]
-    pub persist_profile: bool,
-    /// Custom path for the persistent Chrome profile directory.
-    /// When set, `persist_profile` is implicitly true.
-    /// If not set and `persist_profile` is true, defaults to `data_dir()/browser/profile/`.
-    pub profile_dir: Option<String>,
-    /// Browserless API compatibility mode for websocket endpoints.
-    /// - "v1" (default): connect to the base websocket URL.
-    /// - "v2": try Browserless v2 paths (`/chrome`, `/chromium`) when needed.
-    #[serde(default = "default_browserless_api_version")]
-    pub browserless_api_version: BrowserlessApiVersion,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum BrowserlessApiVersion {
-    #[default]
-    V1,
-    V2,
-}
-
-fn default_sandbox_image() -> String {
-    "docker.io/browserless/chrome".to_string()
-}
-
-const fn default_low_memory_threshold_mb() -> u64 {
-    2048
-}
-
-const fn default_persist_profile() -> bool {
-    true
-}
-
-const fn default_browserless_api_version() -> BrowserlessApiVersion {
-    BrowserlessApiVersion::V1
-}
-
-impl Default for BrowserConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            chrome_path: None,
-            obscura_path: None,
-            lightpanda_path: None,
-            headless: true,
-            viewport_width: 2560,
-            viewport_height: 1440,
-            device_scale_factor: 2.0,
-            max_instances: 0, // 0 = unlimited, limited by memory
-            memory_limit_percent: 90,
-            idle_timeout_secs: 300,
-            navigation_timeout_ms: 30000,
-            user_agent: None,
-            chrome_args: Vec::new(),
-            sandbox_image: default_sandbox_image(),
-            allowed_domains: Vec::new(),
-            low_memory_threshold_mb: default_low_memory_threshold_mb(),
-            persist_profile: default_persist_profile(),
-            profile_dir: None,
-            browserless_api_version: default_browserless_api_version(),
-        }
-    }
-}
-
 /// Operator approval policy for `execute_command`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -850,24 +730,6 @@ fn default_sandbox_packages() -> Vec<String> {
         "ripgrep",
         "fd-find",
         "yq",
-        // Browser automation (for browser tool)
-        "chromium",
-        "libxss1",
-        "libnss3",
-        "libnspr4",
-        "libasound2t64",
-        "libatk1.0-0t64",
-        "libatk-bridge2.0-0t64",
-        "libcups2t64",
-        "libdrm2",
-        "libgbm1",
-        "libgtk-3-0t64",
-        "libxcomposite1",
-        "libxdamage1",
-        "libxfixes3",
-        "libxrandr2",
-        "libxkbcommon0",
-        "fonts-liberation",
         // Image processing (headless)
         "imagemagick",
         "graphicsmagick",

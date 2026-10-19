@@ -1,37 +1,6 @@
-use std::sync::Arc;
-
 use tracing::{debug, info, warn};
 
 use crate::{auth_webauthn::SharedWebAuthnRegistry, state::GatewayState};
-
-// ── Browser warmup ───────────────────────────────────────────────────────────
-
-fn spawn_post_listener_warmups(
-    browser_service: Arc<dyn crate::services::BrowserService>,
-    browser_tool: Option<Arc<dyn chelix_agents::tool_registry::AgentTool>>,
-) {
-    if !super::helpers::env_flag_enabled("CHELIX_BROWSER_WARMUP") {
-        debug!("startup browser warmup disabled (set CHELIX_BROWSER_WARMUP=1 to enable)");
-        return;
-    }
-
-    tokio::spawn(async move {
-        browser_service.warmup().await;
-        if let Some(tool) = browser_tool
-            && let Err(error) = tool.warmup().await
-        {
-            warn!(%error, "browser tool warmup failed");
-        }
-    });
-}
-
-/// Start browser warmup after the transport listener is ready.
-pub fn start_browser_warmup_after_listener(
-    browser_service: Arc<dyn crate::services::BrowserService>,
-    browser_tool: Option<Arc<dyn chelix_agents::tool_registry::AgentTool>>,
-) {
-    spawn_post_listener_warmups(browser_service, browser_tool);
-}
 
 // ── WebAuthn runtime sync ────────────────────────────────────────────────────
 
