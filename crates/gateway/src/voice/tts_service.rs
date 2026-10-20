@@ -36,13 +36,6 @@ impl LiveTtsService {
         }
     }
 
-    /// Create from environment variables (same as new, config read on demand).
-    pub fn from_env() -> Self {
-        Self {
-            _marker: std::marker::PhantomData,
-        }
-    }
-
     /// Load fresh TTS config from disk.
     fn load_config() -> Result<TtsConfig, ServiceError> {
         let cfg = load_voice_config().map_err(ServiceError::message)?;

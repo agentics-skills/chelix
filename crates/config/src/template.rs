@@ -17,7 +17,7 @@ pub fn default_config_template(port: u16) -> String {
 # Uncomment and modify settings you want to change.
 # Changes require a restart to take effect.
 #
-# Environment variable substitution is supported for non-provider settings: ${{ENV_VAR}}
+# ${{VAR}} placeholders in non-provider settings resolve from [env].
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SERVER
@@ -32,12 +32,9 @@ port = {port}                           # Port number (auto-generated for this i
 # scrollback_lines = 300000               # Maximum terminal lines retained by the web UI
                                          # Set to false to disable the unsandboxed shell in the web UI.
                                          # NOTE: this can be re-enabled via the web UI config editor.
-                                         # For hard lockdown, set CHELIX_TERMINAL_DISABLED=1 (env var
-                                         # takes precedence and cannot be changed from the web UI).
 # update_releases_url = "https://github.com/agentics-skills/chelix"  # Override releases manifest URL
 # external_url = "https://chelix.example.com"  # Public URL when behind a reverse proxy.
                                                  # Used for WebAuthn passkey origins.
-                                                 # Env var CHELIX_EXTERNAL_URL takes precedence.
 
 # ══════════════════════════════════════════════════════════════════════════════
 # UPSTREAM PROXY
@@ -85,7 +82,6 @@ port = {port}                           # Port number (auto-generated for this i
 # LLM PROVIDERS
 # ══════════════════════════════════════════════════════════════════════════════
 # Configure API keys and settings for each LLM provider.
-# API keys can also be set via environment variables (preferred for security).
 #
 # Each provider supports:
 #   enabled   - Whether to use this provider (default: true)
@@ -297,7 +293,7 @@ terminal_size = "115x58"             # 115 chars x 58
 
 # [tools.web.firecrawl]
 # enabled = false
-# api_key = "fc-..."                # Or set FIRECRAWL_API_KEY env var
+# api_key = "fc-..."
 # base_url = "https://api.firecrawl.dev"
 
 # ── Context7 (context7_* tools) ───────────────────────────────────────────────
@@ -489,10 +485,9 @@ terminal_size = "115x58"             # 115 chars x 58
 # ══════════════════════════════════════════════════════════════════════════════
 # ENVIRONMENT VARIABLES
 # ══════════════════════════════════════════════════════════════════════════════
-# Variables injected into the Chelix process at startup.
+# Values used to resolve ${{VAR}} placeholders.
 
 # [env]
-# FIRECRAWL_API_KEY = "fc-..."
 "##,
         max_tools_threshold = crate::schema::DEFAULT_MAX_TOOLS_THRESHOLD,
         compaction_reminder = crate::schema::DEFAULT_COMPACTION_REMINDER,

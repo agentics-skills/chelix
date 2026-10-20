@@ -2,191 +2,6 @@ use crate::{UserProfile, schema::ChelixConfig};
 
 use super::*;
 
-fn config_with_sandbox_retention() -> ChelixConfig {
-    let mut config = ChelixConfig::default();
-    config.sandbox.archived_session_retention_days = Some(3);
-    config
-}
-
-#[test]
-fn parse_env_value_bool() {
-    assert_eq!(parse_env_value("true"), serde_json::Value::Bool(true));
-    assert_eq!(parse_env_value("TRUE"), serde_json::Value::Bool(true));
-    assert_eq!(parse_env_value("false"), serde_json::Value::Bool(false));
-}
-
-#[test]
-fn parse_env_value_number() {
-    assert_eq!(parse_env_value("42"), serde_json::json!(42));
-    assert_eq!(parse_env_value("1.5"), serde_json::json!(1.5));
-}
-
-#[test]
-fn parse_env_value_string() {
-    assert_eq!(
-        parse_env_value("hello"),
-        serde_json::Value::String("hello".into())
-    );
-}
-
-#[test]
-fn parse_env_value_json_array() {
-    assert_eq!(
-        parse_env_value("[\"openai\",\"openrouter\"]"),
-        serde_json::json!(["openai", "openrouter"])
-    );
-}
-
-#[test]
-fn set_nested_creates_intermediate_objects() {
-    let mut root = serde_json::json!({});
-    set_nested(
-        &mut root,
-        &["a".into(), "b".into(), "c".into()],
-        serde_json::json!(42),
-    );
-    assert_eq!(root, serde_json::json!({"a": {"b": {"c": 42}}}));
-}
-
-#[test]
-fn set_nested_overwrites_existing() {
-    let mut root = serde_json::json!({"auth": {"disabled": false}});
-    set_nested(
-        &mut root,
-        &["auth".into(), "disabled".into()],
-        serde_json::Value::Bool(true),
-    );
-    assert_eq!(root, serde_json::json!({"auth": {"disabled": true}}));
-}
-
-#[test]
-fn apply_env_overrides_auth_disabled() {
-    let vars = vec![("CHELIX_AUTH__DISABLED".into(), "true".into())];
-    let config = config_with_sandbox_retention();
-    assert!(!config.auth.disabled);
-    assert!(config.auth.vault_enabled);
-    let config = apply_env_overrides_with(config, vars.into_iter());
-    assert!(config.auth.disabled);
-}
-
-#[test]
-fn apply_env_overrides_tools_agent_timeout() {
-    let vars = vec![("CHELIX_TOOLS__AGENT_TIMEOUT_SECS".into(), "120".into())];
-    let config = apply_env_overrides_with(config_with_sandbox_retention(), vars.into_iter());
-    assert_eq!(config.tools.agent_timeout_secs, 120);
-}
-
-#[test]
-fn apply_env_overrides_rejects_tools_agent_max_iterations() {
-    let vars = vec![("CHELIX_TOOLS__AGENT_MAX_ITERATIONS".into(), "64".into())];
-    let error = apply_env_overrides_with_options(ChelixConfig::default(), vars.into_iter(), true)
-        .expect_err("removed env override must fail");
-    assert!(error.to_string().contains("agent_max_iterations"));
-}
-
-#[test]
-fn apply_env_overrides_ignores_excluded() {
-    // CHELIX_CONFIG_DIR should not be treated as a config field override.
-    let vars = vec![("CHELIX_CONFIG_DIR".into(), "/tmp/test".into())];
-    let config = apply_env_overrides_with(config_with_sandbox_retention(), vars.into_iter());
-    assert!(!config.auth.disabled);
-}
-
-#[test]
-fn apply_env_overrides_ignores_external_url() {
-    // CHELIX_EXTERNAL_URL is handled by effective_external_url(), not by
-    // the generic env override mechanism.
-    let vars = vec![(
-        "CHELIX_EXTERNAL_URL".into(),
-        "https://test.example.com".into(),
-    )];
-    let config = apply_env_overrides_with(config_with_sandbox_retention(), vars.into_iter());
-    assert!(
-        config.server.external_url.is_none(),
-        "CHELIX_EXTERNAL_URL should be excluded from generic env overrides"
-    );
-}
-
-#[test]
-fn apply_env_overrides_multiple() {
-    let vars = vec![
-        ("CHELIX_AUTH__DISABLED".into(), "true".into()),
-        ("CHELIX_TOOLS__AGENT_TIMEOUT_SECS".into(), "300".into()),
-        ("CHELIX_MEMORY__DISABLE_RAG".into(), "true".into()),
-    ];
-    let config = apply_env_overrides_with(config_with_sandbox_retention(), vars.into_iter());
-    assert!(config.auth.disabled);
-    assert_eq!(config.tools.agent_timeout_secs, 300);
-    assert!(config.memory.disable_rag);
-}
-
-#[test]
-fn apply_env_overrides_deep_nesting() {
-    let vars = vec![(
-        "CHELIX_TOOLS__EXEC__DEFAULT_TIMEOUT_SECS".into(),
-        "60".into(),
-    )];
-    let config = apply_env_overrides_with(config_with_sandbox_retention(), vars.into_iter());
-    assert_eq!(config.tools.execute_command.default_timeout_secs, 60);
-}
-
-#[test]
-fn apply_env_overrides_mcp_request_timeout() {
-    let vars = vec![("CHELIX_MCP__REQUEST_TIMEOUT_SECS".into(), "90".into())];
-    let config = apply_env_overrides_with(config_with_sandbox_retention(), vars.into_iter());
-    assert_eq!(config.mcp.request_timeout_secs, 90);
-}
-
-#[test]
-fn apply_env_overrides_rejects_zero_context7_request_timeout() {
-    let vars = vec![(
-        "CHELIX_TOOLS__CONTEXT7__REQUEST_TIMEOUT_SECS".into(),
-        "0".into(),
-    )];
-
-    let error = apply_env_overrides_with_options(ChelixConfig::default(), vars.into_iter(), true)
-        .expect_err("zero Context7 request timeout must fail");
-
-    assert_eq!(
-        error.to_string(),
-        "invalid environment overrides: tools.context7.request_timeout_secs must be at least 1"
-    );
-}
-
-#[test]
-fn apply_env_overrides_rejects_zero_search_timeouts() {
-    for name in ["EXA", "GOOGLE", "FELO"] {
-        let vars = vec![(
-            format!("CHELIX_TOOLS__{name}__REQUEST_TIMEOUT_SECS"),
-            "0".into(),
-        )];
-        let error =
-            apply_env_overrides_with_options(ChelixConfig::default(), vars.into_iter(), true)
-                .expect_err("zero search timeout must fail");
-        assert!(
-            error
-                .to_string()
-                .contains("request_timeout_secs must be at least 1")
-        );
-    }
-}
-
-#[test]
-fn apply_env_overrides_rejects_zero_linkup_request_timeout() {
-    let vars = vec![(
-        "CHELIX_TOOLS__LINKUP__REQUEST_TIMEOUT_SECS".into(),
-        "0".into(),
-    )];
-
-    let error = apply_env_overrides_with_options(ChelixConfig::default(), vars.into_iter(), true)
-        .expect_err("zero Linkup request timeout must fail");
-
-    assert_eq!(
-        error.to_string(),
-        "invalid environment overrides: tools.linkup.request_timeout_secs must be at least 1"
-    );
-}
-
 #[test]
 fn parse_config_rejects_unknown_channel_types() {
     for (raw, expected_path) in [
@@ -232,16 +47,11 @@ fn parse_config_rejects_noncanonical_offered_provider_names() {
 }
 
 #[test]
-fn layered_candidate_validates_sandbox_retention_and_applies_env_overrides() {
+fn layered_candidate_validates_sandbox_retention() {
     let raw = "[providers]\noffered = [\"deepinfra\"]\n\n[tools.execute_command]\nterminal_size = \"115x58\"\n\n[sandbox]\narchived_session_retention_days = 3\n";
     let direct = toml::from_str::<ChelixConfig>(raw).expect("raw candidate should parse");
-    let layered = load_layered_config_toml_source(
-        raw,
-        std::path::Path::new("chelix.toml"),
-        true,
-        std::iter::empty(),
-    )
-    .expect("layered candidate should load");
+    let layered = load_layered_config_toml_source(raw, std::path::Path::new("chelix.toml"))
+        .expect("layered candidate should load");
 
     assert_eq!(direct.providers.offered, vec!["deepinfra"]);
     assert_eq!(layered.providers.offered, vec!["deepinfra"]);
@@ -257,11 +67,8 @@ fn layered_candidate_validates_sandbox_retention_and_applies_env_overrides() {
                 .to_string()
                 .contains("sandbox.archived_session_retention_days")
         );
-        let error = load_layered_config_toml_source(&missing, path, true, [(
-            "CHELIX_SANDBOX__ARCHIVED_SESSION_RETENTION_DAYS".into(),
-            "3".into(),
-        )])
-        .expect_err("environment overrides must not bypass file validation");
+        let error = load_layered_config_toml_source(&missing, path)
+            .expect_err("On requires explicit retention");
         assert!(
             error
                 .to_string()
@@ -272,137 +79,17 @@ fn layered_candidate_validates_sandbox_retention_and_applies_env_overrides() {
     let off = format!("{terminal}\n[sandbox]\nmode = \"Off\"\n");
     let config = parse_config(&off, path).expect("Off allows missing retention");
     assert_eq!(config.sandbox.archived_session_retention_days, None);
-    let error = apply_env_overrides_with_options(
-        config,
-        [("CHELIX_SANDBOX__MODE".into(), "On".into())].into_iter(),
-        true,
-    )
-    .expect_err("switching to On requires retention");
-    assert!(
-        error
-            .to_string()
-            .contains("sandbox.archived_session_retention_days")
-    );
-    let loaded = load_layered_config_toml_source(&off, path, true, std::iter::empty())
-        .expect("layered Off allows missing retention");
+    let loaded =
+        load_layered_config_toml_source(&off, path).expect("layered Off allows missing retention");
     assert_eq!(loaded.sandbox.archived_session_retention_days, None);
 
     for days in [0, 3] {
         let valid = format!("{terminal}\n[sandbox]\narchived_session_retention_days = {days}\n");
         let parsed = parse_config(&valid, path).expect("explicit retention must parse");
         assert_eq!(parsed.sandbox.archived_session_retention_days, Some(days));
-        let loaded = load_layered_config_toml_source(&valid, path, true, std::iter::empty())
+        let loaded = load_layered_config_toml_source(&valid, path)
             .expect("layered load preserves explicit retention");
         assert_eq!(loaded.sandbox.archived_session_retention_days, Some(days));
-    }
-}
-
-#[test]
-fn apply_env_overrides_rejects_unknown_config_path() {
-    let vars = vec![("CHELIX_TOOLS__REMOVED_OPTION".into(), "true".into())];
-    let error = apply_env_overrides_with_options(ChelixConfig::default(), vars.into_iter(), true)
-        .expect_err("unknown environment override must fail");
-    assert!(
-        error.to_string().contains("tools.removed_option"),
-        "error should identify the unknown override: {error}"
-    );
-}
-
-#[test]
-fn apply_env_overrides_accepts_all_nested_profile_and_voice_fields() {
-    let vars = vec![
-        ("CHELIX_USER__LOCATION__LATITUDE".into(), "37.7749".into()),
-        (
-            "CHELIX_USER__LOCATION__LONGITUDE".into(),
-            "-122.4194".into(),
-        ),
-        (
-            "CHELIX_USER__LOCATION__PLACE".into(),
-            "San Francisco".into(),
-        ),
-        (
-            "CHELIX_USER__LOCATION__UPDATED_AT".into(),
-            "1234567890".into(),
-        ),
-        (
-            "CHELIX_VOICE__TTS__PIPER__BINARY_PATH".into(),
-            "/usr/bin/piper".into(),
-        ),
-        (
-            "CHELIX_VOICE__TTS__PIPER__CONFIG_PATH".into(),
-            "/models/voice.json".into(),
-        ),
-        ("CHELIX_VOICE__TTS__PIPER__SPEAKER_ID".into(), "2".into()),
-        (
-            "CHELIX_VOICE__TTS__PIPER__LENGTH_SCALE".into(),
-            "1.25".into(),
-        ),
-        ("CHELIX_VOICE__TTS__COQUI__MODEL".into(), "xtts_v2".into()),
-        ("CHELIX_VOICE__TTS__COQUI__SPEAKER".into(), "speaker".into()),
-        ("CHELIX_VOICE__TTS__COQUI__LANGUAGE".into(), "en".into()),
-        (
-            "CHELIX_VOICE__STT__GOOGLE__SERVICE_ACCOUNT_JSON".into(),
-            "/secrets/google.json".into(),
-        ),
-        ("CHELIX_VOICE__STT__GOOGLE__LANGUAGE".into(), "en-US".into()),
-        (
-            "CHELIX_VOICE__STT__GOOGLE__MODEL".into(),
-            "latest_long".into(),
-        ),
-        (
-            "CHELIX_VOICE__STT__VOXTRAL_LOCAL__LANGUAGE".into(),
-            "fr".into(),
-        ),
-        (
-            "CHELIX_VOICE__STT__SHERPA_ONNX__BINARY_PATH".into(),
-            "/usr/bin/sherpa-onnx-offline".into(),
-        ),
-    ];
-
-    let config = apply_env_overrides_with(config_with_sandbox_retention(), vars.into_iter());
-    let location = config
-        .user
-        .location
-        .expect("location override must be applied");
-    assert_eq!(location.latitude, 37.7749);
-    assert_eq!(location.longitude, -122.4194);
-    assert_eq!(location.place.as_deref(), Some("San Francisco"));
-    assert_eq!(location.updated_at, Some(1_234_567_890));
-    assert_eq!(
-        config.voice.tts.piper.binary_path.as_deref(),
-        Some("/usr/bin/piper")
-    );
-    assert_eq!(config.voice.tts.piper.speaker_id, Some(2));
-    assert_eq!(config.voice.tts.coqui.model.as_deref(), Some("xtts_v2"));
-    assert_eq!(config.voice.stt.google.language.as_deref(), Some("en-US"));
-    assert_eq!(
-        config.voice.stt.voxtral_local.language.as_deref(),
-        Some("fr")
-    );
-    assert_eq!(
-        config.voice.stt.sherpa_onnx.binary_path.as_deref(),
-        Some("/usr/bin/sherpa-onnx-offline")
-    );
-}
-
-#[test]
-fn apply_env_overrides_rejects_fields_not_present_in_voice_schema() {
-    for key in [
-        "CHELIX_VOICE__TTS__COQUI__BASE_URL",
-        "CHELIX_VOICE__STT__GOOGLE__LANGUAGE_CODE",
-        "CHELIX_VOICE__STT__VOXTRAL_LOCAL__BASE_URL",
-        "CHELIX_VOICE__STT__SHERPA_ONNX__SAMPLE_RATE",
-    ] {
-        let error = apply_env_overrides_with_options(
-            ChelixConfig::default(),
-            [(key.to_string(), "value".into())].into_iter(),
-            true,
-        )
-        .expect_err("field absent from the Rust config schema must fail");
-        assert!(
-            error.to_string().contains("unknown field"),
-            "{key} should be rejected as unknown: {error}"
-        );
     }
 }
 

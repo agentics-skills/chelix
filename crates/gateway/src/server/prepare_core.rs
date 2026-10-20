@@ -84,7 +84,7 @@ pub async fn prepare_gateway_core(
     let mut startup_mem_probe = StartupMemProbe::new();
     startup_mem_probe.checkpoint("prepare_gateway.start");
 
-    // CLI --no-tls / CHELIX_NO_TLS overrides config file TLS setting.
+    // CLI --no-tls overrides config file TLS setting.
     if no_tls {
         config.tls.enabled = false;
     }
@@ -399,11 +399,7 @@ pub async fn prepare_gateway_core(
         },
     };
 
-    // GH-770: Re-resolve ${VAR} placeholders using DB-stored env vars.
-    // At initial config load, only process env vars were available.  Now
-    // that the credential store has been read, re-substitute so that TOML
-    // values like `api_key = "${OPENROUTER_API_KEY}"` resolve against UI
-    // env vars too.
+    // Re-resolve ${VAR} placeholders from runtime overrides.
     config = chelix_config::resubstitute_config(&config, &runtime_env_overrides)?;
 
     live_mcp

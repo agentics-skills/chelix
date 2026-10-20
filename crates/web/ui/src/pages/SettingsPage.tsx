@@ -331,8 +331,7 @@ function TerminalUnavailable(): VNode {
 			message={
 				<>
 					The host terminal has been disabled by the server administrator. To re-enable it, set{" "}
-					<code>terminal_enabled = true</code> under <code>[server]</code> in the configuration file, or remove the{" "}
-					<code>CHELIX_TERMINAL_DISABLED</code> environment variable if it is set.
+					<code>terminal_enabled = true</code> under <code>[server]</code> in the configuration file.
 				</>
 			}
 		/>

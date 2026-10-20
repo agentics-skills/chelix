@@ -87,7 +87,6 @@ interface VoiceTestButtonView {
 }
 
 function voiceKeySourceLabel(provider: VoiceProvider): string {
-	if (provider.keySource === "env") return "(from env)";
 	return provider.keySource === "llm_provider" ? "(from LLM provider)" : "";
 }
 

@@ -187,7 +187,6 @@ export default {
 			"Configure text-to-speech (TTS) and speech-to-text (STT) providers. STT lets you use the microphone button in chat to record voice input. TTS lets you hear responses as audio.",
 		sttHeading: "Speech-to-Text (Voice Input)",
 		ttsHeading: "Text-to-Speech (Audio Responses)",
-		fromEnv: "(from env)",
 		fromLlmProvider: "(from LLM provider)",
 		localBadge: "local",
 		voiceSummary: "Voice: {{summary}}",

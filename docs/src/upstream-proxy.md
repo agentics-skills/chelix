@@ -53,13 +53,6 @@ export HTTPS_PROXY=http://proxy.corp.example.com:8080
 chelix
 ```
 
-Or use the `env` section in `chelix.toml`:
-
-```toml
-[env]
-HTTPS_PROXY = "http://proxy.corp.example.com:8080"
-```
-
 ## Environment variable fallback
 
 When `upstream_proxy` is **not** set in `chelix.toml`, reqwest automatically

@@ -171,7 +171,7 @@ pub(crate) fn validate_proxy_tls_configuration(
 ) -> anyhow::Result<()> {
     if behind_proxy && tls_enabled && !allow_tls_behind_proxy {
         anyhow::bail!(
-            "CHELIX_BEHIND_PROXY=true with Chelix TLS enabled is usually a proxy misconfiguration. Run with --no-tls (or CHELIX_NO_TLS=true). If your proxy upstream is HTTPS/TCP passthrough by design, set CHELIX_ALLOW_TLS_BEHIND_PROXY=true."
+            "CHELIX_BEHIND_PROXY=true with Chelix TLS enabled is usually a proxy misconfiguration. Run with --no-tls. If your proxy upstream is HTTPS/TCP passthrough by design, set CHELIX_ALLOW_TLS_BEHIND_PROXY=true."
         );
     }
     Ok(())

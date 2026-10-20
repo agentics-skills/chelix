@@ -275,9 +275,7 @@ pub struct ChelixConfig {
         deserialize_with = "crate::schema::deserialize_option_secret"
     )]
     pub upstream_proxy: Option<Secret<String>>,
-    /// Environment variables injected into the Chelix process at startup.
-    /// Useful for API keys in Docker where you can't easily set env vars.
-    /// Process env vars take precedence (existing vars are not overwritten).
+    /// Named values used to resolve `${VAR}` placeholders.
     #[serde(default)]
     pub env: HashMap<String, String>,
 }

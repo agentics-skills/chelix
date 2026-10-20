@@ -92,7 +92,7 @@ async fn build_webauthn_registry(
         "http"
     };
 
-    // Derive RP ID and origin from server.external_url / CHELIX_EXTERNAL_URL
+    // Derive RP ID and origin from server.external_url
     // when available, before falling back to fine-grained env vars.
     let (external_rp_id, external_origin) = if let Some(ref ext_url) =
         config.server.effective_external_url()

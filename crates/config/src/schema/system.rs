@@ -40,9 +40,7 @@ pub struct ServerConfig {
     /// Enable or disable the host terminal in the web UI.
     ///
     /// Defaults to `true`. Set to `false` to prevent the web UI from
-    /// offering an unsandboxed shell. The `CHELIX_TERMINAL_DISABLED`
-    /// environment variable (set to `1` or `true`) takes precedence over
-    /// this field and cannot be changed from the web UI config editor.
+    /// offering an unsandboxed shell.
     #[serde(default = "default_terminal_enabled")]
     pub terminal_enabled: bool,
     /// Maximum number of terminal lines retained by the web UI.
@@ -53,9 +51,6 @@ pub struct ServerConfig {
     /// Public URL when running behind a reverse proxy (e.g.
     /// `https://chelix.example.com`). Used to derive the WebAuthn RP ID
     /// and origin so passkey auth works with the proxy's public hostname.
-    ///
-    /// The `CHELIX_EXTERNAL_URL` environment variable takes precedence
-    /// over this field.
     pub external_url: Option<String>,
 }
 
@@ -94,35 +89,17 @@ impl Default for ServerConfig {
 }
 
 impl ServerConfig {
-    /// Returns whether the web UI terminal is enabled, accounting for the
-    /// `CHELIX_TERMINAL_DISABLED` env-var override. When the env var is set
-    /// to `"1"` or `"true"` (case-insensitive), the terminal is disabled
-    /// regardless of the config file value.
+    /// Returns whether the web UI terminal is enabled.
     pub fn is_terminal_enabled(&self) -> bool {
-        if let Ok(val) = std::env::var("CHELIX_TERMINAL_DISABLED")
-            && (val.eq_ignore_ascii_case("true") || val == "1")
-        {
-            return false;
-        }
         self.terminal_enabled
     }
 
-    /// Returns the effective external URL, checking `CHELIX_EXTERNAL_URL`
-    /// env var first, then falling back to the config field. Trailing
-    /// slashes are stripped so the result can be used directly as a
-    /// WebAuthn origin.
+    /// Returns the configured external URL. Trailing slashes are stripped
+    /// so the result can be used directly as a WebAuthn origin.
     pub fn effective_external_url(&self) -> Option<String> {
-        let env_val = std::env::var("CHELIX_EXTERNAL_URL")
-            .ok()
-            .filter(|v| !v.is_empty());
-        Self::resolve_external_url(env_val.as_deref(), self.external_url.as_deref())
-    }
-
-    /// Pure helper for [`effective_external_url`] — exposed for testing
-    /// without mutating process env vars.
-    pub fn resolve_external_url(env_val: Option<&str>, config_val: Option<&str>) -> Option<String> {
-        let raw = env_val.or(config_val)?;
-        Some(raw.trim_end_matches('/').to_string())
+        self.external_url
+            .as_deref()
+            .map(|raw| raw.trim_end_matches('/').to_string())
     }
 }
 

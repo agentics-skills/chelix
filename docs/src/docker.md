@@ -282,7 +282,6 @@ sudo systemctl enable --now podman.socket
 | ------------------- | --------------------------------------------------------- |
 | `CHELIX_CONFIG_DIR` | Override config directory (default: `~/.config/chelix`)   |
 | `CHELIX_DATA_DIR`   | Override data directory (default: `~/.chelix`)            |
-| `CHELIX_NO_TLS`     | Disable TLS (serve plain HTTP) — equivalent to `--no-tls` |
 
 Example:
 
@@ -301,49 +300,22 @@ docker run -d \
 
 ### API Keys and the `[env]` Section
 
-Features like web search (Brave) and embeddings read keys from process
-environment variables (`std::env::var`). An LLM provider is configured
-separately. In Docker, there are three ways to provide these:
-
 **Option 1: OpenAI Compatible provider in config**
 
 Declare `[providers.<name>]` with `base_url` and store the API key in
 `chelix.toml` in that section's `api_key`. The name is the slug you
 choose.
 
-**Option 2: Other feature keys via `docker -e` flags**
+**Option 2: `[env]` section in `chelix.toml`**
 
-```bash
-docker run -d \
-  --name chelix \
-  -e FIRECRAWL_API_KEY=fc-... \
-  ...
-  ghcr.io/agentics-skills/chelix:latest
-```
-
-**Option 3: `[env]` section in `chelix.toml`**
-
-Add an `[env]` section to your config file. These variables are injected into
-the Chelix process at startup, making them available to all features:
-
-```toml
-[env]
-FIRECRAWL_API_KEY = "fc-..."
-```
-
-If a variable is set both via `docker -e` and `[env]`, the Docker/host
-environment value wins — `[env]` never overwrites existing variables.
+Add an `[env]` section to your config file. These values resolve `${VAR}` placeholders.
 
 ```admonish info title="Settings UI env vars"
-Environment variables set through the Settings UI (Settings > Environment)
-are stored in SQLite. At startup, Chelix injects them into the process
-environment so they are available to all features (search, embeddings,
-provider API calls), not just sandbox commands.
+Environment variables set through the Settings UI are stored in SQLite. At startup they fill `${VAR}` placeholders that are absent from `[env]`, and they are supplied to command execution and remote MCP placeholder resolution.
 
 Precedence order (highest wins):
-1. Host / `docker -e` environment variables
-2. Config file `[env]` section
-3. Settings UI environment variables
+1. Config file `[env]` section
+2. Settings UI environment variables
 ```
 
 ## Building Locally

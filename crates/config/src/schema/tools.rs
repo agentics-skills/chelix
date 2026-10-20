@@ -143,7 +143,7 @@ pub struct WebConfig {
 pub struct FirecrawlConfig {
     /// Enable Firecrawl integration.
     pub enabled: bool,
-    /// Firecrawl API key (overrides `FIRECRAWL_API_KEY` env var).
+    /// Firecrawl API key.
     #[serde(
         default,
         serialize_with = "serialize_option_secret",

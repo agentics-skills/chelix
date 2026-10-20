@@ -743,7 +743,6 @@ pub trait SttProvider: Send + Sync {
 - API keys are stored using `secrecy::Secret<String>` to prevent accidental
   logging
 - Debug output redacts all secret values
-- Keys can be set via environment variables or config file
 
 ## Adding New Providers
 
@@ -767,7 +766,7 @@ The voice feature integrates with the web UI:
 
 - **Microphone button**: Record voice input in the chat interface
 - **Settings page**: Configure and enable/disable voice providers
-- **Auto-detection**: API keys are detected from environment variables and LLM
+- **Auto-detection**: API keys are detected from LLM
   provider configs
 - **Toggle switches**: Enable/disable providers without removing configuration
 - **Setup instructions**: Step-by-step guides for local provider installation

@@ -11,7 +11,7 @@ mode. The key settings are:
 
 | Setting                            | Value               | Purpose                                      |
 | ---------------------------------- | ------------------- | -------------------------------------------- |
-| `--no-tls` or `CHELIX_NO_TLS=true` | Disable TLS         | Provider handles HTTPS                       |
+| `--no-tls`                         | Disable TLS         | Provider handles HTTPS                       |
 | `--bind 0.0.0.0`                   | Bind all interfaces | Required for container networking            |
 | `--port <PORT>`                    | Listen port         | Must match provider's expected internal port |
 | `CHELIX_CONFIG_DIR=/data/config`   | Config directory    | Persist chelix.toml, credentials             |
@@ -21,8 +21,7 @@ mode. The key settings are:
 
 ```admonish tip
 If requests to your domain are redirected to `:13131`, Chelix TLS is still
-enabled behind a TLS-terminating proxy. Use `--no-tls` (or
-`CHELIX_NO_TLS=true`).
+enabled behind a TLS-terminating proxy. Use `--no-tls`.
 
 Only keep Chelix TLS enabled when your proxy talks HTTPS to Chelix (or uses
 TCP TLS passthrough). In that case, set `CHELIX_ALLOW_TLS_BEHIND_PROXY=true`.

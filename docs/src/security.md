@@ -410,7 +410,7 @@ loopback bypass, no exceptions.
    WebSocket upgrades to prevent cross-site WebSocket hijacking (CSWSH).
 
 4. **TLS termination** should happen at the proxy. Run Chelix with `--no-tls`
-   (or `CHELIX_NO_TLS=true`) in this mode.
+   in this mode.
 
    If your browser is being redirected to `https://<domain>:13131`, Chelix TLS
    is still enabled while your proxy upstream is plain HTTP.
@@ -500,14 +500,7 @@ external_url = "https://chat.example.com"
 ```
 
 Chelix derives the WebAuthn RP ID (domain) and origin from this URL
-automatically. The `CHELIX_EXTERNAL_URL` environment variable takes precedence
-over the config field, which is useful for container deployments:
-
-```bash
-CHELIX_BEHIND_PROXY=true
-CHELIX_NO_TLS=true
-CHELIX_EXTERNAL_URL=https://chat.example.com
-```
+automatically.
 
 For fine-grained control (e.g. when the RP ID differs from the URL host), the
 existing env vars still work and take precedence after `external_url`:
@@ -520,7 +513,7 @@ CHELIX_WEBAUTHN_ORIGIN=https://chat.example.com
 Migration guidance when changing host/domain:
 
 1. Keep password login enabled during migration.
-2. Deploy with the new `server.external_url` (or env var equivalent).
+2. Deploy with the new `server.external_url`.
 3. Ask users to register a new passkey on the new host.
 4. Remove old passkeys after new-host login is confirmed.
 

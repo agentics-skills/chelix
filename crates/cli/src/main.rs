@@ -84,7 +84,7 @@ struct Cli {
     share_dir: Option<std::path::PathBuf>,
     /// Disable TLS (for cloud deployments where the provider handles TLS).
     #[cfg(feature = "tls")]
-    #[arg(long, global = true, env = "CHELIX_NO_TLS")]
+    #[arg(long, global = true)]
     no_tls: bool,
 }
 
