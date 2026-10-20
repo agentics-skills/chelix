@@ -59,7 +59,7 @@ pub struct VoiceElevenLabsConfig {
     /// Whether this provider is enabled.
     #[serde(default = "default_true")]
     pub enabled: bool,
-    /// API key (from ELEVENLABS_API_KEY env or config).
+    /// API key.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -472,7 +472,7 @@ pub struct VoiceDeepgramConfig {
     /// Whether this provider is enabled.
     #[serde(default = "default_true")]
     pub enabled: bool,
-    /// API key (from DEEPGRAM_API_KEY env or config).
+    /// API key.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -542,7 +542,7 @@ pub struct VoiceElevenLabsSttConfig {
     /// Whether this provider is enabled.
     #[serde(default = "default_true")]
     pub enabled: bool,
-    /// API key (from ELEVENLABS_API_KEY env or config).
+    /// API key.
     /// Shared with TTS if not specified separately.
     #[serde(
         default,

@@ -736,7 +736,6 @@ function voiceTestButtonState(testState: VoiceTesting | null): VoiceTestButtonSt
 }
 
 function voiceKeySourceLabel(source?: string): string {
-	if (source === "env") return "(from env)";
 	if (source === "llm_provider") return "(from LLM provider)";
 	return "";
 }

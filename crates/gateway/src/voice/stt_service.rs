@@ -91,13 +91,6 @@ impl LiveSttService {
         }
     }
 
-    /// Create from environment variables (same as new, config read on demand).
-    pub fn from_env() -> Self {
-        Self {
-            _marker: std::marker::PhantomData,
-        }
-    }
-
     /// Load fresh STT config from disk.
     /// create provider on demand.
     fn create_provider(
@@ -119,36 +112,21 @@ impl LiveSttService {
                     None
                 }
             },
-            SttProviderId::Deepgram => cfg
-                .voice
-                .stt
-                .deepgram
-                .api_key
-                .clone()
-                .or_else(|| Self::env_secret("DEEPGRAM_API_KEY"))
-                .map(|key| {
-                    Box::new(DeepgramStt::with_options(
-                        Some(key),
-                        cfg.voice.stt.deepgram.model.clone(),
-                        cfg.voice.stt.deepgram.language.clone(),
-                        cfg.voice.stt.deepgram.smart_format,
-                    )) as Box<dyn SttProvider + Send + Sync>
-                }),
-            SttProviderId::Google => cfg
-                .voice
-                .stt
-                .google
-                .api_key
-                .clone()
-                .or_else(|| Self::env_secret("GOOGLE_API_KEY"))
-                .or_else(|| Self::env_secret("GOOGLE_CLOUD_API_KEY"))
-                .map(|key| {
-                    Box::new(GoogleStt::with_options(
-                        Some(key),
-                        cfg.voice.stt.google.language.clone(),
-                        cfg.voice.stt.google.model.clone(),
-                    )) as Box<dyn SttProvider + Send + Sync>
-                }),
+            SttProviderId::Deepgram => cfg.voice.stt.deepgram.api_key.clone().map(|key| {
+                Box::new(DeepgramStt::with_options(
+                    Some(key),
+                    cfg.voice.stt.deepgram.model.clone(),
+                    cfg.voice.stt.deepgram.language.clone(),
+                    cfg.voice.stt.deepgram.smart_format,
+                )) as Box<dyn SttProvider + Send + Sync>
+            }),
+            SttProviderId::Google => cfg.voice.stt.google.api_key.clone().map(|key| {
+                Box::new(GoogleStt::with_options(
+                    Some(key),
+                    cfg.voice.stt.google.language.clone(),
+                    cfg.voice.stt.google.model.clone(),
+                )) as Box<dyn SttProvider + Send + Sync>
+            }),
             SttProviderId::VoxtralLocal => {
                 let provider = VoxtralLocalStt::with_options(
                     Some(cfg.voice.stt.voxtral_local.endpoint.clone()),
@@ -204,7 +182,6 @@ impl LiveSttService {
                 .api_key
                 .clone()
                 .or_else(|| cfg.voice.tts.elevenlabs.api_key.clone())
-                .or_else(|| Self::env_secret("ELEVENLABS_API_KEY"))
                 .map(|key| {
                     Box::new(ElevenLabsStt::with_options(
                         Some(key),
@@ -213,13 +190,6 @@ impl LiveSttService {
                     )) as Box<dyn SttProvider + Send + Sync>
                 }),
         }
-    }
-
-    fn env_secret(name: &str) -> Option<Secret<String>> {
-        std::env::var(name)
-            .ok()
-            .filter(|value| !value.is_empty())
-            .map(Secret::new)
     }
 
     /// List all providers with their configuration status from `chelix.toml`.
@@ -232,14 +202,11 @@ impl LiveSttService {
             ),
             (
                 SttProviderId::Deepgram,
-                cfg.voice.stt.deepgram.api_key.is_some()
-                    || Self::env_secret("DEEPGRAM_API_KEY").is_some(),
+                cfg.voice.stt.deepgram.api_key.is_some(),
             ),
             (
                 SttProviderId::Google,
-                cfg.voice.stt.google.api_key.is_some()
-                    || Self::env_secret("GOOGLE_API_KEY").is_some()
-                    || Self::env_secret("GOOGLE_CLOUD_API_KEY").is_some(),
+                cfg.voice.stt.google.api_key.is_some(),
             ),
             (
                 SttProviderId::VoxtralLocal,
@@ -270,8 +237,7 @@ impl LiveSttService {
             (
                 SttProviderId::ElevenLabs,
                 cfg.voice.stt.elevenlabs.api_key.is_some()
-                    || cfg.voice.tts.elevenlabs.api_key.is_some()
-                    || Self::env_secret("ELEVENLABS_API_KEY").is_some(),
+                    || cfg.voice.tts.elevenlabs.api_key.is_some(),
             ),
         ]
     }

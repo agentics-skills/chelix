@@ -109,7 +109,6 @@ export default {
 		enableVoice: "Enable voice",
 		speechToText: "Speech-to-Text",
 		textToSpeech: "Text-to-Speech",
-		fromEnv: "(from env)",
 		fromLlmProvider: "(from LLM provider)",
 		needsKey: "needs key",
 		getKeyAt: "get your key at {{url}}",

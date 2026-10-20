@@ -50,32 +50,12 @@ archived_session_retention_days = 3
     );
 }
 
-/// GH-770: Precedence test.  Process env lookup wins over the overrides map.
-/// Tested via the underlying `substitute_env_with` with a mock lookup
-/// so that no real env vars are read (avoids leaking secrets on failure).
-#[test]
-fn gh770_process_env_takes_precedence_over_env_section() {
-    // The precedence logic lives in substitute_env_with_overrides which
-    // chains std::env::var → overrides.  We verify the same chain
-    // through substitute_env_with using a controlled mock.
-    let result = crate::env_subst::substitute_env_with_overrides(
-        "${CHELIX_GH770_PRECEDENCE_TEST}",
-        &HashMap::from([("CHELIX_GH770_PRECEDENCE_TEST".into(), "from-map".into())]),
-    );
-    // The var is not in the process env, so the map value is used.
-    assert_eq!(result, "from-map");
-
-    // The full precedence proof (process env > map) is in the env_subst
-    // unit test `with_overrides_primary_lookup_wins_over_map`.
-}
-
 /// GH-770: `resubstitute_config` resolves leftover `${VAR}` placeholders
 /// using a runtime override map (simulating DB env vars).
 #[test]
 fn gh770_resubstitute_config_resolves_db_env_vars() {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("chelix.toml");
-    // Use a var name that definitely does not exist in the process env.
     let var = "CHELIX_GH770_ONLY_IN_DB_42";
     let expected_after = "sk-or-from-db";
     std::fs::write(

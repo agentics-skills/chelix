@@ -893,8 +893,6 @@ fn provider_entry_wire_api_serializes_responses() {
 fn terminal_enabled_defaults_to_true() {
     let cfg: ChelixConfig = toml::from_str("").unwrap();
     assert!(cfg.server.terminal_enabled);
-    // Note: is_terminal_enabled() is NOT tested here because it reads
-    // the CHELIX_TERMINAL_DISABLED env var, which may be set in CI.
 }
 
 #[test]
@@ -906,9 +904,6 @@ fn terminal_enabled_parsed_from_config() {
 #[test]
 fn terminal_disabled_via_config_reflects_in_helper() {
     let cfg: ChelixConfig = toml::from_str("[server]\nterminal_enabled = false\n").unwrap();
-    // When the env var is not set, the helper returns the config value.
-    // (We cannot test the env-var override here because workspace lints
-    // deny unsafe code, and `std::env::set_var` is unsafe.)
     assert!(!cfg.server.is_terminal_enabled());
 }
 
@@ -953,8 +948,6 @@ fn external_url_parses_from_toml() {
 fn effective_external_url_returns_config_value() {
     let cfg: ChelixConfig =
         toml::from_str("[server]\nexternal_url = \"https://from-config.example.com\"\n").unwrap();
-    // When CHELIX_EXTERNAL_URL is not set, the config value is returned.
-    // (We cannot test the env-var override here because set_var is unsafe.)
     let effective = cfg.server.effective_external_url();
     assert!(effective.is_some());
     assert_eq!(effective.unwrap(), "https://from-config.example.com");
@@ -974,43 +967,6 @@ fn effective_external_url_strips_trailing_slash() {
 fn effective_external_url_returns_none_when_unset() {
     let cfg: ChelixConfig = toml::from_str("").unwrap();
     assert!(cfg.server.effective_external_url().is_none());
-}
-
-// ── resolve_external_url (pure helper, testable without env mutation) ──
-
-#[test]
-fn resolve_external_url_env_takes_precedence_over_config() {
-    let result = ServerConfig::resolve_external_url(
-        Some("https://from-env.example.com"),
-        Some("https://from-config.example.com"),
-    );
-    assert_eq!(result.as_deref(), Some("https://from-env.example.com"));
-}
-
-#[test]
-fn resolve_external_url_empty_env_falls_back_to_config() {
-    // effective_external_url filters empty env values before calling
-    // resolve_external_url, so an empty env var becomes None here.
-    let result = ServerConfig::resolve_external_url(None, Some("https://from-config.example.com"));
-    assert_eq!(result.as_deref(), Some("https://from-config.example.com"));
-}
-
-#[test]
-fn resolve_external_url_strips_trailing_slash_from_env() {
-    let result = ServerConfig::resolve_external_url(Some("https://env.example.com/"), None);
-    assert_eq!(result.as_deref(), Some("https://env.example.com"));
-}
-
-#[test]
-fn resolve_external_url_strips_trailing_slash_from_config() {
-    let result = ServerConfig::resolve_external_url(None, Some("https://config.example.com/"));
-    assert_eq!(result.as_deref(), Some("https://config.example.com"));
-}
-
-#[test]
-fn resolve_external_url_returns_none_when_both_unset() {
-    let result = ServerConfig::resolve_external_url(None, None);
-    assert!(result.is_none());
 }
 
 #[test]

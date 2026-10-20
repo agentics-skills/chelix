@@ -345,13 +345,6 @@ fn whisper_base_url(config: &chelix_config::ChelixConfig) -> Option<&str> {
 pub(super) async fn detect_voice_providers(
     config: &chelix_config::ChelixConfig,
 ) -> serde_json::Value {
-    // Check for API keys from environment variables
-    let env_elevenlabs_key = std::env::var("ELEVENLABS_API_KEY").ok();
-    let env_google_key = std::env::var("GOOGLE_API_KEY")
-        .or_else(|_| std::env::var("GOOGLE_CLOUD_API_KEY"))
-        .ok();
-    let env_deepgram_key = std::env::var("DEEPGRAM_API_KEY").ok();
-
     // Check for local binaries
     let whisper_cli_available = check_binary_available("whisper-cpp")
         .await
@@ -369,16 +362,12 @@ pub(super) async fn detect_voice_providers(
             "ElevenLabs",
             "tts",
             "cloud",
-            config.voice.tts.elevenlabs.api_key.is_some() || env_elevenlabs_key.is_some(),
+            config.voice.tts.elevenlabs.api_key.is_some(),
             config.voice.tts.elevenlabs.enabled
                 && config.voice.tts.enabled
-                && (config.voice.tts.elevenlabs.api_key.is_some() || env_elevenlabs_key.is_some()),
+                && config.voice.tts.elevenlabs.api_key.is_some(),
             tts_pref == Some(chelix_config::VoiceTtsProvider::ElevenLabs),
-            key_source(
-                config.voice.tts.elevenlabs.api_key.is_some(),
-                env_elevenlabs_key.is_some(),
-                false,
-            ),
+            key_source(config.voice.tts.elevenlabs.api_key.is_some(), false),
             None,
             None,
         ),
@@ -397,7 +386,6 @@ pub(super) async fn detect_voice_providers(
                 config.voice.tts.openai.api_key.is_some()
                     || config.voice.tts.openai.base_url.is_some(),
                 false,
-                false,
             ),
             None,
             None,
@@ -407,16 +395,12 @@ pub(super) async fn detect_voice_providers(
             "Google Cloud TTS",
             "tts",
             "cloud",
-            config.voice.tts.google.api_key.is_some() || env_google_key.is_some(),
+            config.voice.tts.google.api_key.is_some(),
             config.voice.tts.google.enabled
                 && config.voice.tts.enabled
-                && (config.voice.tts.google.api_key.is_some() || env_google_key.is_some()),
+                && config.voice.tts.google.api_key.is_some(),
             tts_pref == Some(chelix_config::VoiceTtsProvider::Google),
-            key_source(
-                config.voice.tts.google.api_key.is_some(),
-                env_google_key.is_some(),
-                false,
-            ),
+            key_source(config.voice.tts.google.api_key.is_some(), false),
             None,
             None,
         ),
@@ -483,7 +467,6 @@ pub(super) async fn detect_voice_providers(
                 crate::voice::whisper_key_configured(config)
                     || config.voice.stt.whisper.base_url.is_some(),
                 false,
-                false,
             ),
             None,
             None,
@@ -493,14 +476,10 @@ pub(super) async fn detect_voice_providers(
             "Deepgram",
             "stt",
             "cloud",
-            config.voice.stt.deepgram.api_key.is_some() || env_deepgram_key.is_some(),
+            config.voice.stt.deepgram.api_key.is_some(),
             config.voice.stt.deepgram.enabled && config.voice.stt.enabled,
             false,
-            key_source(
-                config.voice.stt.deepgram.api_key.is_some(),
-                env_deepgram_key.is_some(),
-                false,
-            ),
+            key_source(config.voice.stt.deepgram.api_key.is_some(), false),
             None,
             None,
         ),
@@ -509,14 +488,10 @@ pub(super) async fn detect_voice_providers(
             "Google Cloud STT",
             "stt",
             "cloud",
-            config.voice.stt.google.api_key.is_some() || env_google_key.is_some(),
+            config.voice.stt.google.api_key.is_some(),
             config.voice.stt.google.enabled && config.voice.stt.enabled,
             false,
-            key_source(
-                config.voice.stt.google.api_key.is_some(),
-                env_google_key.is_some(),
-                false,
-            ),
+            key_source(config.voice.stt.google.api_key.is_some(), false),
             None,
             None,
         ),
@@ -526,14 +501,12 @@ pub(super) async fn detect_voice_providers(
             "stt",
             "cloud",
             config.voice.stt.elevenlabs.api_key.is_some()
-                || config.voice.tts.elevenlabs.api_key.is_some()
-                || env_elevenlabs_key.is_some(),
+                || config.voice.tts.elevenlabs.api_key.is_some(),
             config.voice.stt.elevenlabs.enabled && config.voice.stt.enabled,
             false,
             key_source(
                 config.voice.stt.elevenlabs.api_key.is_some()
                     || config.voice.tts.elevenlabs.api_key.is_some(),
-                env_elevenlabs_key.is_some(),
                 false,
             ),
             None,
@@ -824,8 +797,7 @@ pub(super) async fn fetch_elevenlabs_catalog(
         .api_key
         .as_ref()
         .or(config.voice.stt.elevenlabs.api_key.as_ref())
-        .map(|k| k.expose_secret().to_string())
-        .or_else(|| std::env::var("ELEVENLABS_API_KEY").ok());
+        .map(|k| k.expose_secret().to_string());
 
     let Some(api_key) = api_key else {
         return serde_json::json!({
@@ -927,11 +899,9 @@ fn build_provider_info(
     }
 }
 
-fn key_source(in_config: bool, in_env: bool, in_llm_provider: bool) -> Option<&'static str> {
+fn key_source(in_config: bool, in_llm_provider: bool) -> Option<&'static str> {
     if in_config {
         Some("config")
-    } else if in_env {
-        Some("env")
     } else if in_llm_provider {
         Some("llm_provider")
     } else {

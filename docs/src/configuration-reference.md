@@ -121,7 +121,7 @@ Gateway server configuration.
 | `update_releases_url`     | optional string | —             | URL of the releases manifest (`releases.json`) used by the update checker. Defaults to `https://github.com/agentics-skills/chelix` when unset.                              |
 | `db_pool_max_connections` | integer         | `5`           | Maximum number of SQLite pool connections. Lower values reduce memory usage for personal gateways.                                                                          |
 | `shiki_cdn_url`           | optional string | —             | Base URL for the Shiki syntax-highlighting library loaded by the web UI. Defaults to `https://esm.sh/shiki@3.2.1?bundle` when unset.                                        |
-| `terminal_enabled`        | bool            | `true`        | Enable or disable the host terminal in the web UI. Set to `false` to prevent an unsandboxed shell. The `CHELIX_TERMINAL_DISABLED` env var (`1` or `true`) takes precedence. |
+| `terminal_enabled`        | bool            | `true`        | Enable or disable the host terminal in the web UI. Set to `false` to prevent an unsandboxed shell. |
 | `scrollback_lines`        | integer         | `300000`      | Maximum number of terminal lines retained by the web UI.                                                                                                                     |
 
 ### `auth` — AuthConfig
@@ -327,7 +327,7 @@ full-output file.
 | `default_timeout_secs` | integer         | `30`          | Wall-clock timeout in seconds used when the agent omits the command timeout.                                  |
 | `rewrite_timeout_secs` | integer         | unset         | Minimum timeout in seconds for an agent-provided timeout; smaller values are rewritten to this value.         |
 | `approval_mode`        | enum            | `"never"`     | Operator approval policy. Accepted values are exactly `"always"` and `"never"`.                              |
-| `terminal_size`        | string          | required      | Fixed PTY size, format `"<cols>x<rows>"` (`115x58` is 115 chars x 58). Both parts are decimal `u16` values. The key is required in the configuration file; `CHELIX_TOOLS__EXECUTE_COMMAND__TERMINAL_SIZE` only overrides a value already present in the file. This size is passed to `chelix-tools-service` and is applied when the PTY is created and instead of websocket resize `cols`/`rows`. |
+| `terminal_size`        | string          | required      | Fixed PTY size, format `"<cols>x<rows>"` (`115x58` is 115 chars x 58). Both parts are decimal `u16` values. The key is required in the configuration file. This size is passed to `chelix-tools-service` and is applied when the PTY is created and instead of websocket resize `cols`/`rows`. |
 
 When the agent omits a timeout, `default_timeout_secs` is used without applying
 `rewrite_timeout_secs`. When the agent provides a timeout and
@@ -416,7 +416,7 @@ Docker `cp` into that rootfs fails explicitly. See
 | Key                | Type            | Default                       | Description                                                                                 |
 | ------------------ | --------------- | ----------------------------- | ------------------------------------------------------------------------------------------- |
 | enabled            | bool            | `false`                       | Enable Firecrawl integration.                                                               |
-| api_key            | optional string | —                             | Firecrawl API key (overrides `FIRECRAWL_API_KEY` env var).                                  |
+| api_key            | optional string | —                             | Firecrawl API key.                                                                           |
 | base_url           | string          | `"https://api.firecrawl.dev"` | Firecrawl API base URL (for self-hosted instances).                                         |
 | only_main_content  | bool            | `true`                        | Only extract main content (skip navs, footers, etc.).                                       |
 | timeout_seconds    | integer         | `30`                          | HTTP request timeout in seconds.                                                            |
@@ -648,7 +648,7 @@ JSON object that may contain provider-specific keys plus a `tools` sub-block
 | Key                 | Type                                    | Default              | Description                                                    |
 | ------------------- | --------------------------------------- | -------------------- | -------------------------------------------------------------- |
 | `enabled`           | bool                                    | `true`               | Whether this provider is enabled.                              |
-| `api_key`           | optional string (secret)                | —                    | API key for this provider. A `${ENV_VAR}` substitution is explicit. |
+| `api_key`           | optional string (secret)                | —                    | API key for this provider.                                          |
 | `base_url`          | optional string                         | —                    | Override the base URL.                                         |
 | `models.<model_id>` | `PartialModelMetadata` table            | —                    | Ordered complete model record.                                 |
 | `stream_transport`  | enum (`sse`, `websocket`, `auto`)       | `"sse"`              | Streaming transport for this provider.                         |
@@ -736,7 +736,7 @@ when the policy returns a reasoning request.
 
 | Key        | Type                   | Default | Description                                                  |
 | ---------- | ---------------------- | ------- | ------------------------------------------------------------ |
-| `api_key`  | optional secret string | `null`  | API key (from `ELEVENLABS_API_KEY` env or config)            |
+| `api_key`  | optional secret string | `null`  | API key                                                      |
 | `voice_id` | optional string        | `null`  | Default voice ID                                             |
 | `model`    | optional string        | `null`  | Model to use (e.g. `"eleven_flash_v2_5"` for lowest latency) |
 
@@ -827,7 +827,7 @@ when the policy returns a reasoning request.
 
 | Key            | Type                   | Default | Description                                           |
 | -------------- | ---------------------- | ------- | ----------------------------------------------------- |
-| `api_key`      | optional secret string | `null`  | API key (from `DEEPGRAM_API_KEY` env or config)       |
+| `api_key`      | optional secret string | `null`  | API key                                               |
 | `model`        | optional string        | `null`  | Model to use (e.g. `"nova-3"`)                        |
 | `language`     | optional string        | `null`  | Language hint (e.g. `"en-US"`)                        |
 | `smart_format` | bool                   | `false` | Enable smart formatting (punctuation, capitalization) |
@@ -849,7 +849,7 @@ when the policy returns a reasoning request.
 
 | Key        | Type                   | Default | Description                                                                                    |
 | ---------- | ---------------------- | ------- | ---------------------------------------------------------------------------------------------- |
-| `api_key`  | optional secret string | `null`  | API key (from `ELEVENLABS_API_KEY` env or config). Shared with TTS if not specified separately |
+| `api_key`  | optional secret string | `null`  | API key. Shared with TTS if not specified separately                                           |
 | `model`    | optional string        | `null`  | Model to use (`scribe_v1` or `scribe_v2`)                                                      |
 | `language` | optional string        | `null`  | Language hint (ISO 639-1 code)                                                                 |
 

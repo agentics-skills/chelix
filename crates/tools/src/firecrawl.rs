@@ -322,18 +322,12 @@ pub async fn firecrawl_scrape(
     }))
 }
 
-/// Resolve the Firecrawl API key from config or environment.
+/// Resolve the Firecrawl API key from config.
 pub fn resolve_api_key(config: &FirecrawlConfig) -> Option<Secret<String>> {
-    if let Some(ref key) = config.api_key {
+    config.api_key.as_ref().and_then(|key| {
         let value = key.expose_secret();
-        if !value.trim().is_empty() {
-            return Some(key.clone());
-        }
-    }
-    std::env::var("FIRECRAWL_API_KEY")
-        .ok()
-        .filter(|v| !v.trim().is_empty())
-        .map(Secret::new)
+        (!value.trim().is_empty()).then(|| key.clone())
+    })
 }
 
 /// Minimal markdown-to-text stripping.
@@ -611,9 +605,6 @@ mod tests {
     #[test]
     fn test_resolve_api_key_none_when_empty() {
         let config = test_config(true, None);
-        // Only passes when FIRECRAWL_API_KEY is not set in env.
-        if std::env::var("FIRECRAWL_API_KEY").is_err() {
-            assert!(resolve_api_key(&config).is_none());
-        }
+        assert!(resolve_api_key(&config).is_none());
     }
 }

@@ -29,7 +29,6 @@ services:
     environment:
       - SERVICE_FQDN_CHELIX_13131=${SERVICE_FQDN_CHELIX_13131:?}
       - CHELIX_PASSWORD=${CHELIX_PASSWORD:?}
-      - CHELIX_NO_TLS=true
       - CHELIX_BEHIND_PROXY=true
       - CHELIX_DEPLOY_PLATFORM=coolify
       - CHELIX_CONFIG_DIR=/data/config

@@ -27,10 +27,7 @@ impl GoogleTts {
     /// Create a new Google Cloud TTS provider from config.
     #[must_use]
     pub fn new(config: &GoogleTtsConfig) -> Self {
-        let api_key = config
-            .api_key
-            .clone()
-            .or_else(|| std::env::var("GOOGLE_API_KEY").ok().map(Secret::new));
+        let api_key = config.api_key.clone();
 
         Self {
             api_key,
@@ -268,10 +265,7 @@ mod tests {
     fn test_google_tts_not_configured_without_key() {
         let config = GoogleTtsConfig::default();
         let tts = GoogleTts::new(&config);
-        // Without env var set, should not be configured
-        if std::env::var("GOOGLE_API_KEY").is_err() {
-            assert!(!tts.is_configured());
-        }
+        assert!(!tts.is_configured());
     }
 
     #[test]

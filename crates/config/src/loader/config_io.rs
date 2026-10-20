@@ -45,43 +45,21 @@ fn restrict_config_file(path: &Path) -> std::io::Result<()> {
 
 /// Load config from the given path (any supported format).
 ///
-/// After parsing, `CHELIX_*` env vars are applied as overrides.
-///
 /// Uses a two-pass approach so that `[env]` section values are available
 /// for `${VAR}` substitution in other sections of the same config file.
 pub fn load_config(path: &Path) -> crate::Result<ChelixConfig> {
-    load_config_with_aliases(path, true)
-}
-
-fn load_config_with_aliases(
-    path: &Path,
-    apply_third_party_aliases: bool,
-) -> crate::Result<ChelixConfig> {
     let raw = std::fs::read_to_string(path).map_err(|source| {
         crate::Error::external(format!("failed to read {}", path.display()), source)
     })?;
-    load_config_source_with_aliases(&raw, path, apply_third_party_aliases, std::env::vars())
+    load_config_source(&raw, path)
 }
 
-fn load_config_source_with_aliases<I>(
-    raw: &str,
-    path: &Path,
-    apply_third_party_aliases: bool,
-    env_vars: I,
-) -> crate::Result<ChelixConfig>
-where
-    I: IntoIterator<Item = (String, String)>,
-{
-    let mut value = substituted_config_value(raw, path, &|name| std::env::var(name).ok())?;
-    let preliminary = config_from_value(value.clone(), path)?;
-    if !preliminary.env.is_empty() {
-        let env = preliminary.env.clone();
-        value = substituted_config_value(raw, path, &|name| {
-            std::env::var(name).ok().or_else(|| env.get(name).cloned())
-        })?;
-    }
-    let config = config_from_value(value, path)?;
-    apply_env_overrides_with_options(config, env_vars.into_iter(), apply_third_party_aliases)
+fn load_config_source(raw: &str, path: &Path) -> crate::Result<ChelixConfig> {
+    let value = parse_config_value(raw, path)?;
+    let preliminary = config_from_value(value, path)?;
+    let env = preliminary.env;
+    let value = substituted_config_value(raw, path, &|name| env.get(name).cloned())?;
+    config_from_value(value, path)
 }
 
 fn substituted_config_value(
@@ -92,14 +70,6 @@ fn substituted_config_value(
     let mut value = parse_config_value(raw, path)?;
     crate::llm_assignment::substitute_json_strings(&mut value, lookup)?;
     Ok(value)
-}
-
-/// Load and parse the config file with env substitution and includes.
-pub fn load_config_value(path: &Path) -> crate::Result<serde_json::Value> {
-    let raw = std::fs::read_to_string(path).map_err(|source| {
-        crate::Error::external(format!("failed to read {}", path.display()), source)
-    })?;
-    substituted_config_value(&raw, path, &|name| std::env::var(name).ok())
 }
 
 /// Discover and load config from standard locations.
@@ -133,7 +103,7 @@ pub fn initialize_config() -> crate::Result<ChelixConfig> {
         );
     }
 
-    let cfg = try_discover_and_load_readonly_with_options(true)?;
+    let cfg = discover_and_load()?;
 
     // Persist randomly generated port so it stays stable across restarts.
     // Read-only discovery generates an in-memory port when the on-disk
@@ -170,74 +140,41 @@ pub fn initialize_config() -> crate::Result<ChelixConfig> {
 ///
 /// Returns an error if no config file is found or the file is invalid.
 pub fn discover_and_load() -> crate::Result<ChelixConfig> {
-    try_discover_and_load_readonly_with_options(true)
-}
-
-fn try_discover_and_load_readonly_with_options(
-    apply_third_party_aliases: bool,
-) -> crate::Result<ChelixConfig> {
     let path = find_config_file().ok_or_else(|| crate::Error::message("no config file found"))?;
     debug!(path = %path.display(), "loading config (read-only)");
-    let mut cfg = load_layered_config(&path, apply_third_party_aliases)?;
+    let mut cfg = load_layered_config(&path)?;
     if cfg.server.port == 0 {
         cfg.server.port = generate_random_port();
     }
     Ok(cfg)
 }
 
-/// Load config from the user file plus env overrides.
-fn load_layered_config(
-    user_path: &Path,
-    apply_third_party_aliases: bool,
-) -> crate::Result<ChelixConfig> {
+fn load_layered_config(user_path: &Path) -> crate::Result<ChelixConfig> {
     let is_toml = user_path
         .extension()
         .and_then(|e| e.to_str())
         .is_some_and(|ext| ext.eq_ignore_ascii_case("toml"));
 
     if is_toml {
-        load_layered_config_toml(user_path, apply_third_party_aliases)
+        load_layered_config_toml(user_path)
     } else {
-        load_config_with_aliases(user_path, apply_third_party_aliases)
+        load_config(user_path)
     }
 }
 
 /// TOML-specific layered loading with deep document merge.
-fn load_layered_config_toml(
-    user_path: &Path,
-    apply_third_party_aliases: bool,
-) -> crate::Result<ChelixConfig> {
+fn load_layered_config_toml(user_path: &Path) -> crate::Result<ChelixConfig> {
     let user_raw = std::fs::read_to_string(user_path).map_err(|source| {
         crate::Error::external(format!("failed to read {}", user_path.display()), source)
     })?;
-    load_layered_config_toml_source(
-        &user_raw,
-        user_path,
-        apply_third_party_aliases,
-        std::env::vars(),
-    )
+    load_layered_config_toml_source(&user_raw, user_path)
 }
 
-pub(super) fn load_layered_config_toml_source<I>(
+pub(super) fn load_layered_config_toml_source(
     user_raw: &str,
     user_path: &Path,
-    apply_third_party_aliases: bool,
-    env_vars: I,
-) -> crate::Result<ChelixConfig>
-where
-    I: IntoIterator<Item = (String, String)>,
-{
-    let mut value =
-        substituted_config_value(user_raw, user_path, &|name| std::env::var(name).ok())?;
-    let preliminary = config_from_value(value.clone(), user_path)?;
-    if !preliminary.env.is_empty() {
-        let env = preliminary.env.clone();
-        value = substituted_config_value(user_raw, user_path, &|name| {
-            std::env::var(name).ok().or_else(|| env.get(name).cloned())
-        })?;
-    }
-    let config = config_from_value(value, user_path)?;
-    apply_env_overrides_with_options(config, env_vars.into_iter(), apply_third_party_aliases)
+) -> crate::Result<ChelixConfig> {
+    load_config_source(user_raw, user_path)
 }
 
 /// Load an in-memory candidate through the same layered pipeline as the next startup.
@@ -251,9 +188,9 @@ pub fn load_layered_config_candidate(user_raw: &str) -> crate::Result<ChelixConf
         .is_some_and(|extension| extension.eq_ignore_ascii_case("toml"));
 
     if is_toml {
-        load_layered_config_toml_source(user_raw, &user_path, true, std::env::vars())
+        load_layered_config_toml_source(user_raw, &user_path)
     } else {
-        load_config_source_with_aliases(user_raw, &user_path, true, std::env::vars())
+        load_config_source(user_raw, &user_path)
     }
 }
 
@@ -323,7 +260,7 @@ pub fn update_config(f: impl FnOnce(&mut ChelixConfig)) -> crate::Result<PathBuf
     let mut guard = CONFIG_SAVE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let target_path = find_or_default_config_path();
     guard.target_path = Some(target_path.clone());
-    let mut config = try_discover_and_load_readonly_with_options(false)?;
+    let mut config = discover_and_load()?;
     f(&mut config);
     save_user_config_to_path(&target_path, &config)
 }
@@ -339,7 +276,7 @@ pub fn update_config_checked(
     let mut guard = CONFIG_SAVE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let target_path = find_or_default_config_path();
     guard.target_path = Some(target_path.clone());
-    let mut config = try_discover_and_load_readonly_with_options(false)?;
+    let mut config = discover_and_load()?;
     f(&mut config)?;
     validate_agent_ids(&config.agents, "configuration update")?;
     validate_sandbox_archived_session_retention(&config, "configuration update")?;
@@ -798,140 +735,13 @@ pub(super) fn write_default_config(path: &Path, config: &ChelixConfig) -> crate:
     Ok(())
 }
 
-/// Apply `CHELIX_*` environment variable overrides to a loaded config.
-///
-/// Maps env vars to config fields using `__` as a section separator and
-/// lowercasing. For example:
-/// - `CHELIX_AUTH__DISABLED=true` → `auth.disabled = true`
-/// - `CHELIX_TOOLS__EXECUTE_COMMAND__DEFAULT_TIMEOUT_SECS=60` → `tools.execute_command.default_timeout_secs = 60`
-/// - `CHELIX_CHAT__AUTO_TITLE=false` → `chat.auto_title = false`
-///
-/// The config is serialized to a JSON value, env overrides are merged in,
-/// then deserialized back. Only env vars with the `CHELIX_` prefix are
-/// considered. `CHELIX_CONFIG_DIR`, `CHELIX_DATA_DIR`, `CHELIX_SHARE_DIR`,
-/// `CHELIX_TOKEN`, `CHELIX_PASSWORD`, `CHELIX_TAILSCALE`,
-/// `CHELIX_WEBAUTHN_RP_ID`, and `CHELIX_WEBAUTHN_ORIGIN` are excluded
-/// (they are handled separately).
-pub fn apply_env_overrides(config: ChelixConfig) -> crate::Result<ChelixConfig> {
-    apply_env_overrides_with_options(config, std::env::vars(), true)
-}
-
-/// Apply env overrides from an arbitrary iterator of (key, value) pairs.
-/// Exposed for testing without mutating the process environment.
-#[cfg(test)]
-pub(super) fn apply_env_overrides_with(
-    config: ChelixConfig,
-    vars: impl Iterator<Item = (String, String)>,
-) -> ChelixConfig {
-    apply_env_overrides_with_options(config, vars, true)
-        .unwrap_or_else(|error| panic!("test env override must be valid: {error}"))
-}
-
-const ENV_OVERRIDE_EXCLUDED: &[&str] = &[
-    "CHELIX_CONFIG_DIR",
-    "CHELIX_DATA_DIR",
-    "CHELIX_SHARE_DIR",
-    "CHELIX_TOKEN",
-    "CHELIX_PASSWORD",
-    "CHELIX_TAILSCALE",
-    "CHELIX_WEBAUTHN_RP_ID",
-    "CHELIX_WEBAUTHN_ORIGIN",
-    "CHELIX_EXTERNAL_URL",
-];
-
-fn env_override_path(key: &str) -> Option<Vec<String>> {
-    if !key.starts_with("CHELIX_") || ENV_OVERRIDE_EXCLUDED.contains(&key) || !key.contains("__") {
-        return None;
-    }
-    let path_parts: Vec<String> = key["CHELIX_".len()..]
-        .split("__")
-        .map(|segment| match segment.to_ascii_lowercase().as_str() {
-            "exec" => "execute_command".to_string(),
-            normalized => normalized.to_string(),
-        })
-        .collect();
-    if path_parts.is_empty() {
-        None
-    } else {
-        Some(path_parts)
-    }
-}
-
-pub(super) fn apply_env_overrides_with_options(
-    config: ChelixConfig,
-    vars: impl Iterator<Item = (String, String)>,
-    apply_third_party_aliases: bool,
-) -> crate::Result<ChelixConfig> {
-    use serde_json::Value;
-
-    let mut root: Value = serde_json::to_value(config).map_err(|source| {
-        crate::Error::external("failed to serialize config for env override", source)
-    })?;
-
-    // Third-party env var aliases.
-    // Intentionally empty for now.
-    const ENV_ALIASES: &[(&str, &[&str])] = &[];
-
-    for (key, val) in vars {
-        // Check third-party aliases first (before the CHELIX_ prefix check).
-        let mut matched_alias = false;
-        if apply_third_party_aliases {
-            for &(alias_key, path) in ENV_ALIASES {
-                if key == alias_key {
-                    let path_parts: Vec<String> = path.iter().map(|s| s.to_string()).collect();
-                    // Only apply if the field is currently null/empty.
-                    let current = get_nested(&root, &path_parts);
-                    if current.is_none()
-                        || current == Some(&Value::Null)
-                        || current.and_then(|v| v.as_str()).unwrap_or("x").is_empty()
-                    {
-                        set_nested(&mut root, &path_parts, parse_env_value(&val));
-                    }
-                    matched_alias = true;
-                    break;
-                }
-            }
-        }
-        if matched_alias {
-            continue;
-        }
-
-        // CHELIX_AUTH__DISABLED → ["auth", "disabled"]
-        let Some(path_parts) = env_override_path(&key) else {
-            continue;
-        };
-        let parsed_val = parse_env_value(&val);
-        let rejects_assignment =
-            crate::llm_assignment::subtree_assigns_llm(&path_parts, &parsed_val)
-                || get_nested(&root, &path_parts).is_some_and(|existing| {
-                    crate::llm_assignment::subtree_assigns_llm(&path_parts, existing)
-                });
-        if rejects_assignment {
-            return Err(crate::Error::message(format!(
-                "environment variable {key} cannot assign an LLM provider, model, or token"
-            )));
-        }
-        set_nested(&mut root, &path_parts, parsed_val);
-    }
-
-    validate_config_shape(&root, "environment overrides")?;
-    let config: ChelixConfig = serde_json::from_value(root)
-        .map_err(|source| crate::Error::external("failed to apply env overrides", source))?;
-    validate_provider_names(&config.providers, "environment overrides")?;
-    validate_context7_request_timeout(&config, "environment overrides")?;
-    validate_linkup_request_timeout(&config, "environment overrides")?;
-    validate_search_request_timeouts(&config, "environment overrides")?;
-    validate_sandbox_archived_session_retention(&config, "environment overrides")?;
-    Ok(config)
-}
-
 /// Re-resolve `${VAR}` placeholders in a loaded config using additional overrides.
 ///
 /// Call this after runtime env vars (e.g. DB-stored UI variables) become
 /// available.  Substitution happens at the JSON value level (not textual
 /// TOML), so override values that contain quotes or backslashes are safe.
 ///
-/// Lookup precedence: process env → `overrides` map.
+/// Lookup uses the `overrides` map.
 pub fn resubstitute_config(
     config: &ChelixConfig,
     overrides: &std::collections::HashMap<String, String>,
@@ -939,77 +749,10 @@ pub fn resubstitute_config(
     let mut json = serde_json::to_value(config)
         .map_err(|source| crate::Error::external("serialize config for resubstitution", source))?;
     crate::llm_assignment::substitute_json_strings(&mut json, &|name| {
-        std::env::var(name)
-            .ok()
-            .or_else(|| overrides.get(name).cloned())
+        overrides.get(name).cloned()
     })?;
-    let reloaded: ChelixConfig = serde_json::from_value(json).map_err(|source| {
-        crate::Error::external("deserialize config after resubstitution", source)
-    })?;
-    apply_env_overrides(reloaded)
-}
-
-/// Parse a string env value into a JSON value, trying bool and number first.
-pub(super) fn parse_env_value(val: &str) -> serde_json::Value {
-    let trimmed = val.trim();
-
-    // Support JSON arrays/objects for list-like env overrides, e.g. '["a","b"]' or '[]'.
-    if ((trimmed.starts_with('[') && trimmed.ends_with(']'))
-        || (trimmed.starts_with('{') && trimmed.ends_with('}')))
-        && let Ok(parsed) = serde_json::from_str::<serde_json::Value>(trimmed)
-    {
-        return parsed;
-    }
-
-    if val.eq_ignore_ascii_case("true") {
-        return serde_json::Value::Bool(true);
-    }
-    if val.eq_ignore_ascii_case("false") {
-        return serde_json::Value::Bool(false);
-    }
-    if let Ok(n) = val.parse::<i64>() {
-        return serde_json::Value::Number(n.into());
-    }
-    if let Ok(n) = val.parse::<f64>()
-        && let Some(n) = serde_json::Number::from_f64(n)
-    {
-        return serde_json::Value::Number(n);
-    }
-    serde_json::Value::String(val.to_string())
-}
-
-/// Set a value at a nested JSON path, creating intermediate objects as needed.
-/// Read a nested value from a JSON tree by path.
-fn get_nested<'a>(root: &'a serde_json::Value, path: &[String]) -> Option<&'a serde_json::Value> {
-    let mut current = root;
-    for key in path {
-        current = current.get(key.as_str())?;
-    }
-    Some(current)
-}
-
-pub(super) fn set_nested(root: &mut serde_json::Value, path: &[String], val: serde_json::Value) {
-    if path.is_empty() {
-        return;
-    }
-    let mut current = root;
-    for (i, key) in path.iter().enumerate() {
-        if i == path.len() - 1 {
-            if let serde_json::Value::Object(map) = current {
-                map.insert(key.clone(), val);
-            }
-            return;
-        }
-        if !current.get(key).is_some_and(|v| v.is_object())
-            && let serde_json::Value::Object(map) = current
-        {
-            map.insert(key.clone(), serde_json::Value::Object(Default::default()));
-        }
-        let Some(next) = current.get_mut(key) else {
-            return;
-        };
-        current = next;
-    }
+    serde_json::from_value(json)
+        .map_err(|source| crate::Error::external("deserialize config after resubstitution", source))
 }
 
 pub(super) fn parse_config(raw: &str, path: &Path) -> crate::Result<ChelixConfig> {

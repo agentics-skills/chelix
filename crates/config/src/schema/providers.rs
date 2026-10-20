@@ -101,7 +101,7 @@ pub struct ProviderEntry {
     /// Whether this provider is enabled. Defaults to true.
     pub enabled: bool,
 
-    /// Override the API key (optional; env var still takes precedence if set).
+    /// API key.
     #[serde(
         default,
         serialize_with = "serialize_option_secret",

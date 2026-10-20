@@ -234,20 +234,6 @@ fn values_to_chat_messages(bencher: divan::Bencher, n: usize) {
         .bench_local(|| divan::black_box(chelix_agents::model::values_to_chat_messages(&values)));
 }
 
-// ── Env substitution ────────────────────────────────────────────────────────
-
-#[divan::bench]
-fn env_substitution(bencher: divan::Bencher) {
-    let input = r#"
-        api_key = "${CHELIX_API_KEY}"
-        base_url = "${CHELIX_BASE_URL:-https://api.example.com}"
-        name = "no-vars-here"
-        port = 8080
-    "#;
-
-    bencher.bench_local(|| divan::black_box(chelix_config::env_subst::substitute_env(input)));
-}
-
 // ── Config load from disk (simulated boot) ──────────────────────────────────
 
 /// Full boot-path simulation: generate template, write to disk, load, validate.

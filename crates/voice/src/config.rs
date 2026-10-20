@@ -94,7 +94,7 @@ pub enum TtsAutoMode {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ElevenLabsConfig {
-    /// API key (from ELEVENLABS_API_KEY env or config).
+    /// API key.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -221,7 +221,7 @@ impl Default for CoquiTtsConfig {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ElevenLabsSttConfig {
-    /// API key (from ELEVENLABS_API_KEY env or config).
+    /// API key.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -317,7 +317,7 @@ pub struct WhisperConfig {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct DeepgramConfig {
-    /// API key (from DEEPGRAM_API_KEY env or config).
+    /// API key.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",

@@ -7,9 +7,6 @@ installation-specific port, `tools.execute_command.terminal_size`, and
 `sandbox.archived_session_retention_days`. Every other setting is part of the
 same file. Reads and writes use `chelix.toml`.
 
-`CHELIX_*` environment variables can still override settings other than LLM
-providers, models, and their tokens.
-
 ## Configuration File Location
 
 | Platform    | Default Path                                  |
@@ -28,11 +25,6 @@ Malformed values, type errors, and unknown fields in TOML, YAML, YML, or JSON
 cause startup or the requested config operation to fail. Config updates and
 onboarding also refuse to overwrite an invalid existing file; correct the
 reported error in that file and retry.
-
-Config environment overrides use `CHELIX_SECTION__FIELD` paths, for example
-`CHELIX_AUTH__DISABLED=true`. Unknown config paths are rejected instead of
-being ignored. Single-segment `CHELIX_*` variables are runtime or CLI controls,
-not config paths.
 
 ## Checking Config
 
@@ -390,8 +382,6 @@ key_path = "~/.config/chelix/key.pem"
 # http_redirect_port = 13132
 ```
 
-Override via environment variable: `CHELIX_TLS__HTTP_REDIRECT_PORT=8080`.
-
 ## Observability
 
 ```toml
@@ -400,40 +390,29 @@ enabled = true
 prometheus_endpoint = true
 ```
 
-## Process Environment Variables (`[env]`)
+## `[env]`
 
-The `[env]` section injects variables into the Chelix process at startup. This
-is useful in Docker deployments where passing individual `-e` flags is
-inconvenient, or when you want API keys stored in the config file rather than
-the host environment.
+The `[env]` section supplies values for `${VAR}` placeholders in the same file.
 
 ```toml
 [env]
-FIRECRAWL_API_KEY = "fc-..."
-ELEVENLABS_API_KEY = "..."
+MY_API_KEY = "..."
+
+[tools.web.firecrawl]
+api_key = "${MY_API_KEY}"
 ```
 
-**Precedence**: existing process environment variables are never overwritten. If
-`FIRECRAWL_API_KEY` is already set via `docker -e` or the host shell, the `[env]`
-value is skipped. This means `docker -e` always wins.
-
 ```admonish info title="Settings UI vs [env]"
-Environment variables configured through the Settings UI (Settings >
-Environment) are also injected into the Chelix process at startup.
-Precedence: host/`docker -e` > config `[env]` > Settings UI.
+Environment variables configured through the Settings UI are stored in SQLite. At startup they fill `${VAR}` placeholders that are absent from `[env]`, and they are supplied to command execution and remote MCP placeholder resolution.
+Precedence: config `[env]` > Settings UI.
 ```
 
 ## Environment Variables
-
-All settings can be overridden via environment variables:
 
 | Variable                             | Description                       |
 | ------------------------------------ | --------------------------------- |
 | `CHELIX_CONFIG_DIR`                  | Configuration directory           |
 | `CHELIX_DATA_DIR`                    | Data directory                    |
-| `CHELIX_SERVER__PORT`                | Server port override              |
-| `CHELIX_SERVER__BIND`                | Server bind address override      |
-| `CHELIX_TOOLS__AGENT_TIMEOUT_SECS` | Agent run timeout override        |
 
 ## CLI Flags
 
