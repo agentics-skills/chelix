@@ -9,9 +9,6 @@ pub enum Error {
     Json(#[from] serde_json::Error),
 
     #[error(transparent)]
-    Yaml(#[from] serde_yaml::Error),
-
-    #[error(transparent)]
     TomlDe(#[from] toml::de::Error),
 
     #[error(transparent)]

@@ -646,32 +646,6 @@ fn discover_and_load_rejects_missing_config_without_creating_files() {
 }
 
 #[test]
-fn supported_formats_reject_unknown_fields() {
-    let _guard = CONFIG_DIR_TEST_LOCK.lock().unwrap();
-    let cases = [
-        ("toml", "[server]\nremoved_option = true\n"),
-        ("yaml", "server:\n  removed_option: true\n"),
-        ("yml", "server:\n  removed_option: true\n"),
-        ("json", r#"{"server":{"removed_option":true}}"#),
-    ];
-
-    for (extension, contents) in cases {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let config_path = dir.path().join(format!("chelix.{extension}"));
-        std::fs::write(&config_path, contents).expect("write config");
-        set_config_dir(dir.path().to_path_buf());
-
-        let error = discover_and_load().expect_err("unknown field must fail config load");
-        assert!(
-            error.to_string().contains("server.removed_option"),
-            "{extension} error should identify the unknown field: {error}"
-        );
-    }
-
-    clear_config_dir();
-}
-
-#[test]
 fn malformed_config_fails_initialization_without_overwrite() {
     let _guard = CONFIG_DIR_TEST_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().expect("tempdir");

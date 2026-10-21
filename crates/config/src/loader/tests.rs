@@ -7,8 +7,8 @@ use std::{path::PathBuf, sync::Mutex};
 
 use super::{
     config_io::{
-        find_config_file_from_dirs, load_layered_config_toml_source, parse_config,
-        resubstitute_config, save_user_config_to_path,
+        find_config_file_from_dirs, load_config_source, parse_config, resubstitute_config,
+        save_user_config_to_path,
     },
     *,
 };

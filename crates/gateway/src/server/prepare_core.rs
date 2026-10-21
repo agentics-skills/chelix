@@ -70,7 +70,6 @@ pub async fn prepare_gateway_core(
     let deploy_platform = std::env::var("CHELIX_DEPLOY_PLATFORM").ok();
     let resolved_auth = auth::resolve_auth(token, password.clone());
 
-    // Load config file (chelix.toml / .yaml / .json) if present.
     // Note: initialize_config() is called once at CLI startup (main.rs)
     // before reaching here.
     let mut config = chelix_config::discover_and_load()?;

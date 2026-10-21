@@ -21,7 +21,7 @@ initialization and only when no user config file exists. Runtime reloads are
 read-only: a missing config file is an error and is not recreated implicitly.
 
 Existing user config is never replaced with defaults when loading fails.
-Malformed values, type errors, and unknown fields in TOML, YAML, YML, or JSON
+Malformed values, type errors, and unknown fields in `chelix.toml`
 cause startup or the requested config operation to fail. Config updates and
 onboarding also refuse to overwrite an invalid existing file; correct the
 reported error in that file and retry.
