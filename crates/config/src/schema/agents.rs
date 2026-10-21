@@ -180,7 +180,7 @@ impl std::borrow::Borrow<str> for McpServerId {
 ///
 /// # Deny-list: all servers except these
 /// [agents.my-agent.mcp]
-/// deny_servers = ["home-assistant"]
+/// deny_servers = ["memory"]
 /// ```
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum AgentMcpPolicy {

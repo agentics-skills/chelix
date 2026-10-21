@@ -597,15 +597,6 @@ pub(super) async fn complete_startup(
         #[cfg(feature = "duckduckgo")]
         chelix_duckduckgo::register_tools(&mut tool_registry, &config.tools.duckduckgo)?;
 
-        #[cfg(feature = "home-assistant")]
-        {
-            if let Some(t) =
-                chelix_home_assistant::tool::HomeAssistantTool::from_config(&config.home_assistant)
-            {
-                tool_registry.register(Box::new(t));
-            }
-        }
-
         if let Some(ref mm) = memory_manager {
             tool_registry.register(Box::new(chelix_memory::tools::MemorySearchTool::new(
                 Arc::clone(mm),

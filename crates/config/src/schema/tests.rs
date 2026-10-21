@@ -1019,7 +1019,7 @@ prepend_sender_badge = true
 
 [agents.test.mcp]
 allow_servers = ["github"]
-deny_servers = ["home-assistant"]
+deny_servers = ["memory"]
 "#;
     let result: Result<ChelixConfig, _> = toml::from_str(toml_str);
     assert!(result.is_err());
@@ -1040,7 +1040,7 @@ fn mcp_policy_roundtrip_allow() {
 
 #[test]
 fn mcp_policy_roundtrip_deny() {
-    let policy = AgentMcpPolicy::Deny(vec!["home-assistant".into()]);
+    let policy = AgentMcpPolicy::Deny(vec!["memory".into()]);
     let toml_str = toml::to_string_pretty(&policy).unwrap();
     let parsed: AgentMcpPolicy = toml::from_str(&toml_str).unwrap();
     assert_eq!(parsed, policy);

@@ -409,21 +409,6 @@ pub(crate) fn build_schema_map() -> KnownKeys {
         ("env", Map(Box::new(Leaf))),
         ("upstream_proxy", Leaf),
         (
-            "home_assistant",
-            Struct(HashMap::from([
-                ("enabled", Leaf),
-                ("default_instance", Leaf),
-                (
-                    "instances",
-                    Map(Box::new(Struct(HashMap::from([
-                        ("url", Leaf),
-                        ("token", Leaf),
-                        ("timeout_seconds", Leaf),
-                    ])))),
-                ),
-            ])),
-        ),
-        (
             "auxiliary",
             Struct(HashMap::from([(
                 "title_generation",

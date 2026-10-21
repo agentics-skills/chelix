@@ -20,7 +20,6 @@ default-members = [
   "crates/gateway",
   "crates/github",
   "crates/google",
-  "crates/home-assistant",
   "crates/httpd",
   "crates/linkup",
   "crates/mcp",
@@ -72,7 +71,6 @@ members = [
   "crates/gateway",
   "crates/github",
   "crates/google",
-  "crates/home-assistant",
   "crates/httpd",
   "crates/linkup",
   "crates/mcp",
@@ -160,7 +158,6 @@ async-trait  = "0.1"
 directories  = "6"
 dotenvy      = "0.15"
 futures      = "0.3"
-futures-util = "0.3"
 indexmap     = { features = ["serde"], version = "2" }
 once_cell    = "1"
 tokio-stream = "0.1"
@@ -263,7 +260,6 @@ tar                   = "0.4"
 tempfile              = "3"
 walkdir               = "2"
 which                 = "8"
-wiremock              = "0.6"
 zeroize               = { features = ["derive"], version = "1" }
 
 # Workspace crates
@@ -283,7 +279,6 @@ chelix-felo             = { path = "crates/felo" }
 chelix-gateway          = { default-features = false, path = "crates/gateway" }
 chelix-github           = { path = "crates/github" }
 chelix-google           = { path = "crates/google" }
-chelix-home-assistant   = { path = "crates/home-assistant" }
 chelix-httpd            = { default-features = false, path = "crates/httpd" }
 chelix-linkup           = { path = "crates/linkup" }
 chelix-mcp              = { path = "crates/mcp" }

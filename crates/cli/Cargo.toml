@@ -45,7 +45,6 @@ tempfile = { workspace = true }
 
 [features]
 agent          = ["chelix-gateway/agent", "chelix-web?/agent"]
-home-assistant = ["chelix-gateway/home-assistant"]
 # User-facing integrations stay default-on in the CLI crate per workspace policy,
 # even when the underlying implementation remains feature-gated in lower crates.
 #
@@ -67,7 +66,6 @@ full = [
   "firecrawl",
   "github",
   "google",
-  "home-assistant",
   "jemalloc",
   "lang-bash",
   "lang-c",

@@ -437,37 +437,6 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
         }
     }
 
-    // Home Assistant instances without URL or token
-    for (name, instance) in &config.home_assistant.instances {
-        if instance.url.is_none() {
-            diagnostics.push(Diagnostic {
-                severity: Severity::Error,
-                category: "missing-field",
-                path: format!("home_assistant.instances.{name}.url"),
-                message: format!("HA instance '{name}' has no url configured"),
-            });
-        }
-        if instance.token.is_none() {
-            diagnostics.push(Diagnostic {
-                severity: Severity::Error,
-                category: "missing-field",
-                path: format!("home_assistant.instances.{name}.token"),
-                message: format!("HA instance '{name}' has no token configured"),
-            });
-        }
-        if let Some(ref url) = instance.url
-            && !url.starts_with("http://")
-            && !url.starts_with("https://")
-        {
-            diagnostics.push(Diagnostic {
-                severity: Severity::Warning,
-                category: "invalid-value",
-                path: format!("home_assistant.instances.{name}.url"),
-                message: "HA url should start with http:// or https://".into(),
-            });
-        }
-    }
-
     // Unknown voice TTS providers list values
     let valid_voice_tts_providers = [
         "elevenlabs",

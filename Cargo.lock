@@ -1268,7 +1268,6 @@ dependencies = [
  "chelix-felo",
  "chelix-github",
  "chelix-google",
- "chelix-home-assistant",
  "chelix-linkup",
  "chelix-mcp",
  "chelix-mcp-agent-bridge",
@@ -1365,29 +1364,6 @@ dependencies = [
  "tokio",
  "tracing",
  "url",
-]
-
-[[package]]
-name = "chelix-home-assistant"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "bytes",
- "chelix-agents",
- "chelix-config",
- "chelix-metrics",
- "futures-util",
- "reqwest 0.13.2",
- "secrecy",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tokio-tungstenite 0.26.2",
- "tracing",
- "urlencoding",
- "wiremock",
 ]
 
 [[package]]

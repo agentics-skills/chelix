@@ -191,7 +191,7 @@ impl VoiceProviderId {
                 hint: None,
             },
             Self::Piper => VoiceProviderMeta {
-                description: "Fast local TTS, commonly used in Home Assistant",
+                description: "Fast local TTS",
                 key_placeholder: None,
                 key_url: None,
                 key_url_label: None,
