@@ -466,7 +466,7 @@ mod tests {
         cfg.agents
             .entries
             .insert("restricted".into(), chelix_config::schema::AgentConfig {
-                mcp: chelix_config::schema::AgentMcpPolicy::Deny(vec!["home-assistant".into()]),
+                mcp: chelix_config::schema::AgentMcpPolicy::Deny(vec!["memory".into()]),
                 ..chelix_config::AgentConfig::new(
                     "Restricted",
                     "test::model",
@@ -485,8 +485,8 @@ mod tests {
         // MCP tools from allowed servers still work.
         assert!(policy.is_allowed("mcp__github__list_repos"));
         // MCP tools from denied server are blocked.
-        assert!(!policy.is_allowed("mcp__home-assistant__turn_on"));
-        assert!(!policy.is_allowed("mcp__home-assistant__get_state"));
+        assert!(!policy.is_allowed("mcp__memory__search"));
+        assert!(!policy.is_allowed("mcp__memory__get"));
     }
 
     #[test]
@@ -499,9 +499,7 @@ mod tests {
         cfg.tools.policy.allow = vec!["*".into()];
 
         cfg.mcp.servers.insert("github".into(), stub_mcp_entry());
-        cfg.mcp
-            .servers
-            .insert("home-assistant".into(), stub_mcp_entry());
+        cfg.mcp.servers.insert("memory".into(), stub_mcp_entry());
 
         cfg.agents
             .entries
@@ -523,7 +521,7 @@ mod tests {
         // the tool registry level in apply_runtime_tool_filters.
         assert!(policy.is_allowed("execute_command"));
         assert!(policy.is_allowed("mcp__github__list_repos"));
-        assert!(policy.is_allowed("mcp__home-assistant__turn_on"));
+        assert!(policy.is_allowed("mcp__memory__search"));
     }
 
     #[test]
@@ -547,7 +545,7 @@ mod tests {
         };
         let policy = resolve_effective_policy(&cfg, &ctx);
         assert!(policy.is_allowed("mcp__github__list_repos"));
-        assert!(policy.is_allowed("mcp__home-assistant__turn_on"));
+        assert!(policy.is_allowed("mcp__memory__search"));
     }
 
     #[test]
