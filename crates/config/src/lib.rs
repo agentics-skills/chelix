@@ -1,6 +1,6 @@
 //! Configuration loading, validation, and environment substitution.
 //!
-//! Config files: `chelix.toml`, `chelix.yaml`, or `chelix.json`
+//! Config files: `chelix.toml`
 //! Searched in `./` then `~/.config/chelix/`.
 //!
 //! Supports `${ENV_VAR}` substitution in all string values.

@@ -50,7 +50,7 @@ fn parse_config_rejects_noncanonical_offered_provider_names() {
 fn layered_candidate_validates_sandbox_retention() {
     let raw = "[providers]\noffered = [\"deepinfra\"]\n\n[tools.execute_command]\nterminal_size = \"115x58\"\n\n[sandbox]\narchived_session_retention_days = 3\n";
     let direct = toml::from_str::<ChelixConfig>(raw).expect("raw candidate should parse");
-    let layered = load_layered_config_toml_source(raw, std::path::Path::new("chelix.toml"))
+    let layered = load_config_source(raw, std::path::Path::new("chelix.toml"))
         .expect("layered candidate should load");
 
     assert_eq!(direct.providers.offered, vec!["deepinfra"]);
@@ -67,8 +67,7 @@ fn layered_candidate_validates_sandbox_retention() {
                 .to_string()
                 .contains("sandbox.archived_session_retention_days")
         );
-        let error = load_layered_config_toml_source(&missing, path)
-            .expect_err("On requires explicit retention");
+        let error = load_config_source(&missing, path).expect_err("On requires explicit retention");
         assert!(
             error
                 .to_string()
@@ -79,16 +78,15 @@ fn layered_candidate_validates_sandbox_retention() {
     let off = format!("{terminal}\n[sandbox]\nmode = \"Off\"\n");
     let config = parse_config(&off, path).expect("Off allows missing retention");
     assert_eq!(config.sandbox.archived_session_retention_days, None);
-    let loaded =
-        load_layered_config_toml_source(&off, path).expect("layered Off allows missing retention");
+    let loaded = load_config_source(&off, path).expect("layered Off allows missing retention");
     assert_eq!(loaded.sandbox.archived_session_retention_days, None);
 
     for days in [0, 3] {
         let valid = format!("{terminal}\n[sandbox]\narchived_session_retention_days = {days}\n");
         let parsed = parse_config(&valid, path).expect("explicit retention must parse");
         assert_eq!(parsed.sandbox.archived_session_retention_days, Some(days));
-        let loaded = load_layered_config_toml_source(&valid, path)
-            .expect("layered load preserves explicit retention");
+        let loaded =
+            load_config_source(&valid, path).expect("layered load preserves explicit retention");
         assert_eq!(loaded.sandbox.archived_session_retention_days, Some(days));
     }
 }

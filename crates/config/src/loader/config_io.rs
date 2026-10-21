@@ -43,7 +43,7 @@ fn restrict_config_file(path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Load config from the given path (any supported format).
+/// Load config from the given path.
 ///
 /// Uses a two-pass approach so that `[env]` section values are available
 /// for `${VAR}` substitution in other sections of the same config file.
@@ -54,20 +54,19 @@ pub fn load_config(path: &Path) -> crate::Result<ChelixConfig> {
     load_config_source(&raw, path)
 }
 
-fn load_config_source(raw: &str, path: &Path) -> crate::Result<ChelixConfig> {
-    let value = parse_config_value(raw, path)?;
+pub(super) fn load_config_source(raw: &str, path: &Path) -> crate::Result<ChelixConfig> {
+    let value = parse_config_value(raw)?;
     let preliminary = config_from_value(value, path)?;
     let env = preliminary.env;
-    let value = substituted_config_value(raw, path, &|name| env.get(name).cloned())?;
+    let value = substituted_config_value(raw, &|name| env.get(name).cloned())?;
     config_from_value(value, path)
 }
 
 fn substituted_config_value(
     raw: &str,
-    path: &Path,
     lookup: &impl Fn(&str) -> Option<String>,
 ) -> crate::Result<serde_json::Value> {
-    let mut value = parse_config_value(raw, path)?;
+    let mut value = parse_config_value(raw)?;
     crate::llm_assignment::substitute_json_strings(&mut value, lookup)?;
     Ok(value)
 }
@@ -135,70 +134,28 @@ pub fn initialize_config() -> crate::Result<ChelixConfig> {
 /// function everywhere else.
 ///
 /// User config search order:
-/// 1. `./chelix.{toml,yaml,yml,json}` (project-local)
-/// 2. `~/.config/chelix/chelix.{toml,yaml,yml,json}` (user-global)
+/// 1. `./chelix.toml` (project-local)
+/// 2. `~/.config/chelix/chelix.toml` (user-global)
 ///
 /// Returns an error if no config file is found or the file is invalid.
 pub fn discover_and_load() -> crate::Result<ChelixConfig> {
     let path = find_config_file().ok_or_else(|| crate::Error::message("no config file found"))?;
     debug!(path = %path.display(), "loading config (read-only)");
-    let mut cfg = load_layered_config(&path)?;
+    let mut cfg = load_config(&path)?;
     if cfg.server.port == 0 {
         cfg.server.port = generate_random_port();
     }
     Ok(cfg)
 }
 
-fn load_layered_config(user_path: &Path) -> crate::Result<ChelixConfig> {
-    let is_toml = user_path
-        .extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("toml"));
-
-    if is_toml {
-        load_layered_config_toml(user_path)
-    } else {
-        load_config(user_path)
-    }
-}
-
-/// TOML-specific layered loading with deep document merge.
-fn load_layered_config_toml(user_path: &Path) -> crate::Result<ChelixConfig> {
-    let user_raw = std::fs::read_to_string(user_path).map_err(|source| {
-        crate::Error::external(format!("failed to read {}", user_path.display()), source)
-    })?;
-    load_layered_config_toml_source(&user_raw, user_path)
-}
-
-pub(super) fn load_layered_config_toml_source(
-    user_raw: &str,
-    user_path: &Path,
-) -> crate::Result<ChelixConfig> {
-    load_config_source(user_raw, user_path)
-}
-
-/// Load an in-memory candidate through the same layered pipeline as the next startup.
-///
-/// The logical path is the raw-save target because its extension selects the startup parser.
+/// Load an in-memory candidate through the same pipeline as the next startup.
 pub fn load_layered_config_candidate(user_raw: &str) -> crate::Result<ChelixConfig> {
     let user_path = find_or_default_config_path();
-    let is_toml = user_path
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| extension.eq_ignore_ascii_case("toml"));
-
-    if is_toml {
-        load_layered_config_toml_source(user_raw, &user_path)
-    } else {
-        load_config_source(user_raw, &user_path)
-    }
+    load_config_source(user_raw, &user_path)
 }
 
 fn find_config_file_in(dir: &Path) -> Option<PathBuf> {
-    CONFIG_FILENAMES
-        .iter()
-        .map(|name| dir.join(name))
-        .find(|path| path.exists())
+    Some(dir.join(CONFIG_FILENAME)).filter(|path| path.exists())
 }
 
 pub(super) fn find_config_file_from_dirs(
@@ -314,15 +271,6 @@ pub fn update_provider_model_toml(
     validate: impl FnOnce(&crate::schema::ModelConfigMap) -> crate::Result<()>,
 ) -> crate::Result<crate::schema::ModelConfigMap> {
     let path = find_or_default_config_path();
-    let is_toml = path
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("toml"));
-    if !is_toml {
-        return Err(crate::Error::message(
-            "model records can only be edited in a TOML config",
-        ));
-    }
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -576,7 +524,7 @@ pub fn save_raw_config(toml_str: &str) -> crate::Result<PathBuf> {
 
 /// Serialize `config` to TOML and write it to the provided path.
 ///
-/// For existing TOML files, this preserves user comments by merging the new
+/// For existing files, this preserves user comments by merging the new
 /// serialized values into the current document structure before writing.
 pub fn save_config_to_path(path: &Path, config: &ChelixConfig) -> crate::Result<PathBuf> {
     validate_agent_ids(&config.agents, "configuration write")?;
@@ -589,12 +537,7 @@ pub fn save_config_to_path(path: &Path, config: &ChelixConfig) -> crate::Result<
     let toml_str = toml::to_string_pretty(config)
         .map_err(|source| crate::Error::external("serialize config", source))?;
 
-    let is_toml_path = path
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("toml"));
-
-    if is_toml_path && path.exists() {
+    if path.exists() {
         merge_toml_preserving_comments(path, &toml_str)?;
     } else {
         atomic_write(path, toml_str)?;
@@ -614,12 +557,8 @@ pub fn save_user_config_to_path(path: &Path, config: &ChelixConfig) -> crate::Re
 
     let effective_toml = toml::to_string_pretty(config)
         .map_err(|source| crate::Error::external("serialize config", source))?;
-    let is_toml_path = path
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("toml"));
 
-    if is_toml_path && path.exists() {
+    if path.exists() {
         merge_toml_preserving_comments(path, &effective_toml)?;
     } else {
         write_config_file(path, effective_toml).map_err(|source| {
@@ -756,7 +695,7 @@ pub fn resubstitute_config(
 }
 
 pub(super) fn parse_config(raw: &str, path: &Path) -> crate::Result<ChelixConfig> {
-    let value = parse_config_value(raw, path)?;
+    let value = parse_config_value(raw)?;
     config_from_value(value, path)
 }
 
@@ -899,21 +838,7 @@ fn validate_config_shape(value: &serde_json::Value, context: &str) -> crate::Res
     Ok(())
 }
 
-fn parse_config_value(raw: &str, path: &Path) -> crate::Result<serde_json::Value> {
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("toml");
-
-    match ext {
-        "toml" => {
-            let v: toml::Value = toml::from_str(raw)?;
-            Ok(serde_json::to_value(v)?)
-        },
-        "yaml" | "yml" => {
-            let v: serde_yaml::Value = serde_yaml::from_str(raw)?;
-            Ok(serde_json::to_value(v)?)
-        },
-        "json" => Ok(serde_json::from_str(raw)?),
-        _ => Err(crate::Error::message(format!(
-            "unsupported config format: .{ext}"
-        ))),
-    }
+fn parse_config_value(raw: &str) -> crate::Result<serde_json::Value> {
+    let value: toml::Value = toml::from_str(raw)?;
+    Ok(serde_json::to_value(value)?)
 }

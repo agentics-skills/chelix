@@ -46,15 +46,6 @@ fn with_provider_document<T>(
     edit: impl FnOnce(&mut toml_edit::Table) -> crate::Result<T>,
 ) -> crate::Result<T> {
     let path = find_or_default_config_path();
-    let is_toml = path
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("toml"));
-    if !is_toml {
-        return Err(crate::Error::message(
-            "OpenAI Compatible providers can only be edited in a TOML config",
-        ));
-    }
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }

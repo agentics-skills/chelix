@@ -39,8 +39,8 @@ fn next_fallback_port() -> u16 {
         .unwrap_or(18789)
 }
 
-/// Standard config file names, checked in order.
-const CONFIG_FILENAMES: &[&str] = &["chelix.toml", "chelix.yaml", "chelix.yml", "chelix.json"];
+/// Config file name.
+const CONFIG_FILENAME: &str = "chelix.toml";
 
 /// Override for the config directory, set via `set_config_dir()`.
 static CONFIG_DIR_OVERRIDE: Mutex<Option<PathBuf>> = Mutex::new(None);
