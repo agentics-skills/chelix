@@ -52,11 +52,11 @@ impl AgentTool for RipgrepTool {
                 "paths": {
                     "type": "array",
                     "items": { "type": "string" },
-                    "description": "Paths to search (defaults to the working directory)."
+                    "description": "Search within file contents at the specified paths. Accepts files or directories; directories are traversed recursively. Relative paths are resolved from cwd. If omitted, searches within file contents under cwd."
                 },
                 "cwd": {
                     "type": "string",
-                    "description": "Working directory for the rg process."
+                    "description": "Optional working directory. If omitted, uses the home directory (e.g., /home/user)."
                 },
                 "fixedStrings": {
                     "type": "boolean",
@@ -82,7 +82,7 @@ impl AgentTool for RipgrepTool {
                 "glob": {
                     "type": "array",
                     "items": { "type": "string" },
-                    "description": "Glob patterns mapped to --glob."
+                    "description": "Include or exclude file paths using glob patterns, e.g., \"*.rs\", \"Cargo.toml\", \"src/**\". Prefix with \"!\" to exclude, e.g., \"!**/target/**\"."
                 },
                 "type": {
                     "type": "array",
