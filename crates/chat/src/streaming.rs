@@ -307,7 +307,7 @@ pub(crate) async fn run_streaming(
     session_reasoning_effort: Option<String>,
     desired_reply_medium: ReplyMedium,
     project_context: Option<&str>,
-    _skills: &[chelix_skills::types::SkillMetadata],
+    _skills: &[chelix_call_bus::SkillMetadata],
     runtime_context: Option<&PromptRuntimeContext>,
     sender_name: Option<String>,
     session_store: Option<&Arc<SessionStore>>,

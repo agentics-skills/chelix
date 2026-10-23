@@ -457,7 +457,7 @@ pub struct GatewayState {
 
     // ── Broadcast state (lock-free) ─────────────────────────────────────────
     /// Process call bus. Installed once during gateway startup.
-    pub call_bus: std::sync::OnceLock<Arc<chelix_call_bus::CallBus>>,
+    pub call_bus: Arc<chelix_call_bus::CallBus>,
     /// Lock-free broadcast state (sequence counter).
     pub broadcaster: Arc<Broadcaster>,
 
@@ -472,10 +472,15 @@ pub struct GatewayState {
 }
 
 impl GatewayState {
-    pub fn new(auth: ResolvedAuth, services: GatewayServices) -> Arc<Self> {
+    pub fn new(
+        call_bus: Arc<chelix_call_bus::CallBus>,
+        auth: ResolvedAuth,
+        services: GatewayServices,
+    ) -> Arc<Self> {
         let mut config = chelix_config::ChelixConfig::default();
         config.sandbox.mode = chelix_config::schema::SandboxMode::Off;
         Self::with_options(
+            call_bus,
             auth,
             services,
             config,
@@ -504,6 +509,7 @@ impl GatewayState {
 
     #[allow(clippy::too_many_arguments)]
     pub fn with_options(
+        call_bus: Arc<chelix_call_bus::CallBus>,
         auth: ResolvedAuth,
         services: GatewayServices,
         config: chelix_config::schema::ChelixConfig,
@@ -560,7 +566,7 @@ impl GatewayState {
             webhook_worker_tx: std::sync::OnceLock::new(),
             skill_usage_store: std::sync::OnceLock::new(),
             chat_override: std::sync::RwLock::new(None),
-            call_bus: std::sync::OnceLock::new(),
+            call_bus,
             broadcaster: Arc::new(Broadcaster::new()),
             client_registry: RwLock::new(ClientRegistryInner::new()),
             inner: RwLock::new(GatewayInner::new(hook_registry, cached_location)),
@@ -986,6 +992,7 @@ mod tests {
 
     fn test_state() -> Arc<GatewayState> {
         GatewayState::new(
+            chelix_call_bus::CallBus::new(),
             ResolvedAuth {
                 mode: AuthMode::Token,
                 token: None,

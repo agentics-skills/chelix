@@ -1205,6 +1205,7 @@ mod tests {
     #[tokio::test]
     async fn chat_auxiliary_rpc_parsers_reject_invalid_payloads_before_session_lookup() {
         let state = GatewayState::new(
+            chelix_call_bus::CallBus::new(),
             ResolvedAuth {
                 mode: AuthMode::Token,
                 token: None,
@@ -1258,6 +1259,7 @@ mod tests {
     #[test]
     fn stateless_http_session_switch_is_rejected_without_mutating_connection_state() {
         let state = GatewayState::new(
+            chelix_call_bus::CallBus::new(),
             ResolvedAuth {
                 mode: AuthMode::Token,
                 token: None,

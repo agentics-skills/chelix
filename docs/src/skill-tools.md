@@ -25,8 +25,9 @@ When `skills.enable_agent_sidecar_files = true`, a fifth tool becomes available:
 Skills created this way are personal and stored in the configured data
 directory's `skills/` folder. A contextual `create_skill` writes
 `allowed_agents` with that agent id and an empty `denied_agents`, making the new skill visible only to its creator.
-A call without agent context and a new `skills.skill.save` write both keys empty,
-so each agent's skill policy applies.
+A tool call without agent context returns `missing agent id`.
+`CreateSkillFile` with `actor: Process` and `creator_agent_id: None`, and a new
+`skills.skill.save`, write both keys empty, so each agent's skill policy applies.
 
 `update_skill`, `patch_skill`, and an existing `skills.skill.save`
 preserve existing access lists and write both keys, including empty lists.

@@ -199,28 +199,6 @@ async fn build_webauthn_registry(
     }
 }
 
-fn register_stop_session(
-    call_bus: &chelix_call_bus::CallBus,
-    chat: Arc<LiveChatService>,
-) -> anyhow::Result<()> {
-    call_bus
-        .register(move |request: chelix_service_traits::StopSession| {
-            let chat = Arc::clone(&chat);
-            async move {
-                match request {
-                    chelix_service_traits::StopSession::Run { run_id } => {
-                        chat.stop_run(run_id).await
-                    },
-                    chelix_service_traits::StopSession::Session { key, run_id } => {
-                        chat.stop_current_session(key.as_str(), run_id.as_deref())
-                            .await
-                    },
-                }
-            }
-        })
-        .map_err(|error| anyhow::anyhow!(error.to_string()))
-}
-
 pub(super) async fn complete_startup(
     inputs: PostStateInputs,
 ) -> anyhow::Result<PreparedGatewayCore> {
@@ -327,6 +305,7 @@ pub(super) async fn complete_startup(
     }
 
     let state = GatewayState::with_options(
+        Arc::clone(&call_bus),
         resolved_auth,
         services,
         config.clone(),
@@ -352,10 +331,6 @@ pub(super) async fn complete_startup(
     state
         .set_tools_service(Arc::clone(&tools_service))
         .map_err(|_| anyhow::anyhow!("managed tools service was already initialized"))?;
-    state
-        .call_bus
-        .set(Arc::clone(&call_bus))
-        .map_err(|_| anyhow::anyhow!("call bus was already installed"))?;
 
     // Wire the shared LLM provider registry for lightweight generation
     // (auto-title).
@@ -664,84 +639,33 @@ pub(super) async fn complete_startup(
         )));
 
         {
-            use chelix_skills::{discover::FsSkillDiscoverer, usage::SkillUsageStore};
-
+            use chelix_skills::usage::SkillUsageStore;
             let skill_usage = SkillUsageStore::open(&data_dir).await;
-
             tool_registry.register(Box::new(
-                chelix_tools::skill_tools::CreateSkillTool::new(
-                    data_dir.clone(),
-                    Arc::clone(&call_bus),
-                )
-                .with_usage_store(skill_usage.clone()),
-            ));
-            tool_registry.register(Box::new(
-                chelix_tools::skill_tools::UpdateSkillTool::new(
-                    data_dir.clone(),
-                    Arc::clone(&call_bus),
-                )
-                .with_usage_store(skill_usage.clone()),
-            ));
-            tool_registry.register(Box::new(
-                chelix_tools::skill_tools::PatchSkillTool::new(
-                    data_dir.clone(),
-                    Arc::clone(&call_bus),
-                )
-                .with_usage_store(skill_usage.clone()),
-            ));
-            tool_registry.register(Box::new(
-                chelix_tools::skill_tools::DeleteSkillTool::new(
-                    data_dir.clone(),
-                    Arc::clone(&call_bus),
-                )
-                .with_usage_store(skill_usage.clone()),
-            ));
-
-            let fs_discoverer = FsSkillDiscoverer::new(
-                FsSkillDiscoverer::default_paths_for(&data_dir),
-                Arc::clone(&call_bus),
-            );
-
-            #[cfg(feature = "bundled-skills")]
-            {
-                let bundled_store = Arc::new(chelix_skills::bundled::BundledSkillStore::new(
-                    Arc::clone(&call_bus),
-                ));
-                let read_discoverer: Arc<dyn chelix_skills::discover::SkillDiscoverer> =
-                    Arc::new(chelix_skills::discover::CompositeSkillDiscoverer::new(
-                        Box::new(fs_discoverer),
-                        Arc::clone(&bundled_store),
-                    ));
-                tool_registry.register(Box::new(
-                    chelix_tools::skill_tools::ReadSkillTool::with_bundled(
-                        read_discoverer,
-                        bundled_store,
-                        Arc::clone(&call_bus),
-                    )
+                chelix_tools::skill_tools::CreateSkillTool::new(Arc::clone(&call_bus))
                     .with_usage_store(skill_usage.clone()),
-                ));
-            }
-            #[cfg(not(feature = "bundled-skills"))]
-            {
-                let read_discoverer = Arc::new(fs_discoverer);
-                tool_registry.register(Box::new(
-                    chelix_tools::skill_tools::ReadSkillTool::new(
-                        read_discoverer,
-                        Arc::clone(&call_bus),
-                    )
+            ));
+            tool_registry.register(Box::new(
+                chelix_tools::skill_tools::UpdateSkillTool::new(Arc::clone(&call_bus))
                     .with_usage_store(skill_usage.clone()),
-                ));
-            }
-
+            ));
+            tool_registry.register(Box::new(
+                chelix_tools::skill_tools::PatchSkillTool::new(Arc::clone(&call_bus))
+                    .with_usage_store(skill_usage.clone()),
+            ));
+            tool_registry.register(Box::new(
+                chelix_tools::skill_tools::DeleteSkillTool::new(Arc::clone(&call_bus))
+                    .with_usage_store(skill_usage.clone()),
+            ));
+            tool_registry.register(Box::new(
+                chelix_tools::skill_tools::ReadSkillTool::new(Arc::clone(&call_bus))
+                    .with_usage_store(skill_usage.clone()),
+            ));
             if config.skills.enable_agent_sidecar_files {
                 tool_registry.register(Box::new(
-                    chelix_tools::skill_tools::WriteSkillFilesTool::new(
-                        data_dir.clone(),
-                        Arc::clone(&call_bus),
-                    ),
+                    chelix_tools::skill_tools::WriteSkillFilesTool::new(Arc::clone(&call_bus)),
                 ));
             }
-
             let _ = state.skill_usage_store.set(skill_usage);
         }
 
@@ -795,7 +719,7 @@ pub(super) async fn complete_startup(
         }
 
         let live_chat = Arc::new(chat_service);
-        register_stop_session(&call_bus, Arc::clone(&live_chat))?;
+        chelix_chat::register_stop_session(&call_bus, Arc::clone(&live_chat))?;
         call_bus
             .seal()
             .map_err(|error| anyhow::anyhow!(error.to_string()))?;

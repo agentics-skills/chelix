@@ -285,81 +285,6 @@ pub(crate) fn prompt_build_limits_from_config(
     }
 }
 
-/// Discover skills from the default filesystem paths, honoring `[skills] enabled`.
-///
-/// Returns an empty list when `config.skills.enabled` is `false`, so callers can
-/// unconditionally feed the result into prompt building / tool filtering without
-/// injecting skills into the LLM context when the operator has disabled them.
-pub(crate) async fn discover_skills_if_enabled(
-    config: &chelix_config::ChelixConfig,
-    bus: &Arc<chelix_call_bus::CallBus>,
-) -> Vec<chelix_skills::types::SkillMetadata> {
-    if !config.skills.enabled {
-        return Vec::new();
-    }
-    let fs_discoverer = chelix_skills::discover::FsSkillDiscoverer::new(
-        chelix_skills::discover::FsSkillDiscoverer::default_paths(),
-        Arc::clone(bus),
-    );
-
-    #[cfg(feature = "bundled-skills")]
-    let skills = {
-        use chelix_skills::discover::SkillDiscoverer;
-        let bundled = Arc::new(chelix_skills::bundled::BundledSkillStore::new(Arc::clone(
-            bus,
-        )));
-        let composite = chelix_skills::discover::CompositeSkillDiscoverer::new(
-            Box::new(fs_discoverer),
-            bundled,
-        );
-        composite.discover().await
-    };
-    #[cfg(not(feature = "bundled-skills"))]
-    let skills = {
-        use chelix_skills::discover::SkillDiscoverer;
-        fs_discoverer.discover().await
-    };
-
-    let has_bundled_disables = !config.skills.disabled_bundled_categories.is_empty()
-        || !config.skills.disabled_bundled_skills.is_empty();
-
-    match skills {
-        Ok(skills) if !has_bundled_disables => skills,
-        Ok(skills) => skills
-            .into_iter()
-            .filter(|s| {
-                // Only filter bundled skills; non-bundled skills pass through.
-                if s.source != Some(chelix_skills::types::SkillSource::Bundled) {
-                    return true;
-                }
-                config
-                    .skills
-                    .is_bundled_skill_enabled(&s.name, s.category.as_deref())
-            })
-            .collect(),
-        Err(e) => {
-            warn!("failed to discover skills: {e}");
-            Vec::new()
-        },
-    }
-}
-
-/// Apply per-agent skill policy to a discovered skill list.
-///
-/// Keep the first source for each name and apply skill and agent access lists.
-pub(crate) fn filter_skills_for_agent(
-    skills: Vec<chelix_skills::types::SkillMetadata>,
-    agent_id: &str,
-    policy: &chelix_config::schema::AgentSkillPolicy,
-) -> Vec<chelix_skills::types::SkillMetadata> {
-    let mut seen = std::collections::HashSet::new();
-    skills
-        .into_iter()
-        .filter(|skill| seen.insert(skill.name.clone()))
-        .filter(|skill| chelix_skills::visible_to_agent(agent_id, skill, policy))
-        .collect()
-}
-
 pub(crate) fn resolve_channel_runtime_context(
     session_key: &str,
     session_entry: Option<&SessionEntry>,
@@ -534,7 +459,7 @@ pub(crate) fn apply_chat_execution_context(
 pub(crate) fn apply_runtime_tool_filters(
     base: &chelix_agents::tool_registry::ToolRegistry,
     config: &chelix_config::ChelixConfig,
-    _skills: &[chelix_skills::types::SkillMetadata],
+    _skills: &[chelix_call_bus::SkillMetadata],
     policy_context: &PolicyContext,
 ) -> chelix_agents::tool_registry::ToolRegistry {
     let policy = resolve_effective_policy(config, policy_context);
@@ -578,7 +503,7 @@ pub(crate) fn apply_runtime_tool_filters(
 pub(crate) fn prepare_run_registry(
     base: &chelix_agents::tool_registry::ToolRegistry,
     config: &chelix_config::ChelixConfig,
-    skills: &[chelix_skills::types::SkillMetadata],
+    skills: &[chelix_call_bus::SkillMetadata],
     policy_context: &PolicyContext,
     tools_enabled: bool,
     agent_id: &str,
@@ -587,7 +512,6 @@ pub(crate) fn prepare_run_registry(
         crate::memory_tools::MemoryForgetProviderResolver,
     )>,
     visible_tools: std::collections::HashSet<String>,
-    call_bus: &Arc<chelix_call_bus::CallBus>,
 ) -> anyhow::Result<chelix_agents::tool_registry::ToolRegistry> {
     let mut registry = if tools_enabled {
         apply_runtime_tool_filters(base, config, skills, policy_context)
@@ -605,13 +529,6 @@ pub(crate) fn prepare_run_registry(
             config.memory.agent_write_mode,
         );
     }
-
-    crate::skill_tools::install_agent_scoped_skill_tools(
-        &mut registry,
-        config,
-        agent_id,
-        call_bus,
-    )?;
 
     let max_tool_result_bytes =
         config
@@ -840,8 +757,6 @@ mod tests {
             "preloaded",
             None,
             std::collections::HashSet::from(["mcp__github__builtin_named_like_mcp".to_string()]),
-            &chelix_skills::skill_file::open_skill_bus()
-                .unwrap_or_else(|error| panic!("skill bus: {error}")),
         )
         .unwrap_or_else(|error| panic!("run registry preparation succeeds: {error}"));
 
@@ -852,74 +767,5 @@ mod tests {
         ]);
         assert!(registry.get("mcp__github__search").is_none());
         assert!(registry.get("mcp__memory__store").is_none());
-    }
-
-    #[test]
-    fn skill_filter_deduplicates_before_visibility_and_keeps_input_order() {
-        use chelix_skills::types::{SkillMetadata, SkillSource};
-
-        let filtered = filter_skills_for_agent(
-            vec![
-                SkillMetadata {
-                    name: "demo".into(),
-                    denied_agents: vec!["agent1".into()],
-                    source: Some(SkillSource::Project),
-                    ..Default::default()
-                },
-                SkillMetadata {
-                    name: "demo".into(),
-                    allowed_agents: vec!["agent1".into()],
-                    source: Some(SkillSource::Personal),
-                    ..Default::default()
-                },
-                SkillMetadata {
-                    name: "z-last".into(),
-                    ..Default::default()
-                },
-                SkillMetadata {
-                    name: "a-last".into(),
-                    ..Default::default()
-                },
-            ],
-            "agent1",
-            &chelix_config::AgentSkillPolicy::default(),
-        );
-        assert_eq!(
-            filtered
-                .iter()
-                .map(|skill| skill.name.as_str())
-                .collect::<Vec<_>>(),
-            ["z-last", "a-last"]
-        );
-    }
-
-    #[test]
-    fn skill_policy_allows_then_denies_by_name_or_category() {
-        let skills = vec![
-            chelix_skills::types::SkillMetadata {
-                name: "web-search".into(),
-                category: Some("research".into()),
-                ..Default::default()
-            },
-            chelix_skills::types::SkillMetadata {
-                name: "games".into(),
-                category: Some("gaming".into()),
-                ..Default::default()
-            },
-            chelix_skills::types::SkillMetadata {
-                name: "writer".into(),
-                category: Some("creative".into()),
-                ..Default::default()
-            },
-        ];
-        let policy = chelix_config::schema::AgentSkillPolicy {
-            allow: vec!["research".into(), "writer".into()],
-            deny: vec!["writer".into()],
-        };
-
-        let filtered = filter_skills_for_agent(skills, "agent1", &policy);
-
-        assert_eq!(filtered.len(), 1);
-        assert_eq!(filtered[0].name, "web-search");
     }
 }

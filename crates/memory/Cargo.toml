@@ -24,8 +24,8 @@ lang-rust          = ["chelix-splitter/lang-rust"]
 lang-toml          = ["chelix-splitter/lang-toml"]
 lang-typescript    = ["chelix-splitter/lang-typescript"]
 # Existing features.
-file-watcher     = ["dep:notify-debouncer-full"]
-metrics          = ["dep:chelix-metrics"]
+file-watcher = ["dep:notify-debouncer-full"]
+metrics      = ["dep:chelix-metrics"]
 
 [dependencies]
 anyhow                = { workspace = true }

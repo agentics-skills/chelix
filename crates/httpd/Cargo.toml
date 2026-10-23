@@ -9,6 +9,7 @@ anyhow           = { workspace = true }
 async-trait      = { workspace = true }
 axum             = { workspace = true }
 chelix-auth      = { workspace = true }
+chelix-call-bus  = { workspace = true }
 chelix-channels  = { workspace = true }
 chelix-common    = { workspace = true }
 chelix-config    = { workspace = true }
@@ -18,7 +19,6 @@ chelix-metrics   = { optional = true, workspace = true }
 chelix-portable  = { workspace = true }
 chelix-protocol  = { workspace = true }
 chelix-sessions  = { workspace = true }
-chelix-skills    = { workspace = true }
 chelix-telephony = { optional = true, workspace = true }
 chelix-tls       = { optional = true, workspace = true }
 chelix-tools     = { workspace = true }

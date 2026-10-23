@@ -464,6 +464,7 @@ mod tests {
             .with_channel_registry(Arc::clone(&registry))
             .with_telephony_plugin(Arc::clone(&telephony_plugin));
         let state = GatewayState::new(
+            chelix_call_bus::CallBus::new(),
             ResolvedAuth {
                 mode: AuthMode::Token,
                 token: None,

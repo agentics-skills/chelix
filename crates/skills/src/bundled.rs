@@ -1,69 +1,40 @@
-//! Bundled skills embedded in the binary at compile time.
-//!
-//! Skills live in `crates/skills/src/assets/<category>/<name>/SKILL.md` and are
-//! committed to the repository. In dev mode (`cargo run`) the module reads
-//! directly from the filesystem for instant iteration; in release builds it
-//! serves from the [`include_dir!`] embedded copy.
-//!
-//! This mirrors the three-tier asset strategy in `crates/web/src/assets.rs`.
+//! Bundled skill assets and executable sidecar materialization.
 
-use std::path::{Path, PathBuf};
-
-use crate::types::{SkillMetadata, SkillSource};
-
-// ── Embedded assets ─────────────────────────────────────────────────────────
+use {
+    crate::{
+        error::{Error, Result},
+        skill_file::SkillFiles,
+        types::{SkillMetadata, SkillSource},
+    },
+    std::{
+        path::{Path, PathBuf},
+        sync::Arc,
+    },
+};
 
 static BUNDLED_ASSETS: include_dir::Dir<'static> =
     include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/assets");
 
-// ── Asset source resolution ─────────────────────────────────────────────────
-
 enum AssetSource {
-    /// Read from the filesystem (dev mode: `cargo run`).
     Filesystem(PathBuf),
-    /// Read from the compile-time embedded directory.
     Embedded,
 }
 
-/// Store for bundled skills. Shared (via `Arc`) between the composite
-/// discoverer and the `ReadSkillTool`.
+/// Stores bundled assets and materializes their executable resources.
 pub struct BundledSkillStore {
     source: AssetSource,
-    /// Directory where bundled sidecar files (scripts, templates, etc.)
-    /// are materialized on disk so they can be executed by the agent.
     materialize_dir: PathBuf,
-    bus: std::sync::Arc<chelix_call_bus::CallBus>,
+    files: Arc<SkillFiles>,
 }
 
 impl BundledSkillStore {
-    /// Create a new store, preferring the filesystem in dev mode.
     #[must_use]
-    pub fn new(bus: std::sync::Arc<chelix_call_bus::CallBus>) -> Self {
-        let cargo_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/assets");
-        let materialize_dir = chelix_config::data_dir().join("bundled-skills");
-        let source = if cargo_dir.is_dir() {
-            tracing::debug!(path = %cargo_dir.display(), "bundled skills: using filesystem (dev mode)");
-            AssetSource::Filesystem(cargo_dir)
-        } else {
-            tracing::debug!("bundled skills: using embedded assets");
-            AssetSource::Embedded
-        };
-        Self {
-            source,
-            materialize_dir,
-            bus,
-        }
+    pub fn new(files: Arc<SkillFiles>) -> Self {
+        Self::with_materialize_dir(chelix_config::data_dir().join("bundled-skills"), files)
     }
 
-    /// Create a store with a custom materialization directory (for tests).
-    ///
-    /// Avoids calling [`data_dir()`](chelix_config::data_dir) so tests
-    /// do not trigger side effects from the global config.
     #[must_use]
-    pub fn with_materialize_dir(
-        materialize_dir: PathBuf,
-        bus: std::sync::Arc<chelix_call_bus::CallBus>,
-    ) -> Self {
+    pub fn with_materialize_dir(materialize_dir: PathBuf, files: Arc<SkillFiles>) -> Self {
         let cargo_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/assets");
         let source = if cargo_dir.is_dir() {
             AssetSource::Filesystem(cargo_dir)
@@ -73,347 +44,300 @@ impl BundledSkillStore {
         Self {
             source,
             materialize_dir,
-            bus,
+            files,
         }
     }
 
-    /// Discover metadata for all bundled skills.
-    ///
-    /// Walks the assets directory two levels deep (`<category>/<skill>/SKILL.md`),
-    /// parses frontmatter, and tags each with [`SkillSource::Bundled`].
-    pub async fn discover(&self) -> Vec<SkillMetadata> {
+    pub async fn discover(&self) -> Result<Vec<SkillMetadata>> {
         match &self.source {
-            AssetSource::Filesystem(dir) => discover_from_fs(&self.bus, dir).await,
+            AssetSource::Filesystem(dir) => discover_from_fs(&self.files, dir).await,
             AssetSource::Embedded => discover_from_embedded(),
         }
     }
 
-    /// Read the full body of a bundled skill by name.
     pub async fn read_skill(&self, name: &str) -> Option<String> {
         match &self.source {
-            AssetSource::Filesystem(dir) => read_skill_body_fs(&self.bus, dir, name).await,
+            AssetSource::Filesystem(dir) => read_skill_body_fs(&self.files, dir, name).await,
             AssetSource::Embedded => read_skill_body_embedded(name),
         }
     }
 
-    /// Read a sidecar file from a bundled skill directory.
-    ///
-    /// Returns `Some((bytes, is_utf8))` or `None` if the file does not exist.
-    pub fn read_sidecar(&self, name: &str, rel_path: &str) -> Option<(Vec<u8>, bool)> {
+    pub fn read_sidecar(&self, name: &str, rel_path: &str) -> Result<Option<(Vec<u8>, bool)>> {
         match &self.source {
-            AssetSource::Filesystem(dir) => read_sidecar_fs(dir, name, rel_path),
-            AssetSource::Embedded => read_sidecar_embedded(name, rel_path),
+            AssetSource::Filesystem(dir) => {
+                let Some(skill_dir) = find_skill_dir_fs(dir, name)? else {
+                    return Ok(None);
+                };
+                match std::fs::read(skill_dir.join(rel_path)) {
+                    Ok(bytes) => {
+                        let is_utf8 = std::str::from_utf8(&bytes).is_ok();
+                        Ok(Some((bytes, is_utf8)))
+                    },
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+                    Err(error) => Err(error.into()),
+                }
+            },
+            AssetSource::Embedded => Ok(read_sidecar_embedded(name, rel_path)),
         }
     }
 
-    /// List sidecar files for a bundled skill (references/, templates/, etc.).
-    pub fn list_sidecars(&self, name: &str) -> Vec<(String, u64)> {
+    pub fn list_sidecars(&self, name: &str) -> Result<Vec<(String, u64)>> {
         match &self.source {
             AssetSource::Filesystem(dir) => list_sidecars_fs(dir, name),
-            AssetSource::Embedded => list_sidecars_embedded(name),
+            AssetSource::Embedded => Ok(list_sidecars_embedded(name)),
         }
     }
 
-    /// Materialize sidecar files for a skill to the configured directory.
-    ///
-    /// Returns `Some(skill_dir)` if files were written, `None` if the skill
-    /// has no sidecars. The returned path is the skill-level directory
-    /// (e.g. `<materialize_dir>/<name>/`), so `scripts/maps_client.py`
-    /// becomes `<skill_dir>/scripts/maps_client.py`.
-    pub fn materialize_sidecars(&self, name: &str) -> Option<PathBuf> {
+    pub fn materialize_sidecars(&self, name: &str) -> Result<Option<PathBuf>> {
         self.materialize_sidecars_to(name, &self.materialize_dir)
     }
 
-    /// Materialize sidecar files for a skill to an explicit target directory.
-    ///
-    /// Returns `Some(target_dir/<name>)` if **all** files were written
-    /// successfully, `None` if the skill has no sidecars or any write failed.
-    pub fn materialize_sidecars_to(&self, name: &str, target_dir: &Path) -> Option<PathBuf> {
-        let sidecars = self.list_sidecars(name);
+    pub fn materialize_sidecars_to(
+        &self,
+        name: &str,
+        target_dir: &Path,
+    ) -> Result<Option<PathBuf>> {
+        let sidecars = self.list_sidecars(name)?;
         if sidecars.is_empty() {
-            return None;
+            return Ok(None);
         }
-
         let skill_dir = target_dir.join(name);
-        let total = sidecars.len();
-        let mut failed = Vec::new();
-        for (rel_path, _) in &sidecars {
-            let Some((bytes, _)) = self.read_sidecar(name, rel_path) else {
-                tracing::warn!(skill = %name, path = %rel_path, "failed to read bundled sidecar");
-                failed.push(rel_path.clone());
-                continue;
-            };
-            let target = skill_dir.join(rel_path);
-            if let Some(parent) = target.parent()
-                && let Err(e) = std::fs::create_dir_all(parent)
-            {
-                tracing::warn!(skill = %name, path = %rel_path, %e, "failed to create sidecar directory");
-                failed.push(rel_path.clone());
-                continue;
+        for (path, _) in sidecars {
+            let (bytes, _) = self.read_sidecar(name, &path)?.ok_or_else(|| Error::NotFound(format!("sidecar file '{path}' not found in bundled skill '{name}' during materialization")))?;
+            let target = skill_dir.join(&path);
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent)?;
             }
-            if let Err(e) = std::fs::write(&target, &bytes) {
-                tracing::warn!(skill = %name, path = %rel_path, %e, "failed to write sidecar file");
-                failed.push(rel_path.clone());
-                continue;
-            }
+            std::fs::write(&target, bytes)?;
             #[cfg(unix)]
-            if rel_path.starts_with("scripts/") {
+            if path.starts_with("scripts/") {
                 use std::os::unix::fs::PermissionsExt;
-                if let Err(e) =
-                    std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o755))
-                {
-                    tracing::warn!(skill = %name, path = %rel_path, %e, "failed to set executable permission");
-                    failed.push(rel_path.clone());
-                    continue;
-                }
+                std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o755))?;
             }
         }
-
-        if failed.is_empty() {
-            Some(skill_dir)
-        } else {
-            tracing::warn!(
-                skill = %name,
-                failed = failed.len(),
-                total,
-                "some sidecar files could not be materialized"
-            );
-            None
-        }
+        Ok(Some(skill_dir))
     }
 }
 
-// ── Filesystem (dev mode) ───────────────────────────────────────────────────
-
-/// Recursively walk the assets directory for SKILL.md files on the filesystem.
-/// Supports arbitrary nesting (e.g. `mlops/training/axolotl/SKILL.md`).
-async fn discover_from_fs(bus: &chelix_call_bus::CallBus, assets_dir: &Path) -> Vec<SkillMetadata> {
+async fn discover_from_fs(files: &SkillFiles, assets_dir: &Path) -> Result<Vec<SkillMetadata>> {
     let mut skills = Vec::new();
-    discover_from_fs_recursive(bus, assets_dir, assets_dir, &mut skills).await;
-    skills
+    discover_from_fs_recursive(files, assets_dir, assets_dir, &mut skills).await?;
+    Ok(skills)
 }
 
 async fn discover_from_fs_recursive(
-    bus: &chelix_call_bus::CallBus,
+    files: &SkillFiles,
     assets_root: &Path,
     dir: &Path,
     skills: &mut Vec<SkillMetadata>,
-) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
+) -> Result<()> {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
     };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_dir() {
+    for entry in entries {
+        let path = entry?.path();
+        if !std::fs::metadata(&path)?.is_dir() {
             continue;
         }
         let skill_md = path.join("SKILL.md");
-        if skill_md.is_file() {
-            match crate::skill_file::read_on(bus, &skill_md, None).await {
-                Ok(content) => {
-                    let mut meta = content.metadata;
-                    meta.source = Some(SkillSource::Bundled);
-                    meta.category = category_from_path(assets_root, &path);
-                    skills.push(meta);
-                },
-                Err(e) => {
-                    tracing::warn!(path = %skill_md.display(), %e, "failed to parse bundled SKILL.md");
-                },
-            }
-        } else {
-            // No SKILL.md here — recurse into subdirectories (category nesting).
-            Box::pin(discover_from_fs_recursive(bus, assets_root, &path, skills)).await;
+        match std::fs::metadata(&skill_md) {
+            Ok(meta) if meta.is_file() => {
+                let mut meta = crate::skill_file::read(files, &skill_md, None)
+                    .await?
+                    .metadata;
+                meta.source = Some(SkillSource::Bundled);
+                meta.category = category_from_path(assets_root, &path);
+                skills.push(meta);
+            },
+            Ok(_) => {},
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                Box::pin(discover_from_fs_recursive(
+                    files,
+                    assets_root,
+                    &path,
+                    skills,
+                ))
+                .await?
+            },
+            Err(error) => return Err(error.into()),
         }
     }
+    Ok(())
 }
 
-/// Extract the top-level category from a skill's path relative to the assets root.
-/// e.g. `assets/research/arxiv` → `"research"`, `assets/mlops/training/axolotl` → `"mlops"`.
 fn category_from_path(assets_root: &Path, skill_dir: &Path) -> Option<String> {
-    let rel = skill_dir.strip_prefix(assets_root).ok()?;
-    let first_component = rel.components().next()?;
-    Some(first_component.as_os_str().to_string_lossy().into_owned())
+    Some(
+        skill_dir
+            .strip_prefix(assets_root)
+            .ok()?
+            .components()
+            .next()?
+            .as_os_str()
+            .to_string_lossy()
+            .into_owned(),
+    )
 }
 
-/// Read SKILL.md body from the filesystem.
-async fn read_skill_body_fs(
-    bus: &chelix_call_bus::CallBus,
-    assets_dir: &Path,
-    name: &str,
-) -> Option<String> {
-    let skill_dir = find_skill_dir_fs(assets_dir, name)?;
-    crate::skill_file::read_on(bus, &skill_dir.join("SKILL.md"), None)
+async fn read_skill_body_fs(files: &SkillFiles, assets_dir: &Path, name: &str) -> Option<String> {
+    let dir = find_skill_dir_fs(assets_dir, name)
+        .inspect_err(
+            |error| tracing::error!(skill = %name, %error, "failed to locate bundled skill"),
+        )
+        .ok()??;
+    crate::skill_file::read(files, &dir.join("SKILL.md"), None)
         .await
+        .inspect_err(
+            |error| tracing::error!(skill = %name, %error, "failed to read bundled skill body"),
+        )
         .ok()
-        .map(|skill| skill.body)
+        .map(|content| content.body)
 }
 
-fn read_sidecar_fs(assets_dir: &Path, name: &str, rel_path: &str) -> Option<(Vec<u8>, bool)> {
-    let skill_dir = find_skill_dir_fs(assets_dir, name)?;
-    let target = skill_dir.join(rel_path);
-    // Basic traversal check.
-    if !target.starts_with(&skill_dir) {
-        return None;
+fn find_skill_dir_fs(dir: &Path, name: &str) -> Result<Option<PathBuf>> {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error.into()),
+    };
+    for entry in entries {
+        let path = entry?.path();
+        if !std::fs::metadata(&path)?.is_dir() {
+            continue;
+        }
+        if path.file_name().and_then(|name| name.to_str()) == Some(name)
+            && path.join("SKILL.md").is_file()
+        {
+            return Ok(Some(path));
+        }
+        if let Some(found) = find_skill_dir_fs(&path, name)? {
+            return Ok(Some(found));
+        }
     }
-    let bytes = std::fs::read(&target).ok()?;
-    let is_utf8 = std::str::from_utf8(&bytes).is_ok();
-    Some((bytes, is_utf8))
+    Ok(None)
 }
 
-fn list_sidecars_fs(assets_dir: &Path, name: &str) -> Vec<(String, u64)> {
-    let Some(skill_dir) = find_skill_dir_fs(assets_dir, name) else {
-        return Vec::new();
+fn list_sidecars_fs(dir: &Path, name: &str) -> Result<Vec<(String, u64)>> {
+    let Some(dir) = find_skill_dir_fs(dir, name)? else {
+        return Ok(Vec::new());
     };
     let mut out = Vec::new();
     for sub in crate::SIDECAR_SUBDIRS {
-        let dir = skill_dir.join(sub);
-        let Ok(entries) = std::fs::read_dir(&dir) else {
-            continue;
+        let entries = match std::fs::read_dir(dir.join(sub)) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error.into()),
         };
-        for entry in entries.flatten() {
-            if entry.path().is_file() {
-                let file_name = entry.file_name().to_string_lossy().to_string();
-                let bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
-                out.push((format!("{sub}/{file_name}"), bytes));
+        for entry in entries {
+            let entry = entry?;
+            let meta = std::fs::metadata(entry.path())?;
+            if !meta.is_file() {
+                continue;
+            }
+            let name = entry
+                .file_name()
+                .into_string()
+                .map_err(|_| Error::Validation("sidecar filename must be valid UTF-8".into()))?;
+            if !name.starts_with('.') {
+                out.push((format!("{sub}/{name}"), meta.len()));
             }
         }
     }
     out.sort_by(|a, b| a.0.cmp(&b.0));
-    out
+    Ok(out)
 }
 
-/// Recursively find a skill directory by name under the assets tree.
-fn find_skill_dir_fs(dir: &Path, name: &str) -> Option<PathBuf> {
-    let entries = std::fs::read_dir(dir).ok()?;
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
-        let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        if dir_name == name && path.join("SKILL.md").is_file() {
-            return Some(path);
-        }
-        // Recurse into subdirectories (category nesting).
-        if let Some(found) = find_skill_dir_fs(&path, name) {
-            return Some(found);
-        }
-    }
-    None
-}
-
-// ── Embedded (release mode) ─────────────────────────────────────────────────
-
-/// Find a file by name among the *direct* files of an embedded directory.
-///
-/// `include_dir` stores file paths relative to the root of the `include_dir!`
-/// tree, not relative to the containing `Dir`. So `dir.get_file("SKILL.md")`
-/// fails on subdirectories because it compares `"SKILL.md"` against full paths
-/// like `"research/arxiv/SKILL.md"`. This helper matches on the file-name
-/// component instead.
 fn dir_file_by_name<'a>(
     dir: &'a include_dir::Dir<'static>,
     name: &str,
 ) -> Option<&'a include_dir::File<'static>> {
     dir.files()
-        .find(|f| f.path().file_name().and_then(|n| n.to_str()) == Some(name))
+        .find(|file| file.path().file_name().and_then(|name| name.to_str()) == Some(name))
 }
 
-/// Recursively walk the embedded `include_dir!` tree for SKILL.md files.
-fn discover_from_embedded() -> Vec<SkillMetadata> {
+fn discover_from_embedded() -> Result<Vec<SkillMetadata>> {
     let mut skills = Vec::new();
-    discover_from_embedded_recursive(&BUNDLED_ASSETS, &mut skills);
-    skills
+    discover_from_embedded_recursive(&BUNDLED_ASSETS, &mut skills)?;
+    Ok(skills)
 }
 
 fn discover_from_embedded_recursive(
     dir: &include_dir::Dir<'static>,
     skills: &mut Vec<SkillMetadata>,
-) {
-    for sub_dir in dir.dirs() {
-        if let Some(skill_md) = dir_file_by_name(sub_dir, "SKILL.md") {
-            let Ok(content) = std::str::from_utf8(skill_md.contents()) else {
-                continue;
-            };
-            let synthetic_path =
-                PathBuf::from("__bundled__").join(sub_dir.path().to_string_lossy().as_ref());
-            match crate::skill_file::interpret(content, &synthetic_path.join("SKILL.md")) {
-                Ok(content) => {
-                    let mut meta = content.metadata;
-                    meta.source = Some(SkillSource::Bundled);
-                    // Extract category from first path component (e.g. "research/arxiv" → "research").
-                    meta.category = sub_dir
-                        .path()
-                        .components()
-                        .next()
-                        .and_then(|c| c.as_os_str().to_str())
-                        .map(String::from);
-                    skills.push(meta);
-                },
-                Err(e) => {
-                    tracing::warn!(
-                        path = %sub_dir.path().display(),
-                        %e,
-                        "failed to parse embedded bundled SKILL.md"
-                    );
-                },
-            }
+) -> Result<()> {
+    for subdir in dir.dirs() {
+        if let Some(file) = dir_file_by_name(subdir, "SKILL.md") {
+            let text = std::str::from_utf8(file.contents())
+                .map_err(|error| Error::Parse(error.to_string()))?;
+            let path = PathBuf::from("__bundled__").join(subdir.path());
+            let mut meta = crate::skill_file::interpret(text, &path.join("SKILL.md"))?.metadata;
+            meta.source = Some(SkillSource::Bundled);
+            meta.category = subdir
+                .path()
+                .components()
+                .next()
+                .and_then(|part| part.as_os_str().to_str())
+                .map(str::to_owned);
+            skills.push(meta);
         } else {
-            // No SKILL.md here — recurse into subdirectories.
-            discover_from_embedded_recursive(sub_dir, skills);
+            discover_from_embedded_recursive(subdir, skills)?;
         }
     }
+    Ok(())
 }
 
-/// Read SKILL.md body from the embedded directory.
 fn read_skill_body_embedded(name: &str) -> Option<String> {
-    let skill_dir = find_skill_dir_embedded(name)?;
-    let skill_md = dir_file_by_name(skill_dir, "SKILL.md")?;
-    let content = std::str::from_utf8(skill_md.contents()).ok()?;
-    let synthetic_path =
-        PathBuf::from("__bundled__").join(skill_dir.path().to_string_lossy().as_ref());
-    let skill = crate::skill_file::interpret(content, &synthetic_path.join("SKILL.md")).ok()?;
-    Some(skill.body)
+    let dir = find_skill_dir_embedded(name)?;
+    let file = dir_file_by_name(dir, "SKILL.md")?;
+    let text = std::str::from_utf8(file.contents())
+        .inspect_err(|error| tracing::error!(skill = %name, %error, "invalid bundled skill UTF-8"))
+        .ok()?;
+    crate::skill_file::interpret(
+        text,
+        &PathBuf::from("__bundled__")
+            .join(dir.path())
+            .join("SKILL.md"),
+    )
+    .inspect_err(
+        |error| tracing::error!(skill = %name, %error, "failed to interpret bundled skill body"),
+    )
+    .ok()
+    .map(|content| content.body)
 }
 
-fn read_sidecar_embedded(name: &str, rel_path: &str) -> Option<(Vec<u8>, bool)> {
-    let skill_dir = find_skill_dir_embedded(name)?;
-    // Sidecar paths like "references/foo.md" — match by the full relative tail.
-    let file = skill_dir.files().find(|f| {
-        f.path()
-            .strip_prefix(skill_dir.path())
-            .is_ok_and(|rel| rel == Path::new(rel_path))
-    })?;
+fn read_sidecar_embedded(name: &str, path: &str) -> Option<(Vec<u8>, bool)> {
+    let dir = find_skill_dir_embedded(name)?;
+    let file = dir.get_file(dir.path().join(path))?;
     let bytes = file.contents().to_vec();
-    let is_utf8 = std::str::from_utf8(&bytes).is_ok();
-    Some((bytes, is_utf8))
+    let utf8 = std::str::from_utf8(&bytes).is_ok();
+    Some((bytes, utf8))
 }
 
 fn list_sidecars_embedded(name: &str) -> Vec<(String, u64)> {
-    let Some(skill_dir) = find_skill_dir_embedded(name) else {
+    let Some(dir) = find_skill_dir_embedded(name) else {
         return Vec::new();
     };
     let mut out = Vec::new();
     for sub in crate::SIDECAR_SUBDIRS {
-        // Use get_dir with the full path since include_dir stores full paths.
-        let sub_path = skill_dir.path().join(sub);
-        let Some(sub_dir) = skill_dir.dirs().find(|d| d.path() == sub_path) else {
+        let Some(subdir) = dir
+            .dirs()
+            .find(|child| child.path() == dir.path().join(sub))
+        else {
             continue;
         };
-        for file in sub_dir.files() {
-            let file_name = file
-                .path()
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
-            out.push((format!("{sub}/{file_name}"), file.contents().len() as u64));
+        for file in subdir.files() {
+            if let Some(name) = file.path().file_name().and_then(|name| name.to_str())
+                && !name.starts_with('.')
+            {
+                out.push((format!("{sub}/{name}"), file.contents().len() as u64));
+            }
         }
     }
     out.sort_by(|a, b| a.0.cmp(&b.0));
     out
 }
 
-/// Recursively find a skill subdirectory by name in the embedded tree.
 fn find_skill_dir_embedded(name: &str) -> Option<&'static include_dir::Dir<'static>> {
     find_skill_dir_embedded_recursive(&BUNDLED_ASSETS, name)
 }
@@ -422,24 +346,18 @@ fn find_skill_dir_embedded_recursive(
     dir: &'static include_dir::Dir<'static>,
     name: &str,
 ) -> Option<&'static include_dir::Dir<'static>> {
-    for sub_dir in dir.dirs() {
-        let dir_name = sub_dir
-            .path()
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("");
-        if dir_name == name && dir_file_by_name(sub_dir, "SKILL.md").is_some() {
-            return Some(sub_dir);
+    for subdir in dir.dirs() {
+        if subdir.path().file_name().and_then(|name| name.to_str()) == Some(name)
+            && dir_file_by_name(subdir, "SKILL.md").is_some()
+        {
+            return Some(subdir);
         }
-        if let Some(found) = find_skill_dir_embedded_recursive(sub_dir, name) {
+        if let Some(found) = find_skill_dir_embedded_recursive(subdir, name) {
             return Some(found);
         }
     }
     None
 }
-
-// ── Tests ───────────────────────────────────────────────────────────────────
-
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
@@ -448,7 +366,7 @@ mod tests {
     const EXPECTED_BUNDLED_SKILLS: &[(&str, &str)] = &[("mcp-servers", "devops")];
 
     fn store() -> BundledSkillStore {
-        BundledSkillStore::new(crate::skill_file::open_skill_bus().unwrap())
+        BundledSkillStore::new(SkillFiles::new().unwrap())
     }
 
     fn assert_expected_skills(skills: &[SkillMetadata]) {
@@ -480,19 +398,81 @@ mod tests {
         BundledSkillStore {
             source: AssetSource::Filesystem(assets),
             materialize_dir: root.join("materialized"),
-            bus: crate::skill_file::open_skill_bus().unwrap(),
+            files: SkillFiles::new().unwrap(),
         }
+    }
+
+    async fn read_store(
+        store: BundledSkillStore,
+        root: &Path,
+        name: &str,
+    ) -> chelix_call_bus::SkillRead {
+        let bus = chelix_call_bus::CallBus::new();
+        let files = Arc::clone(&store.files);
+        crate::skill_file::require_skill_files(&bus).unwrap();
+        crate::skill_file::register_skill_files(
+            &bus,
+            &files,
+            Some(Arc::new(store)),
+            root.to_path_buf(),
+            Arc::new(tokio::sync::RwLock::new(
+                chelix_config::AgentsConfig::default(),
+            )),
+            Arc::new(tokio::sync::RwLock::new(
+                chelix_config::schema::SkillsConfig::default(),
+            )),
+        )
+        .unwrap();
+        bus.seal().unwrap();
+        bus.call(chelix_call_bus::ReadSkillFile {
+            name: name.into(),
+            max_bytes: None,
+            actor: chelix_call_bus::SkillActor::Process,
+            locate: chelix_call_bus::SkillLocate::Bundled,
+            file_path: None,
+        })
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn bundled_read_without_scripts_has_empty_skill_directory() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = BundledSkillStore::with_materialize_dir(
+            tmp.path().join("materialized"),
+            SkillFiles::new().unwrap(),
+        );
+        let content = read_store(store, tmp.path(), "mcp-servers").await;
+        assert!(content.skill_dir.is_none());
+        assert!(content.skill_dir_name.is_none());
+        assert_eq!(content.metadata.category.as_deref(), Some("devops"));
+        assert!(content.metadata.origin.is_some());
+    }
+
+    #[tokio::test]
+    async fn bundled_read_with_scripts_materializes_skill_directory() {
+        let tmp = tempfile::tempdir().unwrap();
+        let content = read_store(
+            sidecar_fixture_store(tmp.path()),
+            tmp.path(),
+            "sidecar-fixture",
+        )
+        .await;
+        let directory = content.skill_dir.unwrap();
+        assert!(directory.join("scripts/fixture.sh").is_file());
+        assert!(content.skill_dir_name.is_none());
+        assert_eq!(content.linked_files[0].path, "scripts/fixture.sh");
     }
 
     #[test]
     fn embedded_assets_match_expected_skills() {
-        let skills = discover_from_embedded();
+        let skills = discover_from_embedded().unwrap();
         assert_expected_skills(&skills);
     }
 
     #[test]
     fn every_embedded_skill_body_is_readable() {
-        let skills = discover_from_embedded();
+        let skills = discover_from_embedded().unwrap();
         for skill in skills {
             let body = read_skill_body_embedded(&skill.name);
             assert!(
@@ -505,7 +485,7 @@ mod tests {
 
     #[tokio::test]
     async fn filesystem_assets_match_expected_skills() {
-        let skills = store().discover().await;
+        let skills = store().discover().await.unwrap();
         assert_expected_skills(&skills);
         for skill in &skills {
             assert_eq!(skill.source, Some(SkillSource::Bundled));
@@ -520,7 +500,7 @@ mod tests {
 
     #[tokio::test]
     async fn no_duplicate_skill_names() {
-        let skills = store().discover().await;
+        let skills = store().discover().await.unwrap();
         let mut seen = std::collections::HashSet::new();
         for skill in &skills {
             assert!(
@@ -533,7 +513,7 @@ mod tests {
 
     #[tokio::test]
     async fn bundled_skills_do_not_include_mcporter() {
-        let skills = store().discover().await;
+        let skills = store().discover().await.unwrap();
         assert!(
             skills.iter().all(|skill| skill.name != "mcporter"),
             "Chelix has native MCP tools; mcporter must not be bundled by default"
@@ -542,7 +522,7 @@ mod tests {
 
     #[tokio::test]
     async fn all_names_pass_validation() {
-        let skills = store().discover().await;
+        let skills = store().discover().await.unwrap();
         for skill in &skills {
             assert!(
                 parse::validate_name(&skill.name),
@@ -554,7 +534,7 @@ mod tests {
 
     #[tokio::test]
     async fn every_bundled_skill_has_category() {
-        let skills = store().discover().await;
+        let skills = store().discover().await.unwrap();
         for skill in &skills {
             assert!(
                 skill.category.is_some(),
@@ -571,7 +551,7 @@ mod tests {
 
     #[tokio::test]
     async fn bundled_categories_match_remaining_assets() {
-        let skills = store().discover().await;
+        let skills = store().discover().await.unwrap();
         let cats: std::collections::HashSet<String> =
             skills.iter().filter_map(|s| s.category.clone()).collect();
         let expected = ["devops"].into_iter().map(String::from).collect();
@@ -580,7 +560,7 @@ mod tests {
 
     #[tokio::test]
     async fn category_derived_from_top_level_directory() {
-        let skills = store().discover().await;
+        let skills = store().discover().await.unwrap();
         for (name, category) in EXPECTED_BUNDLED_SKILLS {
             let skill = skills
                 .iter()
@@ -592,7 +572,7 @@ mod tests {
 
     #[tokio::test]
     async fn all_bundled_skills_have_origin() {
-        let skills = store().discover().await;
+        let skills = store().discover().await.unwrap();
         for skill in &skills {
             assert!(
                 skill.origin.is_some(),
@@ -604,7 +584,7 @@ mod tests {
 
     #[tokio::test]
     async fn origin_sources_are_known() {
-        let skills = store().discover().await;
+        let skills = store().discover().await.unwrap();
         let sources: std::collections::HashSet<String> = skills
             .iter()
             .filter_map(|s| s.origin.as_ref()?.source.clone())
@@ -615,7 +595,7 @@ mod tests {
     #[tokio::test]
     async fn every_bundled_skill_body_is_readable() {
         let s = store();
-        let skills = s.discover().await;
+        let skills = s.discover().await.unwrap();
         for skill in &skills {
             let body = s.read_skill(&skill.name).await;
             assert!(body.is_some(), "skill '{}' body not readable", skill.name);
@@ -637,6 +617,7 @@ mod tests {
         assert!(
             store()
                 .read_sidecar("mcp-servers", "nonexistent.md")
+                .unwrap()
                 .is_none()
         );
     }
@@ -648,6 +629,7 @@ mod tests {
 
         let skill_dir = s
             .materialize_sidecars("sidecar-fixture")
+            .unwrap()
             .expect("fixture should have sidecars to materialize");
 
         let script = skill_dir.join("scripts/fixture.sh");
@@ -675,9 +657,10 @@ mod tests {
         let s = store();
         let tmp = tempfile::tempdir().unwrap();
 
-        assert!(s.list_sidecars("mcp-servers").is_empty());
+        assert!(s.list_sidecars("mcp-servers").unwrap().is_empty());
         assert!(
             s.materialize_sidecars_to("mcp-servers", tmp.path())
+                .unwrap()
                 .is_none()
         );
     }
@@ -687,8 +670,8 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let s = sidecar_fixture_store(tmp.path());
 
-        let dir1 = s.materialize_sidecars("sidecar-fixture");
-        let dir2 = s.materialize_sidecars("sidecar-fixture");
+        let dir1 = s.materialize_sidecars("sidecar-fixture").unwrap();
+        let dir2 = s.materialize_sidecars("sidecar-fixture").unwrap();
         assert_eq!(
             dir1, dir2,
             "repeated materialization must return the same path"
@@ -701,7 +684,7 @@ mod tests {
     #[tokio::test]
     async fn mcp_servers_is_chelix_native() {
         let s = store();
-        let skills = store().discover().await;
+        let skills = store().discover().await.unwrap();
         let mcp_servers = skills
             .iter()
             .find(|skill| skill.name == "mcp-servers")

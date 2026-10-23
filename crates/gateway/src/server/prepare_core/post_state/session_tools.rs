@@ -448,9 +448,9 @@ mod tests {
             Arc::clone(&model_service),
             {
                 let bus = chelix_call_bus::CallBus::new();
-                let _ = bus.require::<chelix_service_traits::StopSession>();
-                let _ = bus.register(|_request: chelix_service_traits::StopSession| async move {
-                    Ok(chelix_service_traits::StopSessionOutcome {
+                let _ = bus.require::<chelix_call_bus::StopSession>();
+                let _ = bus.register(|_request: chelix_call_bus::StopSession| async move {
+                    Ok(chelix_call_bus::StopSessionOutcome {
                         cancelled: false,
                         run_id: None,
                     })
@@ -464,7 +464,11 @@ mod tests {
             .with_model(model_service)
             .with_agents_config(agents_config)
             .with_session_metadata(Arc::clone(&metadata));
-        let state = GatewayState::new(crate::auth::resolve_auth(None, None), services);
+        let state = GatewayState::new(
+            chelix_call_bus::CallBus::new(),
+            crate::auth::resolve_auth(None, None),
+            services,
+        );
         Ok((state, metadata, dir))
     }
 

@@ -788,19 +788,23 @@ pub async fn start_gateway(
         // Note: /certs/ca.pem route is already registered by prepare_gateway.
     }
 
-    let skill_count = {
-        use chelix_skills::discover::{FsSkillDiscoverer, SkillDiscoverer};
-        match state.call_bus.get() {
-            Some(bus) => {
-                let discoverer =
-                    FsSkillDiscoverer::new(FsSkillDiscoverer::default_paths(), Arc::clone(bus));
-                discoverer.discover().await.map(|s| s.len()).unwrap_or(0)
-            },
-            None => {
-                return Err(crate::Error::Config("call bus is not installed".into()));
-            },
-        }
-    };
+    let skill_count = state
+        .call_bus
+        .call(chelix_call_bus::ListSkills::Process {
+            view: chelix_call_bus::SkillView::Merged,
+        })
+        .await
+        .map_err(|error| crate::Error::Config(error.to_string()))?
+        .into_iter()
+        .filter(|skill| {
+            matches!(
+                skill.metadata.source,
+                Some(
+                    chelix_call_bus::SkillSource::Personal | chelix_call_bus::SkillSource::Project
+                )
+            )
+        })
+        .count();
 
     let scheme = if tls_active {
         "https"
@@ -921,7 +925,7 @@ pub async fn start_gateway(
     // - SIGTERM / SIGHUP (Docker/systemd): graceful — close the call bus and exit
     // - SIGINT  (ctrl-c): immediate exit
     {
-        let call_bus_for_shutdown = state.call_bus.get().cloned();
+        let call_bus_for_shutdown = Arc::clone(&state.call_bus);
         tokio::spawn(async move {
             #[cfg(unix)]
             let signal_name: &str = {
@@ -959,11 +963,7 @@ pub async fn start_gateway(
             }
 
             info!(signal = signal_name, "starting graceful shutdown");
-            if let Some(call_bus) = call_bus_for_shutdown {
-                call_bus.close().await;
-            } else {
-                tracing::error!("call bus was not installed before graceful shutdown");
-            }
+            call_bus_for_shutdown.close().await;
 
             #[cfg(feature = "mdns")]
             if let Some(ref daemon) = _mdns_daemon {

@@ -43,6 +43,20 @@ terminal_size = "115x58"
 archived_session_retention_days = 3
 "#;
 
+fn stop_bus() -> Arc<chelix_call_bus::CallBus> {
+    let bus = chelix_call_bus::CallBus::new();
+    bus.require::<chelix_call_bus::StopSession>().unwrap();
+    bus.register(|_: chelix_call_bus::StopSession| async {
+        Ok(chelix_call_bus::StopSessionOutcome {
+            cancelled: false,
+            run_id: None,
+        })
+    })
+    .unwrap();
+    bus.seal().unwrap();
+    bus
+}
+
 fn test_agents() -> chelix_config::AgentsConfig {
     let mut agents = chelix_config::AgentsConfig {
         default: "main".to_owned(),
@@ -110,7 +124,7 @@ async fn start_test_server() -> TestServer {
     let services = GatewayServices::noop()
         .with_agents_config(Arc::new(tokio::sync::RwLock::new(test_agents())))
         .with_onboarding(Arc::new(TestOnboardingService));
-    let state = GatewayState::new(resolved_auth, services);
+    let state = GatewayState::new(chelix_call_bus::CallBus::new(), resolved_auth, services);
     let methods = Arc::new(MethodRegistry::new());
     #[cfg(feature = "push-notifications")]
     let (router, app_state) = build_gateway_base(state, methods, None, None);
@@ -324,7 +338,7 @@ async fn gateway_startup_with_llm_wiring_does_not_block() {
         )));
     }
 
-    let state = GatewayState::new(resolved_auth, services);
+    let state = GatewayState::new(chelix_call_bus::CallBus::new(), resolved_auth, services);
 
     // This is the call that used to panic with blocking_write inside async.
     let tmp1 = tempfile::tempdir().unwrap();
@@ -357,8 +371,7 @@ async fn gateway_startup_with_llm_wiring_does_not_block() {
             chelix_config::ToolsConfigSource::snapshot(
                 chelix_config::schema::ToolsConfig::default(),
             ),
-            chelix_skills::skill_file::open_skill_bus()
-                .unwrap_or_else(|error| panic!("skill bus: {error}")),
+            stop_bus(),
         )));
     }
 
@@ -366,7 +379,11 @@ async fn gateway_startup_with_llm_wiring_does_not_block() {
     // Force it with an empty registry to exercise set_chat unconditionally.
     let resolved_auth2 = auth::resolve_auth(None, None);
     let registry2 = Arc::new(tokio::sync::RwLock::new(ProviderRegistry::empty()));
-    let state2 = GatewayState::new(resolved_auth2, GatewayServices::noop());
+    let state2 = GatewayState::new(
+        chelix_call_bus::CallBus::new(),
+        resolved_auth2,
+        GatewayServices::noop(),
+    );
     let tmp2 = tempfile::tempdir().unwrap();
     let session_store2 = Arc::new(chelix_sessions::store::SessionStore::new(
         tmp2.path().to_path_buf(),
@@ -394,8 +411,7 @@ async fn gateway_startup_with_llm_wiring_does_not_block() {
             chelix_config::AgentsConfig::default(),
         )),
         chelix_config::ToolsConfigSource::snapshot(chelix_config::schema::ToolsConfig::default()),
-        chelix_skills::skill_file::open_skill_bus()
-            .unwrap_or_else(|error| panic!("skill bus: {error}")),
+        stop_bus(),
     )));
 
     // Verify chat override is active — chat.send should use the LiveChatService,

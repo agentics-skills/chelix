@@ -37,9 +37,8 @@ use crate::{
     memory_tools::MemoryForgetProviderResolver,
     prompt::{
         apply_chat_execution_context, build_policy_context, build_prompt_runtime_context,
-        clear_prompt_memory_snapshot, discover_skills_if_enabled, filter_skills_for_agent,
-        load_prompt_persona_for_session, prepare_run_registry, prompt_build_limits_from_config,
-        resolve_prompt_agent_id,
+        clear_prompt_memory_snapshot, load_prompt_persona_for_session, prepare_run_registry,
+        prompt_build_limits_from_config, resolve_prompt_agent_id,
     },
     run_with_tools::run_with_tools,
     streaming::run_streaming,
@@ -48,12 +47,8 @@ use crate::{
 
 use super::{session_gate::terminal_from_outcome, *};
 
-fn skills_context_entries(
-    skills: Vec<chelix_skills::types::SkillMetadata>,
-    agent_id: &str,
-    policy: &chelix_config::AgentSkillPolicy,
-) -> Vec<Value> {
-    filter_skills_for_agent(skills, agent_id, policy)
+fn skills_context_entries(skills: Vec<chelix_call_bus::SkillMetadata>) -> Vec<Value> {
+    skills
         .iter()
         .map(|skill| {
             serde_json::json!({
@@ -69,29 +64,17 @@ fn skills_context_entries(
 mod skills_context_tests {
     use {
         super::*,
-        chelix_skills::types::{SkillMetadata, SkillSource},
+        chelix_call_bus::{SkillMetadata, SkillSource},
     };
 
     #[test]
-    fn context_skills_filters_agent_access_and_serializes_fields() {
-        let entries = skills_context_entries(
-            vec![
-                SkillMetadata {
-                    name: "demo".into(),
-                    denied_agents: vec!["agent1".into()],
-                    source: Some(SkillSource::Project),
-                    ..Default::default()
-                },
-                SkillMetadata {
-                    name: "visible".into(),
-                    description: "Visible skill".into(),
-                    source: Some(SkillSource::Personal),
-                    ..Default::default()
-                },
-            ],
-            "agent1",
-            &chelix_config::AgentSkillPolicy::default(),
-        );
+    fn context_skills_serialize_name_description_source() {
+        let entries = skills_context_entries(vec![SkillMetadata {
+            name: "visible".into(),
+            description: "Visible skill".into(),
+            source: Some(SkillSource::Personal),
+            ..Default::default()
+        }]);
         assert_eq!(entries, [
             serde_json::json!({ "name": "visible", "description": "Visible skill", "source": "personal" })
         ]);
@@ -507,7 +490,6 @@ impl ChatService for LiveChatService {
                     manager: Arc::clone(&self.tool_permissions),
                     metadata: Arc::clone(&self.session_metadata),
                 }),
-                &self.call_bus,
             )
             .await
         };
@@ -590,19 +572,12 @@ impl ChatService for LiveChatService {
         if run_id.is_none() && session_key.is_none() {
             return Err("missing 'runId' or 'sessionKey'".into());
         }
-        let request = match (session_key.clone(), run_id) {
-            (Some(key), run_id) => chelix_service_traits::StopSession::Session {
-                key: chelix_sessions::SessionKey::new(key),
-                run_id,
-            },
-            (None, Some(run_id)) => chelix_service_traits::StopSession::Run { run_id },
+        let outcome = match (session_key.as_deref(), run_id) {
+            (Some(key), run_id) => self.stop_current_session(key, run_id.as_deref()).await,
+            (None, Some(run_id)) => self.stop_run(run_id).await,
             (None, None) => return Err("missing 'runId' or 'sessionKey'".into()),
-        };
-        let outcome = self
-            .call_bus
-            .call(request)
-            .await
-            .map_err(|error| ServiceError::message(error.to_string()))?;
+        }
+        .map_err(|error| ServiceError::message(error.to_string()))?;
         let response_session_key = match session_key {
             Some(key) => Value::String(key),
             None => Value::Null,
@@ -890,7 +865,6 @@ impl ChatService for LiveChatService {
                 &list_agent_id,
                 memory_setup,
                 visible_tools,
-                &self.call_bus,
             )
             .map_err(|error| ServiceError::message(error.to_string()))?;
             let catalog = effective_registry
@@ -966,9 +940,15 @@ impl ChatService for LiveChatService {
         // `[skills] enabled` is true — see #655).
         let skills_list: Vec<Value> = if tools_enabled {
             skills_context_entries(
-                discover_skills_if_enabled(&prompt_persona.config, &self.call_bus).await,
-                &prompt_persona.agent_id,
-                &prompt_persona.agent.skills,
+                self.call_bus
+                    .call(chelix_call_bus::ListSkills::Agent {
+                        id: prompt_persona.agent_id.clone(),
+                    })
+                    .await
+                    .map_err(|error| ServiceError::message(error.to_string()))?
+                    .into_iter()
+                    .map(|skill| skill.metadata)
+                    .collect(),
             )
         } else {
             vec![]
@@ -1060,16 +1040,18 @@ impl ChatService for LiveChatService {
             .map_err(ServiceError::message)?;
 
         // Discover skills (gated on `[skills] enabled` — see #655).
-        let discovered_skills = discover_skills_if_enabled(&persona.config, &self.call_bus).await;
+        let discovered_skills = self
+            .call_bus
+            .call(chelix_call_bus::ListSkills::Agent {
+                id: persona.agent_id.clone(),
+            })
+            .await
+            .map_err(|error| ServiceError::message(error.to_string()))?
+            .into_iter()
+            .map(|skill| skill.metadata)
+            .collect::<Vec<_>>();
 
         let raw_prompt_agent_id = persona.agent_id.clone();
-
-        // Apply per-agent skill policy.
-        let discovered_skills = filter_skills_for_agent(
-            discovered_skills,
-            &raw_prompt_agent_id,
-            &persona.agent.skills,
-        );
 
         // Build filtered tool registry with the same preparation as the live
         // run (filter → memory tools → lazy wrap) so the debug prompt matches.
@@ -1105,7 +1087,6 @@ impl ChatService for LiveChatService {
                 &raw_prompt_agent_id,
                 memory_setup,
                 visible_tools,
-                &self.call_bus,
             )
         }
         .map_err(|e| ServiceError::message(e.to_string()))?;
@@ -1223,14 +1204,20 @@ impl ChatService for LiveChatService {
             .map_err(ServiceError::message)?;
 
         // Discover skills (gated on `[skills] enabled` — see #655).
-        let discovered_skills = discover_skills_if_enabled(&persona.config, &self.call_bus).await;
+        let discovered_skills = self
+            .call_bus
+            .call(chelix_call_bus::ListSkills::Agent {
+                id: persona.agent_id.clone(),
+            })
+            .await
+            .map_err(|error| ServiceError::message(error.to_string()))?
+            .into_iter()
+            .map(|skill| skill.metadata)
+            .collect::<Vec<_>>();
 
         // Build filtered tool registry.
         let full_ctx_agent_id = persona.agent_id.clone();
 
-        // Apply per-agent skill policy.
-        let discovered_skills =
-            filter_skills_for_agent(discovered_skills, &full_ctx_agent_id, &persona.agent.skills);
         let policy_ctx = build_policy_context(&full_ctx_agent_id, Some(&runtime_context));
         // Same preparation as the live run so the full-context prompt reflects
         // the lazy state of the current history.
@@ -1265,7 +1252,6 @@ impl ChatService for LiveChatService {
                 &full_ctx_agent_id,
                 memory_setup,
                 visible_tools,
-                &self.call_bus,
             )
         }
         .map_err(|e| ServiceError::message(e.to_string()))?;
@@ -1871,6 +1857,18 @@ mod tests {
             ..ValidationTestRuntime::default()
         };
         let runtime: Arc<dyn crate::runtime::ChatRuntime> = Arc::new(runtime);
+        let call_bus = chelix_skills::skill_file::open_skill_bus_with_agents(
+            directory.path(),
+            Arc::clone(&agents_config),
+            Arc::new(RwLock::new(chelix_config::schema::SkillsConfig {
+                enabled: true,
+                ..Default::default()
+            })),
+        )
+        .unwrap_or_else(|error| panic!("skill bus: {error}"));
+        call_bus
+            .seal()
+            .unwrap_or_else(|error| panic!("skill bus seal: {error}"));
         let mut service = LiveChatService::new(
             Arc::new(RwLock::new(registry)),
             runtime,
@@ -1880,8 +1878,7 @@ mod tests {
             config.clone(),
             agents_config,
             chelix_config::ToolsConfigSource::snapshot(config.tools),
-            chelix_skills::skill_file::open_skill_bus()
-                .unwrap_or_else(|error| panic!("skill bus: {error}")),
+            call_bus,
         );
         service.test_broadcasts = broadcasts;
         (

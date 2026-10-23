@@ -22,6 +22,55 @@ pub fn visible_to_agent(agent_id: &str, skill: &SkillMetadata, policy: &AgentSki
         && !policy.deny.iter().any(matches)
 }
 
+pub async fn discover_all(
+    files: &crate::skill_file::SkillFiles,
+    #[cfg(feature = "bundled-skills")] bundled: Option<&crate::bundled::BundledSkillStore>,
+) -> crate::error::Result<Vec<SkillMetadata>> {
+    let mut skills = Vec::new();
+    for (path, source) in crate::discover::FsSkillDiscoverer::default_paths_for(files.root()?) {
+        crate::discover::discover_flat(files, &path, &source, &mut skills).await?;
+    }
+    #[cfg(feature = "bundled-skills")]
+    if let Some(store) = bundled {
+        skills.extend(store.discover().await?);
+    }
+    Ok(skills)
+}
+
+pub async fn discover_skills(
+    files: &crate::skill_file::SkillFiles,
+    #[cfg(feature = "bundled-skills")] bundled: Option<&crate::bundled::BundledSkillStore>,
+    config: &chelix_config::schema::SkillsConfig,
+) -> crate::error::Result<Vec<SkillMetadata>> {
+    let mut skills = discover_all(
+        files,
+        #[cfg(feature = "bundled-skills")]
+        bundled,
+    )
+    .await?;
+    if !config.enabled {
+        return Ok(Vec::new());
+    }
+    skills.retain(|skill| {
+        skill.source != Some(crate::types::SkillSource::Bundled)
+            || config.is_bundled_skill_enabled(&skill.name, skill.category.as_deref())
+    });
+    Ok(skills)
+}
+
+pub fn filter_skills_for_agent(
+    skills: Vec<SkillMetadata>,
+    agent_id: &str,
+    policy: &AgentSkillPolicy,
+) -> Vec<SkillMetadata> {
+    let mut seen = std::collections::HashSet::new();
+    skills
+        .into_iter()
+        .filter(|skill| seen.insert(skill.name.clone()))
+        .filter(|skill| visible_to_agent(agent_id, skill, policy))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

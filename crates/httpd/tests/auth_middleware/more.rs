@@ -718,6 +718,7 @@ pub(super) async fn start_server_with_onboarding(
     let services = with_test_web_services(GatewayServices::noop()).with_onboarding(mock_onboarding);
     let (config, sandbox_router) = sandbox_off_runtime();
     let state = GatewayState::with_options(
+        chelix_call_bus::CallBus::new(),
         resolved_auth,
         services,
         config,

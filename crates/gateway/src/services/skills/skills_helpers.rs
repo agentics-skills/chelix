@@ -1,4 +1,9 @@
-use serde_json::Value;
+use {
+    chelix_call_bus::{
+        ReadSkillFile, SetBundledSkillEnabled, SkillActor, SkillLocate, SkillMetadata,
+    },
+    serde_json::Value,
+};
 
 // Pull in ServiceResult, ServiceError, security_audit, etc. from services module
 use super::super::*;
@@ -67,17 +72,17 @@ pub(super) async fn skill_detail_discovered(
     source_type: &str,
     skill_name: &str,
 ) -> ServiceResult {
-    // Build search paths for the requested source type.
-    let search_dir = if source_type == "personal" {
-        chelix_config::data_dir().join("skills")
+    let locate = if source_type == "personal" {
+        SkillLocate::PersonalDir
     } else {
-        chelix_config::data_dir().join(".chelix/skills")
+        SkillLocate::ProjectDir
     };
-
-    let skill_dir = search_dir.join(skill_name);
     let content = bus
         .call(ReadSkillFile {
-            path: skill_dir.join("SKILL.md"),
+            name: skill_name.into(),
+            locate,
+            actor: SkillActor::Process,
+            file_path: None,
             max_bytes: None,
         })
         .await
@@ -94,116 +99,56 @@ pub(super) async fn skill_detail_discovered(
         "body": content.body,
         "body_html": markdown_to_html(&content.body),
         "source": source_type,
-        "path": skill_dir.to_string_lossy(),
+        "path": content.metadata.path.to_string_lossy(),
     }))
 }
 
-/// Load skill detail for a bundled skill by name.
-#[cfg(feature = "bundled-skills")]
+/// Load a bundled skill through its owner.
 pub(super) async fn skill_detail_bundled(
-    bus: &Arc<chelix_call_bus::CallBus>,
+    bus: &chelix_call_bus::CallBus,
     skill_name: &str,
 ) -> ServiceResult {
-    let store = chelix_skills::bundled::BundledSkillStore::new(Arc::clone(bus));
-    let skills = store.discover().await;
-    let meta = skills
-        .iter()
-        .find(|s| s.name == skill_name)
-        .ok_or_else(|| format!("bundled skill '{skill_name}' not found"))?;
-
-    let body = store
-        .read_skill(skill_name)
+    let content = bus
+        .call(ReadSkillFile {
+            name: skill_name.into(),
+            max_bytes: None,
+            actor: SkillActor::Process,
+            locate: SkillLocate::Bundled,
+            file_path: None,
+        })
         .await
-        .ok_or_else(|| format!("bundled skill '{skill_name}' body not readable"))?;
-
-    let config = chelix_config::discover_and_load().map_err(ServiceError::message)?;
-    let enabled = config
-        .skills
-        .is_bundled_skill_enabled(&meta.name, meta.category.as_deref());
-
+        .map_err(|error| error.to_string())?;
+    let meta = &content.metadata;
     Ok(serde_json::json!({
-        "name": meta.name,
-        "description": meta.description,
-        "category": meta.category,
-        "license": meta.license,
-        "compatibility": meta.compatibility,
-        "origin": meta.origin,
-        "file": skill_document_json(meta, &body),
-        "enabled": enabled,
-        "protected": true,
-        "body": body,
-        "body_html": markdown_to_html(&body),
-        "source": "bundled",
+        "name": meta.name, "description": meta.description, "category": meta.category,
+        "license": meta.license, "compatibility": meta.compatibility, "origin": meta.origin,
+        "file": skill_document_json(meta, &content.body), "enabled": content.enabled,
+        "protected": true, "body": content.body, "body_html": markdown_to_html(&content.body), "source": "bundled"
     }))
 }
 
-/// Toggle a bundled skill by adding or removing its name from
-/// `disabled_bundled_skills`.
+/// Toggle a bundled skill through its owner.
 pub(super) async fn toggle_bundled_skill(
-    bus: &Arc<chelix_call_bus::CallBus>,
+    bus: &chelix_call_bus::CallBus,
     params: &Value,
     enabled: bool,
 ) -> ServiceResult {
     let skill_name = params
         .get("skill")
-        .and_then(|v| v.as_str())
+        .and_then(Value::as_str)
         .ok_or_else(|| "missing 'skill' parameter".to_string())?;
-
-    // Find the category for this bundled skill.
-    #[cfg(feature = "bundled-skills")]
-    {
-        let store = chelix_skills::bundled::BundledSkillStore::new(Arc::clone(bus));
-        let skills = store.discover().await;
-        let skill = skills
-            .iter()
-            .find(|s| s.name == skill_name)
-            .ok_or_else(|| format!("bundled skill '{skill_name}' not found"))?;
-        let category = skill.category.clone();
-
-        let skill_name = skill_name.to_string();
-        let mut effective_enabled = enabled;
-        if let Err(e) = chelix_config::update_config(|cfg| {
-            if enabled {
-                cfg.skills
-                    .disabled_bundled_skills
-                    .retain(|name| name != &skill_name);
-                if let Some(category) = &category {
-                    cfg.skills
-                        .disabled_bundled_categories
-                        .retain(|name| name != category);
-                }
-            } else if !cfg
-                .skills
-                .disabled_bundled_skills
-                .iter()
-                .any(|name| name == &skill_name)
-            {
-                cfg.skills.disabled_bundled_skills.push(skill_name.clone());
-            }
-            effective_enabled = cfg
-                .skills
-                .is_bundled_skill_enabled(&skill_name, category.as_deref());
-        }) {
-            return Err(format!("failed to save config: {e}").into());
-        }
-
-        security_audit(
-            "skills.skill.toggle",
-            serde_json::json!({
-                "source": "bundled",
-                "skill": skill_name,
-                "category": category,
-                "enabled": effective_enabled,
-            }),
-        );
-
-        Ok(
-            serde_json::json!({ "source": "bundled", "skill": skill_name, "category": category, "enabled": effective_enabled }),
-        )
-    }
-    #[cfg(not(feature = "bundled-skills"))]
-    {
-        let _ = (skill_name, enabled);
-        Err("bundled skills are not available in this build".into())
-    }
+    let result = bus
+        .call(SetBundledSkillEnabled {
+            name: skill_name.into(),
+            enabled,
+        })
+        .await
+        .map_err(|error| error.to_string())?;
+    security_audit(
+        "skills.skill.toggle",
+        serde_json::json!({ "source": "bundled", "skill": skill_name, "category": result.category, "enabled": result.enabled }),
+    );
+    Ok(
+        serde_json::json!({ "source": "bundled", "skill": skill_name, "category": result.category, "enabled": result.enabled }),
+    )
 }

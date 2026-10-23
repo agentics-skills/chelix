@@ -911,6 +911,7 @@ name = "chelix"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chelix-call-bus",
  "chelix-common",
  "chelix-config",
  "chelix-cron",
@@ -1003,6 +1004,7 @@ version = "0.1.0"
 dependencies = [
  "chelix-metrics",
  "metrics 0.24.6",
+ "serde",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -1373,6 +1375,7 @@ dependencies = [
  "async-trait",
  "axum",
  "chelix-auth",
+ "chelix-call-bus",
  "chelix-channels",
  "chelix-code-index",
  "chelix-common",
@@ -1386,7 +1389,6 @@ dependencies = [
  "chelix-providers",
  "chelix-service-traits",
  "chelix-sessions",
- "chelix-skills",
  "chelix-telephony",
  "chelix-tls",
  "chelix-tools",
@@ -1699,7 +1701,6 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
- "chelix-call-bus",
  "chelix-channels",
  "chelix-common",
  "chelix-config",
@@ -1738,7 +1739,6 @@ dependencies = [
  "chelix-call-bus",
  "chelix-config",
  "chelix-metrics",
- "chelix-service-traits",
  "include_dir",
  "notify-debouncer-full",
  "rstest",
@@ -1747,6 +1747,7 @@ dependencies = [
  "serde_yaml",
  "tempfile",
  "thiserror 2.0.18",
+ "time",
  "tokio",
  "tracing",
 ]
@@ -1962,6 +1963,7 @@ dependencies = [
  "axum",
  "axum-extra",
  "base64 0.22.1",
+ "chelix-call-bus",
  "chelix-channels",
  "chelix-common",
  "chelix-config",
@@ -1971,7 +1973,6 @@ dependencies = [
  "chelix-media",
  "chelix-protocol",
  "chelix-sessions",
- "chelix-skills",
  "chelix-tools",
  "chrono",
  "futures",

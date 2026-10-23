@@ -77,11 +77,7 @@ webauthn-rs             = { features = ["danger-allow-state-serialisation"], wor
 
 [features]
 agent = []
-bundled-skills = [
-  "chelix-chat/bundled-skills",
-  "chelix-skills/bundled-skills",
-  "chelix-tools/bundled-skills",
-]
+bundled-skills = ["chelix-skills/bundled-skills"]
 code-index-builtin = ["chelix-code-index/builtin"]
 context7 = ["dep:chelix-context7"]
 default = [
@@ -144,9 +140,10 @@ voice = ["dep:chelix-voice"]
 web-ui = ["chelix-chat/web-ui"]
 
 [dev-dependencies]
-chelix-tools = { features = ["test-util"], workspace = true }
-serial_test  = { workspace = true }
-tokio-stream = { workspace = true }
+chelix-skills = { features = ["test-util"], workspace = true }
+chelix-tools  = { features = ["test-util"], workspace = true }
+serial_test   = { workspace = true }
+tokio-stream  = { workspace = true }
 
 [lints]
 workspace = true

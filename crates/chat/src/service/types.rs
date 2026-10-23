@@ -38,8 +38,7 @@ use crate::{
     memory_tools::MemoryForgetProviderResolver,
     prompt::{
         apply_chat_execution_context, build_policy_context, build_prompt_runtime_context,
-        discover_skills_if_enabled, filter_skills_for_agent, load_prompt_persona_for_session,
-        prepare_run_registry, prompt_build_limits_from_config,
+        load_prompt_persona_for_session, prepare_run_registry, prompt_build_limits_from_config,
     },
     runtime::ChatRuntime,
     types::*,
@@ -705,10 +704,17 @@ impl LiveChatService {
             .resolve_project_context(session_key, context.connection_id())
             .await?;
 
-        let discovered_skills = discover_skills_if_enabled(&persona.config, &self.call_bus).await;
         let agent_id = persona.agent_id.clone();
-        let discovered_skills =
-            filter_skills_for_agent(discovered_skills, &agent_id, &persona.agent.skills);
+        let discovered_skills = self
+            .call_bus
+            .call(chelix_call_bus::ListSkills::Agent {
+                id: agent_id.clone(),
+            })
+            .await
+            .map_err(|error| error::Error::message(error.to_string()))?
+            .into_iter()
+            .map(|skill| skill.metadata)
+            .collect::<Vec<_>>();
 
         let policy_ctx = build_policy_context(&agent_id, Some(&runtime_context));
         let visible_tools = crate::active_context::visible_tools(
@@ -741,7 +747,6 @@ impl LiveChatService {
                 &agent_id,
                 memory_setup,
                 visible_tools,
-                &self.call_bus,
             )
         }
         .map_err(|e| error::Error::message(e.to_string()))?;

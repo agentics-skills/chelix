@@ -276,6 +276,7 @@ mod tests {
         config.sandbox.mode = chelix_config::schema::SandboxMode::Off;
         config.auxiliary.title_generation = title_config;
         let state = GatewayState::with_options(
+            chelix_call_bus::CallBus::new(),
             ResolvedAuth {
                 mode: AuthMode::Token,
                 token: None,

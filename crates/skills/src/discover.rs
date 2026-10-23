@@ -1,56 +1,45 @@
-use std::{
-    path::{Path, PathBuf},
-    sync::Arc,
-};
-
-use async_trait::async_trait;
-
-use crate::{
-    error::Result,
-    types::{SkillMetadata, SkillSource},
+use {
+    crate::{
+        error::Result,
+        skill_file::SkillFiles,
+        types::{SkillMetadata, SkillSource},
+    },
+    async_trait::async_trait,
+    std::{
+        path::{Path, PathBuf},
+        sync::Arc,
+    },
 };
 
 /// Discovers skills from filesystem paths.
 #[async_trait]
 pub trait SkillDiscoverer: Send + Sync {
-    /// Scan configured paths and return metadata for all discovered skills.
     async fn discover(&self) -> Result<Vec<SkillMetadata>>;
 }
 
-/// Default filesystem-based skill discoverer.
+/// Filesystem skill discovery in search-path order.
 pub struct FsSkillDiscoverer {
-    /// (path, source) pairs to scan, in priority order.
     search_paths: Vec<(PathBuf, SkillSource)>,
-    bus: Arc<chelix_call_bus::CallBus>,
+    files: Arc<SkillFiles>,
 }
 
 impl FsSkillDiscoverer {
-    pub fn new(
-        search_paths: Vec<(PathBuf, SkillSource)>,
-        bus: Arc<chelix_call_bus::CallBus>,
-    ) -> Self {
-        Self { search_paths, bus }
+    pub fn new(search_paths: Vec<(PathBuf, SkillSource)>, files: Arc<SkillFiles>) -> Self {
+        Self {
+            search_paths,
+            files,
+        }
     }
 
-    /// Build the default search paths for skill discovery.
-    ///
-    /// Workspace root is always the configured data directory.
     pub fn default_paths() -> Vec<(PathBuf, SkillSource)> {
         Self::default_paths_for(&chelix_config::data_dir())
     }
 
-    /// Build the default search paths rooted at an explicit workspace / data
-    /// directory.
-    ///
-    /// Prefer this over [`default_paths`](Self::default_paths) when the caller
-    /// already has a `data_dir` in hand (e.g. the gateway's `bootstrap` scope)
-    /// so the read and write sides stay consistent even if
-    /// `chelix_config::data_dir()` is ever reconfigured at runtime.
     #[must_use]
-    pub fn default_paths_for(data_dir: &Path) -> Vec<(PathBuf, SkillSource)> {
+    pub fn default_paths_for(root: &Path) -> Vec<(PathBuf, SkillSource)> {
         vec![
-            (data_dir.join(".chelix/skills"), SkillSource::Project),
-            (data_dir.join("skills"), SkillSource::Personal),
+            (root.join(".chelix/skills"), SkillSource::Project),
+            (root.join("skills"), SkillSource::Personal),
         ]
     }
 }
@@ -59,116 +48,55 @@ impl FsSkillDiscoverer {
 impl SkillDiscoverer for FsSkillDiscoverer {
     async fn discover(&self) -> Result<Vec<SkillMetadata>> {
         let mut skills = Vec::new();
-
-        for (base_path, source) in &self.search_paths {
-            if !base_path.is_dir() {
-                continue;
-            }
-
+        for (path, source) in &self.search_paths {
             match source {
-                // Project/Personal: scan one level deep (always enabled).
-                SkillSource::Project | SkillSource::Personal => {
-                    discover_flat(&self.bus, base_path, source, &mut skills).await;
+                SkillSource::Personal | SkillSource::Project => {
+                    discover_flat(&self.files, path, source, &mut skills).await?
                 },
-                // Bundled skills are handled by CompositeSkillDiscoverer,
-                // not by filesystem path scanning.
+                // Bundled records come from BundledSkillStore, not from this scan.
                 SkillSource::Bundled => {},
             }
         }
-
         Ok(skills)
     }
 }
 
-// ── Composite discoverer (fs + bundled) ─────────────────────────────────────
-
-/// Discoverer that merges filesystem-discovered skills with bundled skills.
-///
-/// Bundled skills are appended at lowest priority: any user skill with the
-/// same name takes precedence. This ensures users can override or shadow a
-/// bundled skill by creating one with the same name in their personal or
-/// project skills directory.
-#[cfg(feature = "bundled-skills")]
-pub struct CompositeSkillDiscoverer {
-    inner: Box<dyn SkillDiscoverer>,
-    bundled: Arc<crate::bundled::BundledSkillStore>,
-}
-
-#[cfg(feature = "bundled-skills")]
-impl CompositeSkillDiscoverer {
-    pub fn new(
-        inner: Box<dyn SkillDiscoverer>,
-        bundled: Arc<crate::bundled::BundledSkillStore>,
-    ) -> Self {
-        Self { inner, bundled }
-    }
-}
-
-#[cfg(feature = "bundled-skills")]
-#[async_trait]
-impl SkillDiscoverer for CompositeSkillDiscoverer {
-    async fn discover(&self) -> Result<Vec<SkillMetadata>> {
-        let mut skills = self.inner.discover().await?;
-        let mut seen: std::collections::HashSet<String> =
-            skills.iter().map(|s| s.name.clone()).collect();
-        for bundled in self.bundled.discover().await {
-            if seen.insert(bundled.name.clone()) {
-                skills.push(bundled);
-            }
-        }
-        Ok(skills)
-    }
-}
-
-// ── Filesystem scanning helpers ─────────────────────────────────────────────
-
-/// Scan one level deep for SKILL.md dirs (project/personal sources).
-async fn discover_flat(
-    bus: &chelix_call_bus::CallBus,
-    base_path: &Path,
+pub(crate) async fn discover_flat(
+    files: &SkillFiles,
+    path: &Path,
     source: &SkillSource,
     skills: &mut Vec<SkillMetadata>,
-) {
-    let entries = match std::fs::read_dir(base_path) {
-        Ok(e) => e,
-        Err(_) => return,
+) -> Result<()> {
+    let entries = match std::fs::read_dir(path) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
     };
-
-    for entry in entries.flatten() {
-        let skill_dir = entry.path();
-        if !skill_dir.is_dir() {
+    for entry in entries {
+        let dir = entry?.path();
+        if !std::fs::metadata(&dir)?.is_dir() {
             continue;
         }
-        let skill_md = skill_dir.join("SKILL.md");
-        if !skill_md.is_file() {
-            continue;
+        let path = dir.join("SKILL.md");
+        match std::fs::metadata(&path) {
+            Ok(meta) if meta.is_file() => {},
+            Ok(_) => continue,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error.into()),
         }
-        match crate::skill_file::read_on(bus, &skill_md, None).await {
-            Ok(content) => {
-                let mut meta = content.metadata;
-                meta.source = Some(source.clone());
-                tracing::debug!(
-                    path = %skill_md.display(),
-                    source = ?source,
-                    name = %meta.name,
-                    "loaded SKILL.md"
-                );
-                skills.push(meta);
-            },
-            Err(e) => {
-                tracing::warn!(?skill_dir, %e, "failed to parse SKILL.md");
-            },
-        }
+        let mut meta = crate::skill_file::read(files, &path, None).await?.metadata;
+        meta.source = Some(source.clone());
+        skills.push(meta);
     }
+    Ok(())
 }
-
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn bus() -> Arc<chelix_call_bus::CallBus> {
-        crate::skill_file::open_skill_bus().unwrap()
+    fn bus() -> Arc<SkillFiles> {
+        SkillFiles::new().unwrap()
     }
 
     #[test]
@@ -254,7 +182,7 @@ mod tests {
                 format!("---\nname: demo\n{declaration}\n---\nbody"),
             )
             .unwrap();
-            assert!(discoverer.discover().await.unwrap().is_empty());
+            assert!(discoverer.discover().await.is_err());
         }
         for declaration in ["allowed_agents:", "denied_agents:"] {
             std::fs::write(
@@ -267,14 +195,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_discover_skips_invalid_frontmatter() {
+    async fn test_discover_rejects_invalid_frontmatter() {
         let tmp = tempfile::tempdir().unwrap();
         let skills_dir = tmp.path().join("skills");
         std::fs::create_dir_all(skills_dir.join("bad-skill")).unwrap();
         std::fs::write(skills_dir.join("bad-skill/SKILL.md"), "no frontmatter here").unwrap();
 
         let discoverer = FsSkillDiscoverer::new(vec![(skills_dir, SkillSource::Project)], bus());
-        let skills = discoverer.discover().await.unwrap();
-        assert!(skills.is_empty());
+        let error = discoverer.discover().await.err().unwrap();
+        assert!(error.to_string().contains("frontmatter"));
     }
 }

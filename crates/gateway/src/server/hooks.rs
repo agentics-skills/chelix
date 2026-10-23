@@ -24,14 +24,9 @@ pub(crate) fn seed_example_hook() {
 
 /// Seed the example personal skill into `~/.chelix/skills/`.
 pub(crate) async fn seed_example_skill(bus: &chelix_call_bus::CallBus) -> anyhow::Result<()> {
-    let skill_dir = chelix_config::data_dir().join("skills/template-skill");
-    std::fs::create_dir_all(&skill_dir).map_err(|error| {
-        tracing::error!(%error, "could not create template-skill directory");
-        error
-    })?;
     match bus
-        .call(chelix_service_traits::CreateSkillFile {
-            path: skill_dir.join("SKILL.md"),
+        .call(chelix_call_bus::CreateSkillFile {
+            actor: chelix_call_bus::SkillActor::Process,
             name: "template-skill".into(),
             description: TEMPLATE_SKILL_DESCRIPTION.into(),
             body: TEMPLATE_SKILL_BODY.into(),
@@ -41,7 +36,7 @@ pub(crate) async fn seed_example_skill(bus: &chelix_call_bus::CallBus) -> anyhow
     {
         Ok(_)
         | Err(chelix_call_bus::CallError::Failed(
-            chelix_service_traits::SkillFileError::AlreadyExists(_),
+            chelix_call_bus::SkillFileError::AlreadyExists(_),
         )) => Ok(()),
         Err(error) => {
             tracing::error!(%error, "could not write template-skill SKILL.md");
@@ -303,7 +298,8 @@ mod skill_seed_tests {
             _lock: crate::config_override_test_lock(),
         };
         chelix_config::set_data_dir(dir.path().to_path_buf());
-        let bus = chelix_skills::skill_file::open_skill_bus().map_err(anyhow::Error::msg)?;
+        let bus =
+            chelix_skills::skill_file::open_skill_bus_at(dir.path()).map_err(anyhow::Error::msg)?;
         seed_example_skill(&bus).await?;
         let path = dir.path().join("skills/template-skill/SKILL.md");
         let seeded = std::fs::read_to_string(&path)?;
@@ -312,7 +308,8 @@ mod skill_seed_tests {
         assert!(seeded.contains("# Template Skill"));
         let customized = format!("{seeded}\nCustomized instructions\n");
         std::fs::write(&path, &customized)?;
-        let bus = chelix_skills::skill_file::open_skill_bus().map_err(anyhow::Error::msg)?;
+        let bus =
+            chelix_skills::skill_file::open_skill_bus_at(dir.path()).map_err(anyhow::Error::msg)?;
         seed_example_skill(&bus).await?;
         assert_eq!(std::fs::read_to_string(&path)?, customized);
         Ok(())

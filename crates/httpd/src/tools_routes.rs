@@ -551,6 +551,7 @@ mod tests {
         let mut config = chelix_config::ChelixConfig::default();
         config.sandbox.mode = chelix_config::schema::SandboxMode::Off;
         let gateway = GatewayState::with_options(
+            chelix_call_bus::CallBus::new(),
             auth::resolve_auth(None, None),
             GatewayServices::noop(),
             config,

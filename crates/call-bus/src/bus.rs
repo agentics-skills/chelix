@@ -5,7 +5,7 @@ use std::{
     pin::Pin,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicU64, AtomicUsize, Ordering},
     },
 };
 
@@ -45,6 +45,7 @@ struct EventHub<E> {
 }
 
 struct Shared {
+    subscriber_errors: AtomicU64,
     queue_inflight: AtomicUsize,
     wait_inflight: AtomicUsize,
     notify: Notify,
@@ -82,11 +83,17 @@ impl CallBus {
                 hubs: HashMap::new(),
             }),
             shared: Arc::new(Shared {
+                subscriber_errors: AtomicU64::new(0),
                 queue_inflight: AtomicUsize::new(0),
                 wait_inflight: AtomicUsize::new(0),
                 notify: Notify::new(),
             }),
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn subscriber_errors(&self) -> u64 {
+        self.shared.subscriber_errors.load(Ordering::Relaxed)
     }
 
     /// Register the only handler for procedure `P`.
@@ -411,8 +418,8 @@ impl<E: Event> EventHub<E> {
         };
         lock(&self.queues).push(QueuePort { tx: queue_tx, sem });
         lock(&self.subscribers).push(Arc::clone(&subscriber));
-        spawn_queue_worker(queue_rx, Arc::clone(&subscriber), shared);
-        spawn_detach_worker(detach_rx, subscriber);
+        spawn_queue_worker(queue_rx, Arc::clone(&subscriber), Arc::clone(&shared));
+        spawn_detach_worker(detach_rx, subscriber, shared);
     }
 }
 
@@ -424,7 +431,7 @@ fn spawn_queue_worker<E: Event>(
     tokio::spawn(async move {
         while let Some(item) = rx.recv().await {
             if let Err(error) = subscriber(item.event).await {
-                record_subscriber_error(&error);
+                record_subscriber_error(&shared, &error);
             }
             drop(item._permit);
             shared.queue_inflight.fetch_sub(1, Ordering::AcqRel);
@@ -433,12 +440,18 @@ fn spawn_queue_worker<E: Event>(
     });
 }
 
-fn spawn_detach_worker<E: Event>(mut rx: broadcast::Receiver<E>, subscriber: SubscriberFn<E>) {
+fn spawn_detach_worker<E: Event>(
+    mut rx: broadcast::Receiver<E>,
+    subscriber: SubscriberFn<E>,
+    shared: Arc<Shared>,
+) {
     tokio::spawn(async move {
         loop {
             match rx.recv().await {
                 Ok(event) => {
-                    let _ = subscriber(event).await;
+                    if let Err(error) = subscriber(event).await {
+                        record_subscriber_error(&shared, &error);
+                    }
                 },
                 Err(broadcast::error::RecvError::Lagged(_)) => {},
                 Err(broadcast::error::RecvError::Closed) => break,
@@ -485,9 +498,10 @@ fn record_metric(op: &'static str, started: std::time::Instant, ok: bool) {
     }
 }
 
-fn record_subscriber_error(error: &ErasedError) {
+fn record_subscriber_error(shared: &Shared, error: &ErasedError) {
+    shared.subscriber_errors.fetch_add(1, Ordering::Relaxed);
     #[cfg(feature = "tracing")]
-    tracing::error!(%error, "call bus queue subscriber failed");
+    tracing::error!(%error, "call bus subscriber failed");
     #[cfg(feature = "metrics")]
     metrics::counter!(
         chelix_metrics::call_bus::CALLS_TOTAL,

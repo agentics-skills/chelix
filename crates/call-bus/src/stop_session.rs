@@ -1,6 +1,10 @@
-use {chelix_call_bus::Procedure, chelix_sessions::SessionKey};
+use crate::Procedure;
 
-use crate::error::ServiceError;
+#[derive(Debug, thiserror::Error)]
+#[error("{message}")]
+pub struct StopSessionError {
+    pub message: String,
+}
 
 /// Stop one session's current activity, or one run by its id.
 pub enum StopSession {
@@ -8,10 +12,7 @@ pub enum StopSession {
     ///
     /// `run_id: None` stops whatever is current. `Some` stops that run only when
     /// it is still the current run of the session.
-    Session {
-        key: SessionKey,
-        run_id: Option<String>,
-    },
+    Session { key: String, run_id: Option<String> },
     /// Cancel one run token. The session key is not resolved.
     Run { run_id: String },
 }
@@ -23,6 +24,6 @@ pub struct StopSessionOutcome {
 }
 
 impl Procedure for StopSession {
-    type Error = ServiceError;
+    type Error = StopSessionError;
     type Output = StopSessionOutcome;
 }

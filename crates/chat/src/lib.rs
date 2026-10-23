@@ -10,7 +10,6 @@ mod prompt;
 mod prompt_queue;
 mod run_with_tools;
 mod service;
-mod skill_tools;
 mod stream_journal;
 mod streaming;
 mod tool_permission;
@@ -28,7 +27,7 @@ pub use {
     memory_tools::{AgentScopedMemoryWriter, MemoryForgetTool},
     models::{DisabledModelsStore, LiveModelService},
     runtime::{ChatRuntime, TtsOverride},
-    service::{ActiveToolInvocation, LiveChatService},
+    service::{ActiveToolInvocation, LiveChatService, register_stop_session},
     types::{
         BroadcastOpts, memory_write_mode_allows_save, model_matches_allowlist, normalize_model_key,
     },

@@ -13,6 +13,7 @@ use {
 
 fn state() -> Arc<GatewayState> {
     GatewayState::new(
+        chelix_call_bus::CallBus::new(),
         ResolvedAuth {
             mode: AuthMode::Token,
             token: None,

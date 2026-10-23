@@ -222,6 +222,7 @@ async fn start_auth_server_impl_with_webauthn(
     let services = with_test_web_services(GatewayServices::noop());
     let (config, sandbox_router) = sandbox_off_runtime();
     let state = GatewayState::with_options(
+        chelix_call_bus::CallBus::new(),
         resolved_auth,
         services,
         config,
@@ -312,6 +313,7 @@ async fn start_localhost_server_with_vault() -> (
     let services = with_test_web_services(GatewayServices::noop());
     let (config, sandbox_router) = sandbox_off_runtime();
     let state = GatewayState::with_options(
+        chelix_call_bus::CallBus::new(),
         resolved_auth,
         services,
         config,
@@ -413,6 +415,7 @@ async fn start_localhost_server_with_vault_and_session_store() -> (
     );
     let (config, sandbox_router) = sandbox_off_runtime();
     let state = GatewayState::with_options(
+        chelix_call_bus::CallBus::new(),
         resolved_auth,
         services,
         config,
@@ -470,7 +473,7 @@ async fn start_noauth_server() -> SocketAddr {
 
     let resolved_auth = auth::resolve_auth(None, None);
     let services = with_test_web_services(GatewayServices::noop());
-    let state = GatewayState::new(resolved_auth, services);
+    let state = GatewayState::new(chelix_call_bus::CallBus::new(), resolved_auth, services);
     let methods = Arc::new(MethodRegistry::new());
     #[cfg(feature = "push-notifications")]
     let (router, app_state) = build_gateway_base(state, methods, None, None);

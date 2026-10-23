@@ -673,7 +673,7 @@ pub(crate) async fn run_with_tools(
     desired_reply_medium: ReplyMedium,
     project_context: Option<&str>,
     runtime_context: Option<&PromptRuntimeContext>,
-    skills: &[chelix_skills::types::SkillMetadata],
+    skills: &[chelix_call_bus::SkillMetadata],
     hook_registry: Option<Arc<chelix_common::hooks::HookRegistry>>,
     accept_language: Option<String>,
     conn_id: Option<String>,
@@ -688,7 +688,6 @@ pub(crate) async fn run_with_tools(
     sender_name: Option<String>,
     tool_choice: Option<ToolChoice>,
     tool_permission: Option<crate::tool_permission::ToolPermissionRuntime>,
-    call_bus: &Arc<chelix_call_bus::CallBus>,
 ) -> ChatRunOutcome {
     let ui_run = match crate::ui_history_ingress::begin(
         session_store,
@@ -792,7 +791,6 @@ pub(crate) async fn run_with_tools(
             agent_id,
             memory_setup,
             visible_tools,
-            call_bus,
         )
     };
     let filtered_registry = match filtered_registry {
