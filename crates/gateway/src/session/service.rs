@@ -464,8 +464,8 @@ impl LiveSessionService {
             .await
             .map_err(ServiceError::message)?;
         self.call_bus
-            .call(chelix_service_traits::StopSession::Session {
-                key: SessionKey::new(key),
+            .call(chelix_call_bus::StopSession::Session {
+                key: key.to_string(),
                 run_id: None,
             })
             .await
@@ -485,9 +485,9 @@ impl LiveSessionService {
 #[cfg(test)]
 fn sealed_test_call_bus() -> Arc<chelix_call_bus::CallBus> {
     let bus = chelix_call_bus::CallBus::new();
-    let _ = bus.require::<chelix_service_traits::StopSession>();
-    let _ = bus.register(|_request: chelix_service_traits::StopSession| async move {
-        Ok(chelix_service_traits::StopSessionOutcome {
+    let _ = bus.require::<chelix_call_bus::StopSession>();
+    let _ = bus.register(|_request: chelix_call_bus::StopSession| async move {
+        Ok(chelix_call_bus::StopSessionOutcome {
             cancelled: false,
             run_id: None,
         })

@@ -6,14 +6,18 @@ use std::{
 };
 
 use {
-    async_trait::async_trait, chelix_agents::tool_registry::AgentTool,
-    chelix_skills::discover::SkillDiscoverer, serde_json::json,
+    chelix_agents::{tool_context::ToolExecutionContext, tool_registry::AgentTool},
+    serde_json::json,
 };
 
 use super::*;
 
-/// Re-export for the read test that checks the constant matches the skills crate.
-const SIDECAR_SUBDIRS: &[&str] = chelix_skills::SIDECAR_SUBDIRS;
+fn test_context() -> ToolExecutionContext {
+    ToolExecutionContext::for_session_with_agent(
+        chelix_sessions::SessionKey::new("test"),
+        "test-agent",
+    )
+}
 
 #[path = "crud_write.rs"]
 mod crud_write;

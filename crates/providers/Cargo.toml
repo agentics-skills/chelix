@@ -5,21 +5,21 @@ repository.workspace = true
 version.workspace    = true
 
 [dependencies]
-anyhow            = { workspace = true }
-async-stream      = { workspace = true }
-chelix-agents     = { path = "../agents" }
-chelix-common     = { workspace = true }
-chelix-config     = { workspace = true }
-futures           = { workspace = true }
-jsonschema        = { workspace = true }
-reqwest           = { workspace = true }
-secrecy           = { workspace = true }
-serde             = { workspace = true }
-serde_json        = { workspace = true }
-thiserror         = { workspace = true }
-tokio             = { workspace = true }
-tokio-stream      = { workspace = true }
-tracing           = { workspace = true }
+anyhow        = { workspace = true }
+async-stream  = { workspace = true }
+chelix-agents = { path = "../agents" }
+chelix-common = { workspace = true }
+chelix-config = { workspace = true }
+futures       = { workspace = true }
+jsonschema    = { workspace = true }
+reqwest       = { workspace = true }
+secrecy       = { workspace = true }
+serde         = { workspace = true }
+serde_json    = { workspace = true }
+thiserror     = { workspace = true }
+tokio         = { workspace = true }
+tokio-stream  = { workspace = true }
+tracing       = { workspace = true }
 
 [dev-dependencies]
 axum = { workspace = true }

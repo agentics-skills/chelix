@@ -15,12 +15,12 @@ async fn archive_patch_error_does_not_call_stop_session() {
     let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let seen = Arc::clone(&calls);
     let bus = chelix_call_bus::CallBus::new();
-    bus.require::<chelix_service_traits::StopSession>().unwrap();
-    bus.register(move |_request: chelix_service_traits::StopSession| {
+    bus.require::<chelix_call_bus::StopSession>().unwrap();
+    bus.register(move |_request: chelix_call_bus::StopSession| {
         let seen = Arc::clone(&seen);
         async move {
             seen.fetch_add(1, Ordering::SeqCst);
-            Ok(chelix_service_traits::StopSessionOutcome {
+            Ok(chelix_call_bus::StopSessionOutcome {
                 cancelled: false,
                 run_id: None,
             })
@@ -201,7 +201,7 @@ fn archive_router(backend: Arc<RecordingSandbox>) -> Arc<SandboxRouter> {
 
 fn sealed_archive_bus() -> Arc<chelix_call_bus::CallBus> {
     let bus = chelix_call_bus::CallBus::new();
-    bus.require::<chelix_service_traits::StopSession>().unwrap();
+    bus.require::<chelix_call_bus::StopSession>().unwrap();
     bus
 }
 
@@ -219,11 +219,11 @@ async fn archive_patch_error_does_not_stop_sandbox() {
     let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let seen = Arc::clone(&calls);
     let bus = sealed_archive_bus();
-    bus.register(move |_request: chelix_service_traits::StopSession| {
+    bus.register(move |_request: chelix_call_bus::StopSession| {
         let seen = Arc::clone(&seen);
         async move {
             seen.fetch_add(1, Ordering::SeqCst);
-            Ok(chelix_service_traits::StopSessionOutcome {
+            Ok(chelix_call_bus::StopSessionOutcome {
                 cancelled: false,
                 run_id: None,
             })
@@ -260,7 +260,7 @@ async fn archive_calls_stop_session_before_background_stop() {
     let bus = sealed_archive_bus();
     let release_for_handler = Arc::clone(&release);
     let entered_for_handler = Arc::clone(&entered);
-    bus.register(move |_request: chelix_service_traits::StopSession| {
+    bus.register(move |_request: chelix_call_bus::StopSession| {
         let release = Arc::clone(&release_for_handler);
         let entered = Arc::clone(&entered_for_handler);
         let mark = Arc::clone(&mark);
@@ -269,7 +269,7 @@ async fn archive_calls_stop_session_before_background_stop() {
             mark.store(true, Ordering::SeqCst);
             entered.notify_one();
             wait.await;
-            Ok(chelix_service_traits::StopSessionOutcome {
+            Ok(chelix_call_bus::StopSessionOutcome {
                 cancelled: false,
                 run_id: None,
             })
@@ -317,8 +317,10 @@ async fn archive_stop_session_error_skips_background_stop() {
     let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
     create_test_session(&metadata, "session:owner", Some("Owner")).await;
     let bus = sealed_archive_bus();
-    bus.register(|_request: chelix_service_traits::StopSession| async move {
-        Err(ServiceError::message("stop failed"))
+    bus.register(|_request: chelix_call_bus::StopSession| async move {
+        Err(chelix_call_bus::StopSessionError {
+            message: "stop failed".into(),
+        })
     })
     .unwrap();
     bus.seal().unwrap();
@@ -359,11 +361,11 @@ async fn archive_foreign_owner_skips_background_stop() {
     let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let seen = Arc::clone(&calls);
     let bus = sealed_archive_bus();
-    bus.register(move |_request: chelix_service_traits::StopSession| {
+    bus.register(move |_request: chelix_call_bus::StopSession| {
         let seen = Arc::clone(&seen);
         async move {
             seen.fetch_add(1, Ordering::SeqCst);
-            Ok(chelix_service_traits::StopSessionOutcome {
+            Ok(chelix_call_bus::StopSessionOutcome {
                 cancelled: false,
                 run_id: None,
             })

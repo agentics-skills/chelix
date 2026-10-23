@@ -1,95 +1,33 @@
-//! Skill reading: primary body, sidecar files, and sidecar listing.
-
-use std::{path::Path, sync::Arc};
-
-use {
-    async_trait::async_trait,
-    chelix_agents::tool_registry::AgentTool,
-    chelix_skills::{discover::SkillDiscoverer, types::SkillSource, usage::SkillUsageStore},
-    serde_json::{Value, json},
-};
-
 #[cfg(feature = "metrics")]
 use chelix_metrics::{counter, labels, skills as skills_metrics};
-
 use {
-    super::{
-        MAX_SIDECAR_FILES_PER_CALL, MAX_SIDECAR_FILES_PER_SUBDIR, MAX_SKILL_BODY_BYTES,
-        helpers::normalize_relative_skill_file_path,
-    },
     crate::error::Error,
+    async_trait::async_trait,
+    chelix_agents::{tool_context::ToolExecutionContext, tool_registry::AgentTool},
+    chelix_call_bus::{CallBus, ReadSkillFile, SkillActor, SkillLocate, SkillRead, SkillSource},
+    chelix_skills::usage::SkillUsageStore,
+    serde_json::{Value, json},
+    std::{path::Path, sync::Arc},
 };
 
-/// Sidecar subdirectories walked for the primary-read linked-files listing.
-const SIDECAR_SUBDIRS: &[&str] = chelix_skills::SIDECAR_SUBDIRS;
-
-// ── ReadSkillTool ───────────────────────────────────────────
-
-/// Tool that reads a skill's body (and optionally a sidecar file) using the
-/// same discoverer that the `<available_skills>` prompt block was built from.
-///
-/// This is the read-side mirror of [`super::write_ops::WriteSkillFilesTool`]
-/// and replaces the previous expectation that the model would use an external
-/// filesystem MCP server to load `SKILL.md` by absolute path.
 pub struct ReadSkillTool {
-    discoverer: Arc<dyn SkillDiscoverer>,
-    bus: Arc<chelix_call_bus::CallBus>,
+    bus: Arc<CallBus>,
     usage_store: Option<SkillUsageStore>,
-    #[cfg(feature = "bundled-skills")]
-    bundled_store: Option<Arc<chelix_skills::bundled::BundledSkillStore>>,
 }
 
 impl ReadSkillTool {
-    /// Construct a `ReadSkillTool` backed by the given discoverer.
     #[must_use]
-    pub fn new(discoverer: Arc<dyn SkillDiscoverer>, bus: Arc<chelix_call_bus::CallBus>) -> Self {
+    pub fn new(bus: Arc<CallBus>) -> Self {
         Self {
-            discoverer,
             bus,
             usage_store: None,
-            #[cfg(feature = "bundled-skills")]
-            bundled_store: None,
         }
     }
 
-    /// Construct a `ReadSkillTool` with bundled skill support.
-    #[cfg(feature = "bundled-skills")]
-    #[must_use]
-    pub fn with_bundled(
-        discoverer: Arc<dyn SkillDiscoverer>,
-        bundled_store: Arc<chelix_skills::bundled::BundledSkillStore>,
-        bus: Arc<chelix_call_bus::CallBus>,
-    ) -> Self {
-        Self {
-            discoverer,
-            bus,
-            usage_store: None,
-            bundled_store: Some(bundled_store),
-        }
-    }
-
-    /// Attach a usage telemetry store.
     #[must_use]
     pub fn with_usage_store(mut self, store: SkillUsageStore) -> Self {
         self.usage_store = Some(store);
         self
-    }
-
-    /// Convenience constructor that uses default filesystem paths.
-    #[must_use]
-    pub fn with_default_paths(bus: Arc<chelix_call_bus::CallBus>) -> Self {
-        use chelix_skills::discover::FsSkillDiscoverer;
-        let discoverer = Arc::new(FsSkillDiscoverer::new(
-            FsSkillDiscoverer::default_paths(),
-            Arc::clone(&bus),
-        ));
-        Self {
-            discoverer,
-            bus,
-            usage_store: None,
-            #[cfg(feature = "bundled-skills")]
-            bundled_store: None,
-        }
     }
 }
 
@@ -104,458 +42,136 @@ impl AgentTool for ReadSkillTool {
     }
 
     fn parameters_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "required": ["name"],
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "description": "Skill name (use the names from <available_skills>)"
-                },
-                "file_path": {
-                    "type": "string",
-                    "description": "Optional relative path to a linked file within the skill, including nested paths (for example, 'references/api.md'). Omit to read the main SKILL.md body."
-                }
-            }
-        })
+        json!({ "type": "object", "required": ["name"], "properties": {
+            "name": { "type": "string", "description": "Skill name (use the names from <available_skills>)" },
+            "file_path": { "type": "string", "description": "Optional relative path to a linked file within the skill, including nested paths (for example, 'references/api.md'). Omit to read the main SKILL.md body." }
+        }})
     }
 
-    async fn execute(&self, params: Value) -> anyhow::Result<Value> {
+    async fn execute(&self, _params: Value) -> anyhow::Result<Value> {
+        Err(Error::message("missing agent id").into())
+    }
+
+    async fn execute_with_context(
+        &self,
+        params: Value,
+        context: &ToolExecutionContext,
+    ) -> anyhow::Result<Value> {
+        let id = super::helpers::agent_id(context)?;
         let name = params
             .get("name")
-            .and_then(|v| v.as_str())
+            .and_then(Value::as_str)
             .ok_or_else(|| Error::message("missing 'name'"))?;
-        // Treat empty string the same as absent — models often send ""
-        // instead of omitting the field.
         let file_path = params
             .get("file_path")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty());
-
-        let skills = self.discoverer.discover().await?;
-        let meta = skills.iter().find(|s| s.name == name).ok_or_else(|| {
-            let available: Vec<&str> = skills.iter().map(|s| s.name.as_str()).collect();
-            let hint = if available.is_empty() {
-                "no skills are currently available".to_string()
-            } else {
-                format!("available skills: {}", available.join(", "))
-            };
-            Error::message(format!(
-                "skill '{name}' not found ({hint}). Use one of the names listed \
-                 in <available_skills>."
-            ))
-        })?;
-
-        // Bundled skills are served from the embedded store, not the filesystem.
-        #[cfg(feature = "bundled-skills")]
-        if meta.source.as_ref() == Some(&SkillSource::Bundled)
-            && let Some(ref store) = self.bundled_store
-        {
-            return read_bundled(name, meta, store, file_path).await;
+            .and_then(Value::as_str)
+            .filter(|path| !path.is_empty())
+            .map(str::to_owned);
+        let content = self
+            .bus
+            .call(ReadSkillFile {
+                name: name.into(),
+                max_bytes: Some(super::MAX_SKILL_BODY_BYTES as u64),
+                actor: SkillActor::Agent { id: id.into() },
+                locate: SkillLocate::Discovered,
+                file_path,
+            })
+            .await?;
+        let primary = content.sidecar.is_none();
+        let response = read_response(name, content);
+        if primary {
+            if let Some(store) = &self.usage_store {
+                store.record_read(name).await;
+            }
+            #[cfg(feature = "metrics")]
+            counter!(skills_metrics::ACTIVATIONS_TOTAL, labels::TOOL => "read_skill".to_string())
+                .increment(1);
         }
-
-        if let Some(rel) = file_path {
-            return read_sidecar(name, &meta.path, rel).await;
-        }
-
-        let result = read_primary(&self.bus, name, meta).await?;
-
-        // Record activation (primary reads only, not sidecar reads).
-        if let Some(ref store) = self.usage_store {
-            store.record_read(name).await;
-        }
-        #[cfg(feature = "metrics")]
-        counter!(skills_metrics::ACTIVATIONS_TOTAL, labels::TOOL => "read_skill".to_string())
-            .increment(1);
-
-        Ok(result)
+        Ok(response)
     }
 }
 
-// ── read_primary ────────────────────────────────────────────
-
-/// Read the main SKILL.md body plus the list of sidecar files available in
-/// `references/`, `templates/`, `assets/`, and `scripts/`.
-async fn read_primary(
-    bus: &chelix_call_bus::CallBus,
-    name: &str,
-    meta: &chelix_skills::types::SkillMetadata,
-) -> anyhow::Result<Value> {
-    let canonical_skill_dir = tokio::fs::canonicalize(&meta.path)
-        .await
-        .map_err(|e| Error::message(format!("skill directory not accessible for '{name}': {e}")))?;
-
-    let skill_md_path = canonical_skill_dir.join("SKILL.md");
-    let content = bus
-        .call(chelix_service_traits::ReadSkillFile {
-            path: skill_md_path,
-            max_bytes: Some(MAX_SKILL_BODY_BYTES as u64),
-        })
-        .await
-        .map_err(|error| Error::message(format!("failed to load skill '{name}': {error}")))?;
-    let linked_files = list_skill_sidecar_files(&canonical_skill_dir).await?;
-    let loaded_meta = content.metadata;
-    let body = content.body;
-    let effective_dir = canonical_skill_dir;
-
-    let hits = chelix_skills::safety::scan_skill_body(name, &body);
-    if !hits.is_empty() {
-        tracing::warn!(
-            skill = %name,
-            patterns = ?hits,
-            "skill body contains potential prompt-injection patterns"
-        );
+fn read_response(name: &str, content: SkillRead) -> Value {
+    let bundled = content.metadata.source == Some(SkillSource::Bundled);
+    if let Some(sidecar) = content.sidecar {
+        if let Some(text) = sidecar.text {
+            return json!({ "name": name, "file_path": sidecar.path, "bytes": sidecar.bytes, "content": text, "is_binary": false });
+        }
+        let mut response = json!({ "name": name, "file_path": sidecar.path, "bytes": sidecar.bytes, "is_binary": true });
+        if bundled {
+            response["note"] = json!(format!(
+                "Binary file ({} bytes). Contents omitted.",
+                sidecar.bytes
+            ));
+        } else {
+            let file_type = Path::new(&sidecar.path)
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .map(|extension| format!(".{extension}"))
+                .unwrap_or_default();
+            response["file_type"] = json!(file_type);
+            response["note"] = json!(format!(
+                "Binary file ({} bytes). Contents omitted — the model cannot consume binary data directly.",
+                sidecar.bytes
+            ));
+        }
+        return response;
     }
-
-    let source_label = match meta.source.as_ref() {
+    let meta = content.metadata;
+    if !bundled {
+        let hits = chelix_skills::safety::scan_skill_body(name, &content.body);
+        if !hits.is_empty() {
+            tracing::warn!(skill = %name, patterns = ?hits, "skill body contains potential prompt-injection patterns");
+        }
+    }
+    let source = match meta.source {
         Some(SkillSource::Project) => "project",
         Some(SkillSource::Personal) => "personal",
         Some(SkillSource::Bundled) => "bundled",
         None => "unknown",
     };
-
-    let mut response = serde_json::Map::new();
-    response.insert("name".into(), json!(name));
-    response.insert("description".into(), json!(loaded_meta.description));
-    response.insert("source".into(), json!(source_label));
-    response.insert("body".into(), json!(body));
-    response.insert("bytes".into(), json!(body.len()));
-    response.insert(
-        "skill_dir_name".into(),
-        json!(
-            effective_dir
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("")
-        ),
-    );
-
-    if let Some(display_name) = &loaded_meta.display_name {
-        response.insert("display_name".into(), json!(display_name));
+    let mut response = json!({ "name": name, "description": meta.description, "source": source, "body": content.body, "bytes": content.body.len(), "linked_files": content.linked_files.iter().map(|file| json!({ "path": file.path, "bytes": file.bytes })).collect::<Vec<_>>() });
+    if let Some(dir_name) = content.skill_dir_name {
+        response["skill_dir_name"] = json!(dir_name);
     }
-    if let Some(license) = &loaded_meta.license {
-        response.insert("license".into(), json!(license));
+    if let Some(dir) = &content.skill_dir {
+        response["skill_dir"] = json!(dir.display().to_string());
     }
-    if let Some(homepage) = &loaded_meta.homepage {
-        response.insert("homepage".into(), json!(homepage));
+    if let Some(name) = meta.display_name {
+        response["display_name"] = json!(name);
     }
-    if let Some(compatibility) = &loaded_meta.compatibility {
-        response.insert("compatibility".into(), json!(compatibility));
+    if let Some(license) = meta.license {
+        response["license"] = json!(license);
     }
-    if !linked_files.is_empty() {
-        response.insert(
-            "usage_hint".into(),
-            json!(
-                "To view a linked file, call read_skill again with file_path \
-                 set to one of the paths in linked_files (e.g. \
-                 file_path=\"references/api.md\"). Nested paths inside those \
-                 directories are also supported."
-            ),
-        );
+    if let Some(homepage) = meta.homepage {
+        response["homepage"] = json!(homepage);
     }
-    response.insert("linked_files".into(), json!(linked_files));
-
-    Ok(Value::Object(response))
-}
-
-// ── read_sidecar ────────────────────────────────────────────
-
-/// Read a single sidecar file inside a skill directory.
-async fn read_sidecar(name: &str, skill_dir: &Path, rel: &str) -> anyhow::Result<Value> {
-    let relative = normalize_relative_skill_file_path(rel)?;
-
-    let canonical_skill_dir = tokio::fs::canonicalize(skill_dir)
-        .await
-        .map_err(|e| Error::message(format!("skill directory not accessible for '{name}': {e}")))?;
-
-    let target = canonical_skill_dir.join(&relative);
-
-    match tokio::fs::symlink_metadata(&target).await {
-        Ok(_) => {},
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-            let available = list_skill_sidecar_files(&canonical_skill_dir).await?;
-            return Err(Error::message(format!(
-                "sidecar file '{}' not found in skill '{name}'. \
-                 Available sidecar files: {}",
-                relative.display(),
-                if available.is_empty() {
-                    "(none)".to_string()
-                } else {
-                    available
-                        .iter()
-                        .filter_map(|v| v.get("path").and_then(|p| p.as_str()))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                }
-            ))
-            .into());
-        },
-        Err(e) => {
-            return Err(Error::message(format!(
-                "sidecar file '{}' not accessible: {e}",
-                relative.display()
-            ))
-            .into());
-        },
-    }
-
-    let canonical_target = tokio::fs::canonicalize(&target).await.map_err(|e| {
-        Error::message(format!(
-            "sidecar file '{}' not accessible: {e}",
-            relative.display()
-        ))
-    })?;
-
-    let metadata = tokio::fs::metadata(&canonical_target).await?;
-    if !metadata.is_file() {
-        return Err(Error::message(format!(
-            "sidecar path '{}' is not a regular file",
-            relative.display()
-        ))
-        .into());
-    }
-    if metadata.len() > super::MAX_SIDECAR_FILE_BYTES as u64 {
-        return Err(Error::message(format!(
-            "sidecar file '{}' exceeds maximum size of {} bytes",
-            relative.display(),
-            super::MAX_SIDECAR_FILE_BYTES
-        ))
-        .into());
-    }
-
-    let raw = tokio::fs::read(&canonical_target).await.map_err(|e| {
-        Error::message(format!(
-            "failed to read sidecar file '{}': {e}",
-            relative.display()
-        ))
-    })?;
-
-    match std::str::from_utf8(&raw) {
-        Ok(text) => Ok(json!({
-            "name": name,
-            "file_path": relative.display().to_string(),
-            "bytes": metadata.len(),
-            "content": text,
-            "is_binary": false,
-        })),
-        Err(_) => {
-            let file_type = canonical_target
-                .extension()
-                .and_then(|e| e.to_str())
-                .map(|s| format!(".{s}"))
-                .unwrap_or_default();
-            Ok(json!({
-                "name": name,
-                "file_path": relative.display().to_string(),
-                "bytes": metadata.len(),
-                "is_binary": true,
-                "file_type": file_type,
-                "note": format!(
-                    "Binary file ({} bytes). Contents omitted — the model \
-                     cannot consume binary data directly.",
-                    metadata.len()
-                ),
-            }))
-        },
-    }
-}
-
-// ── Sidecar listing ─────────────────────────────────────────
-
-#[derive(Debug, Clone)]
-struct SidecarEntry {
-    relative_path: String,
-    bytes: u64,
-}
-
-impl From<&SidecarEntry> for Value {
-    fn from(entry: &SidecarEntry) -> Self {
-        json!({
-            "path": entry.relative_path,
-            "bytes": entry.bytes,
-        })
-    }
-}
-
-/// One-level-deep walk of `<skill_dir>/{references,templates,assets,scripts}`.
-pub(super) async fn list_skill_sidecar_files(skill_dir: &Path) -> crate::Result<Vec<Value>> {
-    let mut entries = collect_sidecar_entries(skill_dir).await?;
-    entries.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
-    Ok(entries.iter().map(Value::from).collect())
-}
-
-async fn collect_sidecar_entries(skill_dir: &Path) -> crate::Result<Vec<SidecarEntry>> {
-    let mut out: Vec<SidecarEntry> = Vec::new();
-
-    for sub in SIDECAR_SUBDIRS {
-        if out.len() >= MAX_SIDECAR_FILES_PER_CALL {
-            break;
+    if bundled {
+        if let Some(category) = meta.category {
+            response["category"] = json!(category);
         }
-        let dir = skill_dir.join(sub);
-        let mut entries = match tokio::fs::read_dir(&dir).await {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-        let mut this_subdir = 0usize;
-        while let Some(entry) = entries.next_entry().await? {
-            if this_subdir >= MAX_SIDECAR_FILES_PER_SUBDIR
-                || out.len() >= MAX_SIDECAR_FILES_PER_CALL
+        if let Some(origin) = meta.origin {
+            response["origin"] = json!(origin);
+        }
+    } else if let Some(compatibility) = meta.compatibility {
+        response["compatibility"] = json!(compatibility);
+    }
+    if !content.linked_files.is_empty() {
+        let hint = if bundled {
+            if content.skill_dir.is_some()
+                && content
+                    .linked_files
+                    .iter()
+                    .any(|file| file.path.starts_with("scripts/"))
             {
-                break;
+                "This skill includes executable scripts. Use the `skill_dir` path to resolve script references in the body. To view a linked file, call read_skill again with file_path set to one of the paths in linked_files."
+            } else {
+                "To view a linked file, call read_skill again with file_path set to one of the paths in linked_files."
             }
-            let meta = match tokio::fs::metadata(entry.path()).await {
-                Ok(m) => m,
-                Err(_) => continue,
-            };
-            if !meta.is_file() {
-                continue;
-            }
-            let file_name = match entry.file_name().into_string() {
-                Ok(name) => name,
-                Err(_) => continue,
-            };
-            if file_name.starts_with('.') {
-                continue;
-            }
-            out.push(SidecarEntry {
-                relative_path: format!("{sub}/{file_name}"),
-                bytes: meta.len(),
-            });
-            this_subdir += 1;
-        }
-    }
-
-    Ok(out)
-}
-
-// ── Bundled skill reading ──────────────────────────────────────────────────
-
-/// Read a bundled skill from the embedded store (no filesystem I/O).
-#[cfg(feature = "bundled-skills")]
-async fn read_bundled(
-    name: &str,
-    meta: &chelix_skills::types::SkillMetadata,
-    store: &chelix_skills::bundled::BundledSkillStore,
-    file_path: Option<&str>,
-) -> anyhow::Result<Value> {
-    if let Some(rel) = file_path {
-        let rel_normalized = normalize_relative_skill_file_path(rel)
-            .map_err(|e| Error::message(format!("invalid file_path: {e}")))?;
-        let rel = rel_normalized.to_str().unwrap_or(rel);
-
-        return match store.read_sidecar(name, rel) {
-            Some((bytes, true)) => {
-                let text = String::from_utf8_lossy(&bytes);
-                Ok(json!({
-                    "name": name,
-                    "file_path": rel,
-                    "bytes": bytes.len(),
-                    "content": text,
-                    "is_binary": false,
-                }))
-            },
-            Some((bytes, false)) => Ok(json!({
-                "name": name,
-                "file_path": rel,
-                "bytes": bytes.len(),
-                "is_binary": true,
-                "note": format!("Binary file ({} bytes). Contents omitted.", bytes.len()),
-            })),
-            None => {
-                let available = store.list_sidecars(name);
-                let hint = if available.is_empty() {
-                    "(none)".to_string()
-                } else {
-                    available
-                        .iter()
-                        .map(|(p, _)| p.as_str())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                };
-                Err(Error::message(format!(
-                    "sidecar file '{rel}' not found in bundled skill '{name}'. \
-                     Available sidecar files: {hint}"
-                ))
-                .into())
-            },
-        };
-    }
-
-    let body = store
-        .read_skill(name)
-        .await
-        .ok_or_else(|| Error::message(format!("bundled skill '{name}' body not readable")))?;
-
-    let linked: Vec<Value> = store
-        .list_sidecars(name)
-        .into_iter()
-        .map(|(path, bytes)| json!({"path": path, "bytes": bytes}))
-        .collect();
-
-    // Materialize sidecar files to disk so scripts can be executed.
-    let skill_dir = store.materialize_sidecars(name);
-
-    Ok(build_bundled_primary_response(
-        name,
-        meta,
-        body,
-        linked,
-        skill_dir.as_deref(),
-    ))
-}
-
-#[cfg(feature = "bundled-skills")]
-pub(super) fn build_bundled_primary_response(
-    name: &str,
-    meta: &chelix_skills::types::SkillMetadata,
-    body: String,
-    linked: Vec<Value>,
-    skill_dir: Option<&Path>,
-) -> Value {
-    let mut response = serde_json::Map::new();
-    response.insert("name".into(), json!(name));
-    response.insert("description".into(), json!(meta.description));
-    response.insert("source".into(), json!("bundled"));
-    if let Some(ref cat) = meta.category {
-        response.insert("category".into(), json!(cat));
-    }
-    response.insert("body".into(), json!(body));
-    response.insert("bytes".into(), json!(body.len()));
-    if let Some(dir) = skill_dir {
-        response.insert("skill_dir".into(), json!(dir.display().to_string()));
-    }
-
-    if let Some(display_name) = &meta.display_name {
-        response.insert("display_name".into(), json!(display_name));
-    }
-    if let Some(license) = &meta.license {
-        response.insert("license".into(), json!(license));
-    }
-    if let Some(homepage) = &meta.homepage {
-        response.insert("homepage".into(), json!(homepage));
-    }
-    if let Some(origin) = &meta.origin {
-        response.insert("origin".into(), json!(origin));
-    }
-    if !linked.is_empty() {
-        let has_scripts = skill_dir.is_some()
-            && linked.iter().any(|v| {
-                v.get("path")
-                    .and_then(|p| p.as_str())
-                    .is_some_and(|p| p.starts_with("scripts/"))
-            });
-        let hint = if has_scripts {
-            "This skill includes executable scripts. Use the `skill_dir` path \
-             to resolve script references in the body. To view a linked file, \
-             call read_skill again with file_path set to one of the paths in \
-             linked_files."
         } else {
-            "To view a linked file, call read_skill again with file_path \
-             set to one of the paths in linked_files."
+            "To view a linked file, call read_skill again with file_path set to one of the paths in linked_files (e.g. file_path=\"references/api.md\"). Nested paths inside those directories are also supported."
         };
-        response.insert("usage_hint".into(), json!(hint));
+        response["usage_hint"] = json!(hint);
     }
-    response.insert("linked_files".into(), json!(linked));
-
-    Value::Object(response)
+    response
 }

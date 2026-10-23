@@ -19,7 +19,6 @@ chelix-projects       = { workspace = true }
 chelix-providers      = { workspace = true }
 chelix-service-traits = { workspace = true }
 chelix-sessions       = { workspace = true }
-chelix-skills         = { workspace = true }
 chelix-telegram       = { optional = true, workspace = true }
 chelix-tools          = { workspace = true }
 chelix-voice          = { workspace = true }
@@ -35,7 +34,6 @@ tracing               = { workspace = true }
 uuid                  = { workspace = true }
 
 [features]
-bundled-skills     = ["chelix-skills/bundled-skills"]
 metrics            = ["chelix-metrics/sqlite", "dep:chelix-metrics"]
 push-notifications = ["dep:chrono"]
 telegram           = ["dep:chelix-telegram"]
@@ -45,6 +43,7 @@ default = []
 
 [dev-dependencies]
 chelix-channels = { workspace = true }
+chelix-skills   = { features = ["test-util"], workspace = true }
 sqlx            = { workspace = true }
 tempfile        = { workspace = true }
 tokio           = { workspace = true }

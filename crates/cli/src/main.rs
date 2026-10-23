@@ -411,20 +411,27 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn handle_skills(action: SkillAction) -> anyhow::Result<()> {
-    use chelix_skills::{
-        discover::FsSkillDiscoverer,
-        registry::{InMemoryRegistry, SkillRegistry},
+    use chelix_call_bus::{
+        ListSkills, ReadSkillFile, SkillActor, SkillLocate, SkillSource, SkillView,
     };
-
-    let bus = chelix_skills::skill_file::open_skill_bus().map_err(anyhow::Error::msg)?;
-    let search_paths = FsSkillDiscoverer::default_paths();
-    let discoverer = FsSkillDiscoverer::new(search_paths, std::sync::Arc::clone(&bus));
-
+    let bus = chelix_skills::skill_file::open_skill_bus_at(&chelix_config::data_dir())
+        .map_err(anyhow::Error::msg)?;
     match action {
         SkillAction::List => {
-            let registry =
-                InMemoryRegistry::from_discoverer(&discoverer, std::sync::Arc::clone(&bus)).await?;
-            let skills = registry.list_skills().await?;
+            let skills = bus
+                .call(ListSkills::Process {
+                    view: SkillView::Merged,
+                })
+                .await?
+                .into_iter()
+                .filter(|skill| {
+                    matches!(
+                        skill.metadata.source,
+                        Some(SkillSource::Personal | SkillSource::Project)
+                    )
+                })
+                .map(|skill| skill.metadata)
+                .collect::<Vec<_>>();
             if skills.is_empty() {
                 println!("No skills found.");
             } else {
@@ -439,13 +446,19 @@ async fn handle_skills(action: SkillAction) -> anyhow::Result<()> {
             }
         },
         SkillAction::Info { name } => {
-            let registry =
-                InMemoryRegistry::from_discoverer(&discoverer, std::sync::Arc::clone(&bus)).await?;
-            let content = registry.load_skill(&name).await?;
+            let content = bus
+                .call(ReadSkillFile {
+                    name,
+                    locate: SkillLocate::Discovered,
+                    actor: SkillActor::Process,
+                    file_path: None,
+                    max_bytes: None,
+                })
+                .await?;
             let meta = &content.metadata;
             println!("Name:        {}", meta.name);
             println!("Description: {}", meta.description);
-            if let Some(ref license) = meta.license {
+            if let Some(license) = &meta.license {
                 println!("License:     {license}");
             }
             println!("Path:        {}", meta.path.display());
@@ -453,7 +466,6 @@ async fn handle_skills(action: SkillAction) -> anyhow::Result<()> {
             println!("\n{}", content.body);
         },
     }
-
     Ok(())
 }
 

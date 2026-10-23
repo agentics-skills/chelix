@@ -12,6 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow             = { workspace = true }
+chelix-call-bus    = { workspace = true }
 chelix-common      = { workspace = true }
 chelix-config      = { workspace = true }
 chelix-cron        = { workspace = true }
@@ -44,14 +45,14 @@ tikv-jemallocator = { optional = true, workspace = true }
 tempfile = { workspace = true }
 
 [features]
-agent          = ["chelix-gateway/agent", "chelix-web?/agent"]
+agent = ["chelix-gateway/agent", "chelix-web?/agent"]
 # User-facing integrations stay default-on in the CLI crate per workspace policy,
 # even when the underlying implementation remains feature-gated in lower crates.
 #
 # `full` is the portable production feature set used by release, packaging, and
 # container builds. It intentionally excludes accelerator-specific features that
 # require host SDKs/toolchains not present on every target.
-bundled-skills = ["chelix-gateway/bundled-skills", "chelix-web?/bundled-skills"]
+bundled-skills = ["chelix-gateway/bundled-skills"]
 default = ["full"]
 full = [
   "agent",

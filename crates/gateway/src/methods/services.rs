@@ -430,6 +430,7 @@ mod tests {
                 client_role: "operator".into(),
                 client_scopes: vec!["operator.write".into(), "operator.read".into()],
                 state: GatewayState::new(
+                    chelix_call_bus::CallBus::new(),
                     ResolvedAuth {
                         mode: AuthMode::Token,
                         token: None,
@@ -463,6 +464,7 @@ mod tests {
             client_role: "operator".into(),
             client_scopes: vec!["operator.write".into(), "operator.read".into()],
             state: GatewayState::new(
+                chelix_call_bus::CallBus::new(),
                 ResolvedAuth {
                     mode: AuthMode::Token,
                     token: None,

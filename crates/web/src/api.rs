@@ -488,70 +488,24 @@ pub async fn api_hooks_handler(State(state): State<AppState>) -> impl IntoRespon
 // ── Skills ───────────────────────────────────────────────────────────────────
 
 pub async fn api_skills_handler(State(state): State<AppState>) -> impl IntoResponse {
-    let config = match load_config_for_api() {
-        Ok(config) => config,
-        Err(response) => return *response,
-    };
-    let mut skills = Vec::new();
-
+    let listed = match state
+        .gateway
+        .call_bus
+        .call(chelix_call_bus::ListSkills::Process {
+            view: chelix_call_bus::SkillView::Merged,
+        })
+        .await
     {
-        use chelix_skills::discover::{FsSkillDiscoverer, SkillDiscoverer};
-        let data_dir = chelix_config::data_dir();
-        let search_paths = vec![
-            (
-                data_dir.join("skills"),
-                chelix_skills::types::SkillSource::Personal,
-            ),
-            (
-                data_dir.join(".chelix/skills"),
-                chelix_skills::types::SkillSource::Project,
-            ),
-        ];
-        let Some(bus) = state.gateway.call_bus.get() else {
-            return IntoResponse::into_response((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "call bus is not installed",
-            ));
-        };
-        let fs_discoverer = FsSkillDiscoverer::new(search_paths, std::sync::Arc::clone(bus));
-
-        #[cfg(feature = "bundled-skills")]
-        let discovered = {
-            let bundled = std::sync::Arc::new(chelix_skills::bundled::BundledSkillStore::new(
-                std::sync::Arc::clone(bus),
-            ));
-            let composite = chelix_skills::discover::CompositeSkillDiscoverer::new(
-                Box::new(fs_discoverer),
-                bundled,
-            );
-            composite.discover().await
-        };
-        #[cfg(not(feature = "bundled-skills"))]
-        let discovered = fs_discoverer.discover().await;
-
-        if let Ok(discovered) = discovered {
-            for s in discovered {
-                let protected = chelix_gateway::services::is_protected_discovered_skill(&s.name);
-                let is_bundled = s.source == Some(chelix_skills::types::SkillSource::Bundled);
-                let enabled = if is_bundled {
-                    config
-                        .skills
-                        .is_bundled_skill_enabled(&s.name, s.category.as_deref())
-                } else {
-                    true
-                };
-                skills.push(serde_json::json!({
-                    "name": s.name,
-                    "description": s.description,
-                    "source": s.source,
-                    "enabled": enabled,
-                    "protected": protected,
-                    "allowed_agents": s.allowed_agents,
-                }));
-            }
-        }
-    }
-
+        Ok(skills) => skills,
+        Err(error) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response();
+        },
+    };
+    let skills = listed.into_iter().map(|skill| {
+        let meta = skill.metadata;
+        let protected = chelix_gateway::services::is_protected_discovered_skill(&meta.name);
+        serde_json::json!({ "name": meta.name, "description": meta.description, "source": meta.source, "enabled": skill.enabled, "protected": protected, "allowed_agents": meta.allowed_agents })
+    }).collect::<Vec<_>>();
     Json(serde_json::json!({ "skills": skills })).into_response()
 }
 

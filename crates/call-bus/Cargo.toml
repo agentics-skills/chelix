@@ -7,13 +7,14 @@ version.workspace = true
 [dependencies]
 chelix-metrics = { optional = true, workspace = true }
 metrics        = { optional = true, workspace = true }
+serde          = { workspace = true }
 thiserror      = { workspace = true }
 tokio          = { workspace = true }
 tracing        = { optional = true, workspace = true }
 
 [features]
 default = ["tracing"]
-metrics = ["dep:metrics", "dep:chelix-metrics"]
+metrics = ["dep:chelix-metrics", "dep:metrics"]
 tracing = ["dep:tracing"]
 
 [dev-dependencies]

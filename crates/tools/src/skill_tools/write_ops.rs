@@ -1,10 +1,13 @@
 //! Write and patch skill files: sidecar writes and surgical find/replace.
 
-use std::{path::PathBuf, sync::Arc};
+use {
+    chelix_call_bus::{SkillActor, SkillSidecarWrite, WriteSkillSidecars},
+    std::sync::Arc,
+};
 
 use {
     async_trait::async_trait,
-    chelix_agents::tool_registry::AgentTool,
+    chelix_agents::{tool_context::ToolExecutionContext, tool_registry::AgentTool},
     chelix_skills::usage::SkillUsageStore,
     serde_json::{Value, json},
 };
@@ -12,29 +15,18 @@ use {
 #[cfg(feature = "metrics")]
 use chelix_metrics::{counter, labels, skills as skills_metrics};
 
-use {
-    super::{
-        MAX_SIDECAR_FILES_PER_CALL,
-        helpers::{audit_sidecar_file_write, validate_sidecar_files, write_sidecar_files},
-    },
-    crate::error::Error,
-};
+use {crate::error::Error, chelix_call_bus::MAX_SIDECAR_FILES_PER_CALL};
 
 // ── WriteSkillFilesTool ─────────────────────────────────────
 
 /// Tool that writes supplementary text files inside an existing personal skill.
 pub struct WriteSkillFilesTool {
-    data_dir: PathBuf,
     bus: Arc<chelix_call_bus::CallBus>,
 }
 
 impl WriteSkillFilesTool {
-    pub fn new(data_dir: PathBuf, bus: Arc<chelix_call_bus::CallBus>) -> Self {
-        Self { data_dir, bus }
-    }
-
-    fn skills_dir(&self) -> PathBuf {
-        self.data_dir.join("skills")
+    pub fn new(bus: Arc<chelix_call_bus::CallBus>) -> Self {
+        Self { bus }
     }
 }
 
@@ -82,49 +74,63 @@ impl AgentTool for WriteSkillFilesTool {
         })
     }
 
-    async fn execute(&self, params: Value) -> anyhow::Result<Value> {
+    async fn execute(&self, _params: Value) -> anyhow::Result<Value> {
+        Err(Error::message("missing agent id").into())
+    }
+
+    async fn execute_with_context(
+        &self,
+        params: Value,
+        context: &ToolExecutionContext,
+    ) -> anyhow::Result<Value> {
+        let id = super::helpers::agent_id(context)?;
         let name = params
             .get("name")
             .and_then(|v| v.as_str())
             .ok_or_else(|| Error::message("missing 'name'"))?;
 
-        if !chelix_skills::parse::validate_name(name) {
-            return Err(Error::message(format!(
-                "invalid skill name '{name}': must be 1-64 lowercase alphanumeric/hyphen chars"
-            ))
-            .into());
-        }
-
         let files = params
             .get("files")
             .and_then(|v| v.as_array())
             .ok_or_else(|| Error::message("missing 'files'"))?;
-        let validated = validate_sidecar_files(files)?;
-
-        let skill_dir = self.skills_dir().join(name);
-        if !skill_dir.exists() {
-            return Err(Error::message(format!(
-                "skill '{name}' does not exist; use create_skill first"
-            ))
-            .into());
-        }
-
-        let skill_md_path = skill_dir.join("SKILL.md");
-        self.bus
-            .call(chelix_service_traits::ReadSkillFile {
-                path: skill_md_path,
-                max_bytes: None,
+        let files = files
+            .iter()
+            .map(|file| {
+                let relative_path = file
+                    .get("path")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| Error::message("each file needs a string 'path'"))?
+                    .to_string();
+                let content = file
+                    .get("content")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| Error::message("each file needs a string 'content'"))?
+                    .to_string();
+                Ok(SkillSidecarWrite {
+                    relative_path,
+                    content,
+                })
+            })
+            .collect::<crate::Result<Vec<_>>>()?;
+        let file_paths = files
+            .iter()
+            .map(|file| file.relative_path.clone())
+            .collect::<Vec<_>>();
+        let directory = self
+            .bus
+            .call(WriteSkillSidecars {
+                name: name.into(),
+                files,
+                agent_id: id.into(),
             })
             .await
-            .map_err(|error| anyhow::anyhow!(error))?;
-        write_sidecar_files(&skill_dir, &validated).await?;
-        audit_sidecar_file_write(&self.data_dir, name, &validated);
+            .map_err(|error| super::helpers::missing_skill(name, error))?;
 
         Ok(json!({
             "written": true,
-            "path": skill_dir.display().to_string(),
-            "files_written": validated.len(),
-            "files": validated.iter().map(|file| file.relative_path.display().to_string()).collect::<Vec<_>>(),
+            "path": directory.path.display().to_string(),
+            "files_written": file_paths.len(),
+            "files": file_paths,
         }))
     }
 }
@@ -140,15 +146,13 @@ const MAX_PATCHES_PER_CALL: usize = 10;
 /// rewrite, this tool applies one or more exact-string replacements, reducing
 /// hallucination risk and token cost.
 pub struct PatchSkillTool {
-    data_dir: PathBuf,
     bus: Arc<chelix_call_bus::CallBus>,
     usage_store: Option<SkillUsageStore>,
 }
 
 impl PatchSkillTool {
-    pub fn new(data_dir: PathBuf, bus: Arc<chelix_call_bus::CallBus>) -> Self {
+    pub fn new(bus: Arc<chelix_call_bus::CallBus>) -> Self {
         Self {
-            data_dir,
             bus,
             usage_store: None,
         }
@@ -158,10 +162,6 @@ impl PatchSkillTool {
     pub fn with_usage_store(mut self, store: SkillUsageStore) -> Self {
         self.usage_store = Some(store);
         self
-    }
-
-    fn skills_dir(&self) -> PathBuf {
-        self.data_dir.join("skills")
     }
 }
 
@@ -214,7 +214,16 @@ impl AgentTool for PatchSkillTool {
         })
     }
 
-    async fn execute(&self, params: Value) -> anyhow::Result<Value> {
+    async fn execute(&self, _params: Value) -> anyhow::Result<Value> {
+        Err(Error::message("missing agent id").into())
+    }
+
+    async fn execute_with_context(
+        &self,
+        params: Value,
+        context: &ToolExecutionContext,
+    ) -> anyhow::Result<Value> {
+        let id = super::helpers::agent_id(context)?;
         let name = params
             .get("name")
             .and_then(|v| v.as_str())
@@ -225,12 +234,6 @@ impl AgentTool for PatchSkillTool {
             .ok_or_else(|| Error::message("missing 'patches'"))?;
         let new_description = params.get("description").and_then(|v| v.as_str());
 
-        if !chelix_skills::parse::validate_name(name) {
-            return Err(Error::message(format!(
-                "invalid skill name '{name}': must be 1-64 lowercase alphanumeric/hyphen chars"
-            ))
-            .into());
-        }
         if patches.is_empty() {
             return Err(Error::message("at least one patch is required").into());
         }
@@ -241,15 +244,6 @@ impl AgentTool for PatchSkillTool {
             .into());
         }
 
-        let skill_dir = self.skills_dir().join(name);
-        if !skill_dir.exists() {
-            return Err(Error::message(format!(
-                "skill '{name}' does not exist; use create_skill first"
-            ))
-            .into());
-        }
-
-        let skill_md_path = skill_dir.join("SKILL.md");
         let mut replacements = Vec::with_capacity(patches.len());
         for (i, patch) in patches.iter().enumerate() {
             let find = patch
@@ -264,13 +258,14 @@ impl AgentTool for PatchSkillTool {
         }
         let patched = self
             .bus
-            .call(chelix_service_traits::PatchSkillFile {
-                path: skill_md_path,
+            .call(chelix_call_bus::PatchSkillFile {
+                name: name.into(),
+                actor: SkillActor::Agent { id: id.into() },
                 patches: replacements.clone(),
                 description: new_description.map(str::to_string),
             })
             .await
-            .map_err(|error| anyhow::anyhow!(error))?;
+            .map_err(|error| super::helpers::missing_skill(name, error))?;
         let applied = replacements.len();
         let patched_body = patched.body;
 

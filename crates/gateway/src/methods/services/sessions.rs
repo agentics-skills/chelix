@@ -566,6 +566,7 @@ mod tests {
         let mutations = Arc::clone(&services.session_mutations);
         services.session = session;
         let state = GatewayState::new(
+            chelix_call_bus::CallBus::new(),
             ResolvedAuth {
                 mode: AuthMode::Token,
                 token: None,

@@ -62,6 +62,10 @@ pub async fn prepare_gateway_core(
         chelix_config::set_data_dir(dir.clone());
     }
 
+    let call_bus = chelix_call_bus::CallBus::new();
+    call_bus.require::<chelix_call_bus::StopSession>()?;
+    chelix_skills::skill_file::require_skill_files(&call_bus)?;
+
     // Resolve auth from environment (CHELIX_TOKEN / CHELIX_PASSWORD).
     let token = std::env::var("CHELIX_TOKEN").ok();
     let password = std::env::var("CHELIX_PASSWORD").ok();
@@ -400,6 +404,13 @@ pub async fn prepare_gateway_core(
 
     // Re-resolve ${VAR} placeholders from runtime overrides.
     config = chelix_config::resubstitute_config(&config, &runtime_env_overrides)?;
+    chelix_skills::skill_file::bind_skill_files(
+        &call_bus,
+        data_dir.clone(),
+        Arc::clone(&agents_config),
+        Arc::new(tokio::sync::RwLock::new(config.skills.clone())),
+    )
+    .map_err(anyhow::Error::msg)?;
 
     live_mcp
         .manager()
@@ -735,12 +746,6 @@ pub async fn prepare_gateway_core(
     // ── Hook discovery & registration ─────────────────────────────────────
     seed_default_workspace_markdown_files();
     warn_on_workspace_prompt_file_truncation(&config);
-    let call_bus = chelix_call_bus::CallBus::new();
-    call_bus
-        .require::<chelix_service_traits::StopSession>()
-        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
-    chelix_skills::skill_file::bind_skill_files(&call_bus)
-        .map_err(|error| anyhow::anyhow!(error))?;
     services.skills = Arc::new(crate::services::NoopSkillsService::new(Arc::clone(
         &call_bus,
     )));

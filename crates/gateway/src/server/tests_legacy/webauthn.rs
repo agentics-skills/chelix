@@ -16,6 +16,7 @@ async fn sync_runtime_webauthn_host_registers_new_origin() {
             .unwrap(),
     );
     let gateway = crate::state::GatewayState::with_options(
+        chelix_call_bus::CallBus::new(),
         ResolvedAuth {
             mode: AuthMode::Token,
             token: None,
@@ -68,6 +69,7 @@ async fn sync_runtime_webauthn_host_registers_new_origin() {
 #[tokio::test]
 async fn sync_runtime_webauthn_host_rejects_invalid_origin() {
     let gateway = crate::state::GatewayState::new(
+        chelix_call_bus::CallBus::new(),
         ResolvedAuth {
             mode: AuthMode::Token,
             token: None,
@@ -95,6 +97,7 @@ async fn sync_runtime_webauthn_host_rejects_invalid_origin() {
 #[tokio::test]
 async fn sync_runtime_webauthn_host_skips_insecure_http_origin() {
     let gateway = crate::state::GatewayState::new(
+        chelix_call_bus::CallBus::new(),
         ResolvedAuth {
             mode: AuthMode::Token,
             token: None,

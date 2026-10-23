@@ -3,6 +3,10 @@
 mod bus;
 mod error;
 mod procedure;
+mod skill_file;
+mod stop_session;
+
+pub use {skill_file::*, stop_session::*};
 
 pub use {
     bus::{CallBus, PublishOutcome, QUEUE_CAPACITY},

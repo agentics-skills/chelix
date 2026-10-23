@@ -417,12 +417,12 @@ impl super::types::LiveChatService {
     pub async fn stop_run(
         &self,
         run_id: String,
-    ) -> Result<chelix_service_traits::StopSessionOutcome, ServiceError> {
+    ) -> Result<chelix_call_bus::StopSessionOutcome, chelix_call_bus::StopSessionError> {
         let active = self.active_runs.read().await;
         let slot = self.stop_gate.capture_run(&active, &run_id);
         drop(active);
         let Some(slot) = slot else {
-            return Ok(chelix_service_traits::StopSessionOutcome {
+            return Ok(chelix_call_bus::StopSessionOutcome {
                 cancelled: false,
                 run_id: Some(run_id),
             });
@@ -434,8 +434,8 @@ impl super::types::LiveChatService {
             true
         };
         let result = wait_run_done(slot).await;
-        result.map_err(ServiceError::message)?;
-        Ok(chelix_service_traits::StopSessionOutcome {
+        result.map_err(stop_error)?;
+        Ok(chelix_call_bus::StopSessionOutcome {
             cancelled,
             run_id: Some(run_id),
         })
@@ -445,9 +445,9 @@ impl super::types::LiveChatService {
         &self,
         key: &str,
         expected: Option<&str>,
-    ) -> Result<chelix_service_traits::StopSessionOutcome, ServiceError> {
+    ) -> Result<chelix_call_bus::StopSessionOutcome, chelix_call_bus::StopSessionError> {
         let Some(run) = self.stop_gate.choose_stop(key, expected) else {
-            return Ok(chelix_service_traits::StopSessionOutcome {
+            return Ok(chelix_call_bus::StopSessionOutcome {
                 cancelled: false,
                 run_id: expected.map(str::to_string),
             });
@@ -474,18 +474,18 @@ impl super::types::LiveChatService {
                         cancelled = true;
                     }
                     run_id = Some(current.clone());
-                    wait_run_done(slot).await.map_err(ServiceError::message)?;
+                    wait_run_done(slot).await.map_err(stop_error)?;
                 }
             }
             let snapshot = self.stop_gate.snapshot_stop(key, None, &mut seen);
             if let Some(error) = snapshot.error {
-                return Err(ServiceError::message(error));
+                return Err(stop_error(error));
             }
             if snapshot.idle {
                 self.queued_prompts
                     .clear(chelix_sessions::SessionKey::new(key))
                     .await
-                    .map_err(|error| ServiceError::message(error.to_string()))?;
+                    .map_err(|error| stop_error(error.to_string()))?;
                 let status = chelix_sessions::QueuedPromptsStatus {
                     session_id: chelix_sessions::SessionKey::new(key),
                     prompts: Vec::new(),
@@ -499,7 +499,7 @@ impl super::types::LiveChatService {
                     .stop_gate
                     .snapshot_stop(key, Some(snapshot.epoch), &mut seen);
                 if let Some(error) = snapshot.error {
-                    return Err(ServiceError::message(error));
+                    return Err(stop_error(error));
                 }
                 if snapshot.idle {
                     break;
@@ -510,7 +510,7 @@ impl super::types::LiveChatService {
         }
         stop_depth.active = false;
         self.stop_gate.end_stop(key);
-        Ok(chelix_service_traits::StopSessionOutcome { cancelled, run_id })
+        Ok(chelix_call_bus::StopSessionOutcome { cancelled, run_id })
     }
 }
 
@@ -726,4 +726,27 @@ fn finalize_dropped_run_blocking(
     if !still_current {
         session_gates.notify();
     }
+}
+
+fn stop_error(message: impl ToString) -> chelix_call_bus::StopSessionError {
+    chelix_call_bus::StopSessionError {
+        message: message.to_string(),
+    }
+}
+
+pub fn register_stop_session(
+    bus: &chelix_call_bus::CallBus,
+    chat: Arc<super::types::LiveChatService>,
+) -> Result<(), chelix_call_bus::RegError> {
+    bus.register(move |request: chelix_call_bus::StopSession| {
+        let chat = Arc::clone(&chat);
+        async move {
+            match request {
+                chelix_call_bus::StopSession::Run { run_id } => chat.stop_run(run_id).await,
+                chelix_call_bus::StopSession::Session { key, run_id } => {
+                    chat.stop_current_session(&key, run_id.as_deref()).await
+                },
+            }
+        }
+    })
 }

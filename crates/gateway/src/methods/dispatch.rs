@@ -591,6 +591,7 @@ mod tests {
             client_role: "operator".into(),
             client_scopes: scopes(&["operator.admin"]),
             state: GatewayState::new(
+                chelix_call_bus::CallBus::new(),
                 ResolvedAuth {
                     mode: AuthMode::Token,
                     token: None,
@@ -640,6 +641,7 @@ mod tests {
             client_role: "operator".into(),
             client_scopes: scopes(&["operator.write"]),
             state: GatewayState::new(
+                chelix_call_bus::CallBus::new(),
                 ResolvedAuth {
                     mode: AuthMode::Token,
                     token: None,
@@ -669,6 +671,7 @@ mod tests {
         };
 
         let state = GatewayState::new(
+            chelix_call_bus::CallBus::new(),
             ResolvedAuth {
                 mode: AuthMode::Token,
                 token: None,

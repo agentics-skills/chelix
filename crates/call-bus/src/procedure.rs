@@ -11,8 +11,8 @@ pub trait Event: Clone + Send + 'static {}
 pub enum Delivery {
     /// Wait for every subscriber. Subscriber errors return to the publisher.
     Wait,
-    /// Enqueue without loss and without `Lagged`. The publisher does not wait.
+    /// Enqueue the event. The publisher does not wait.
     Queue,
-    /// UI and telemetry. The publisher chooses loss by selecting this variant.
+    /// A slow receiver may lose the event. The publisher selects loss with this variant.
     Detach,
 }

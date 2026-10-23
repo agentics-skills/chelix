@@ -3,6 +3,7 @@
 mod chat_impl;
 mod session_gate;
 mod stop_gate;
+pub use stop_gate::register_stop_session;
 mod types;
 
 pub(crate) use types::{

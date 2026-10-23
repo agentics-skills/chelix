@@ -7,17 +7,19 @@
 use std::{
     fs::File,
     io::{Read, Write},
-    path::Path,
+    path::{Path, PathBuf},
+    sync::OnceLock,
 };
 
 use {serde::Deserialize, std::sync::Arc};
 
-use {
-    chelix_call_bus::CallBus,
-    chelix_service_traits::{
-        CreateSkillFile, PatchSkillFile, ReadSkillFile, ReplaceSkillFile, SkillFileError,
-    },
+use chelix_call_bus::SkillFileError;
+
+pub use crate::skill_handlers::{
+    bind_skill_files, open_skill_bus_at, register_skill_files, require_skill_files,
 };
+#[cfg(any(test, feature = "test-util"))]
+pub use crate::skill_handlers::{open_skill_bus_for_agent, open_skill_bus_with_agents};
 
 use crate::{
     error::{Error, Result},
@@ -30,9 +32,17 @@ type Job = Box<dyn FnOnce() + Send>;
 /// In-process queue for skill file reads and writes.
 pub struct SkillFiles {
     tx: tokio::sync::mpsc::UnboundedSender<Job>,
+    pub(crate) root: OnceLock<PathBuf>,
 }
 
 impl SkillFiles {
+    pub(crate) fn root(&self) -> Result<&Path> {
+        self.root
+            .get()
+            .map(PathBuf::as_path)
+            .ok_or_else(|| Error::Validation("skill file root is not installed".into()))
+    }
+
     /// Spawn the single worker thread that runs queued file operations.
     pub fn new() -> std::result::Result<Arc<Self>, String> {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Job>();
@@ -44,7 +54,10 @@ impl SkillFiles {
                 }
             })
             .map_err(|error| error.to_string())?;
-        Ok(Arc::new(Self { tx }))
+        Ok(Arc::new(Self {
+            tx,
+            root: OnceLock::new(),
+        }))
     }
 }
 
@@ -544,7 +557,8 @@ struct RawMeta {
     denied_agents: Vec<String>,
 }
 
-fn bus_error(error: Error) -> SkillFileError {
+pub(crate) fn bus_error(error: Error) -> SkillFileError {
+    tracing::error!(%error, "skill file operation failed");
     match error {
         Error::NotFound(message) => SkillFileError::NotFound(message),
         Error::AlreadyExists(message) => SkillFileError::AlreadyExists(message),
@@ -553,119 +567,6 @@ fn bus_error(error: Error) -> SkillFileError {
         },
         other => SkillFileError::Failed(other.to_string()),
     }
-}
-
-pub(crate) fn from_call(error: chelix_call_bus::CallError<SkillFileError>) -> Error {
-    match error {
-        chelix_call_bus::CallError::Failed(SkillFileError::NotFound(message)) => {
-            Error::NotFound(message)
-        },
-        chelix_call_bus::CallError::Failed(SkillFileError::AlreadyExists(message)) => {
-            Error::AlreadyExists(message)
-        },
-        chelix_call_bus::CallError::Failed(SkillFileError::Failed(message)) => {
-            Error::Parse(message)
-        },
-        other => Error::Validation(other.to_string()),
-    }
-}
-
-/// Register the skill file procedures on a process bus.
-pub fn register_skill_files(
-    bus: &CallBus,
-    files: &Arc<SkillFiles>,
-) -> std::result::Result<(), chelix_call_bus::RegError> {
-    let read_files = Arc::clone(files);
-    bus.register(move |request: ReadSkillFile| {
-        let files = Arc::clone(&read_files);
-        async move {
-            read(&files, &request.path, request.max_bytes)
-                .await
-                .map_err(bus_error)
-        }
-    })?;
-    let create_files = Arc::clone(files);
-    bus.register(move |request: CreateSkillFile| {
-        let files = Arc::clone(&create_files);
-        async move {
-            create(
-                &files,
-                &request.path,
-                SkillFields {
-                    name: request.name,
-                    description: request.description,
-                    body: request.body,
-                },
-                request.creator_agent_id.as_deref(),
-            )
-            .await
-            .map_err(bus_error)
-        }
-    })?;
-    let replace_files = Arc::clone(files);
-    bus.register(move |request: ReplaceSkillFile| {
-        let files = Arc::clone(&replace_files);
-        async move {
-            replace(&files, &request.path, SkillFields {
-                name: request.name,
-                description: request.description,
-                body: request.body,
-            })
-            .await
-            .map_err(bus_error)
-        }
-    })?;
-    let patch_files = Arc::clone(files);
-    bus.register(move |request: PatchSkillFile| {
-        let files = Arc::clone(&patch_files);
-        async move {
-            patch(
-                &files,
-                &request.path,
-                &request.patches,
-                request.description.as_deref(),
-            )
-            .await
-            .map_err(bus_error)
-        }
-    })?;
-    Ok(())
-}
-
-/// Require and register the skill file procedures. The caller seals the bus.
-pub fn bind_skill_files(bus: &CallBus) -> std::result::Result<(), String> {
-    bus.require::<ReadSkillFile>()
-        .map_err(|error| error.to_string())?;
-    bus.require::<CreateSkillFile>()
-        .map_err(|error| error.to_string())?;
-    bus.require::<ReplaceSkillFile>()
-        .map_err(|error| error.to_string())?;
-    bus.require::<PatchSkillFile>()
-        .map_err(|error| error.to_string())?;
-    let files = SkillFiles::new()?;
-    register_skill_files(bus, &files).map_err(|error| error.to_string())?;
-    Ok(())
-}
-
-/// Build a sealed bus whose only procedures are the skill file operations.
-pub fn open_skill_bus() -> std::result::Result<Arc<CallBus>, String> {
-    let bus = CallBus::new();
-    bind_skill_files(&bus)?;
-    bus.seal().map_err(|error| error.to_string())?;
-    Ok(bus)
-}
-
-pub(crate) async fn read_on(
-    bus: &CallBus,
-    path: &Path,
-    max_bytes: Option<u64>,
-) -> Result<SkillContent> {
-    bus.call(ReadSkillFile {
-        path: path.to_path_buf(),
-        max_bytes,
-    })
-    .await
-    .map_err(from_call)
 }
 
 #[cfg(test)]

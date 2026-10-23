@@ -7,7 +7,6 @@ version.workspace = true
 async-trait           = { workspace = true }
 chelix-call-bus       = { workspace = true }
 chelix-config         = { workspace = true }
-chelix-service-traits = { workspace = true }
 chelix-metrics        = { optional = true, workspace = true }
 include_dir           = { optional = true, workspace = true }
 notify-debouncer-full = { optional = true, workspace = true }
@@ -15,6 +14,7 @@ serde                 = { workspace = true }
 serde_json            = { workspace = true }
 serde_yaml            = { workspace = true }
 thiserror             = { workspace = true }
+time                  = { workspace = true }
 tokio                 = { workspace = true }
 tracing               = { workspace = true }
 
@@ -23,6 +23,7 @@ bundled-skills = ["dep:include_dir"]
 default        = []
 file-watcher   = ["dep:notify-debouncer-full"]
 metrics        = ["dep:chelix-metrics"]
+test-util      = []
 
 [dev-dependencies]
 rstest   = { workspace = true }

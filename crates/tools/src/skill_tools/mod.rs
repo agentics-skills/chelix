@@ -12,16 +12,8 @@ pub use {
     write_ops::{PatchSkillTool, WriteSkillFilesTool},
 };
 
-const MAX_SIDECAR_FILES_PER_CALL: usize = 32;
-/// Per-sidecar-subdirectory cap used by the read path's listing. Enforcing a
-/// per-subdir quota guarantees every populated subdirectory shows up in the
-/// listing.
-const MAX_SIDECAR_FILES_PER_SUBDIR: usize = 8;
-const MAX_SIDECAR_FILE_BYTES: usize = 128 * 1024;
-const MAX_SIDECAR_TOTAL_BYTES: usize = 512 * 1024;
-
 /// Cap on the size of a single skill body (SKILL.md).
-const MAX_SKILL_BODY_BYTES: usize = chelix_service_traits::MAX_SKILL_FILE_BYTES as usize;
+const MAX_SKILL_BODY_BYTES: usize = chelix_call_bus::MAX_SKILL_FILE_BYTES as usize;
 
 #[cfg(test)]
 mod tests;

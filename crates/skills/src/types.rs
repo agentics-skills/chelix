@@ -1,6 +1,6 @@
 use serde::{Deserialize, Deserializer, de};
 
-pub use chelix_service_traits::{SkillContent, SkillMetadata, SkillOrigin, SkillSource};
+pub use chelix_call_bus::{SkillContent, SkillMetadata, SkillOrigin, SkillSource};
 
 /// Agent list: a missing value, null, or `[]` is empty. Any other shape is an error.
 pub(crate) fn deserialize_agent_list<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>

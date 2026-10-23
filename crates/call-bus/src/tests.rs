@@ -346,3 +346,22 @@ async fn detach_is_the_only_mode_that_drops_before_close() {
         .unwrap_or_else(|| panic!("detach succeeded"));
     assert!(matches!(error, PublishError::Closed));
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn detach_records_subscriber_error() {
+    let bus = CallBus::new();
+    ready(bus.subscribe(|_: Notice| async {
+        Err(Box::new(std::io::Error::other("subscriber failed")) as Box<dyn Error + Send + Sync>)
+    }));
+    ready(bus.seal());
+    let before = bus.subscriber_errors();
+    ready(bus.publish(&Notice(1), Delivery::Detach).await);
+    for _ in 0..100 {
+        if bus.subscriber_errors() == before + 1 {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(bus.subscriber_errors(), before + 1);
+    bus.close().await;
+}

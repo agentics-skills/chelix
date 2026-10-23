@@ -10,8 +10,8 @@ impl LiveSessionService {
             .ok_or_else(|| ServiceError::message("not found"))?;
         self.preflight_session_delete(&entry, force).await?;
         self.call_bus
-            .call(chelix_service_traits::StopSession::Session {
-                key: SessionKey::new(key),
+            .call(chelix_call_bus::StopSession::Session {
+                key: key.to_string(),
                 run_id: None,
             })
             .await

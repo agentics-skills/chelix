@@ -26,8 +26,8 @@ use crate::{
         user_documents_for_persistence,
     },
     prompt::{
-        apply_chat_execution_context, build_prompt_runtime_context, discover_skills_if_enabled,
-        filter_skills_for_agent, resolve_channel_runtime_context, validate_prompt_agent_id,
+        apply_chat_execution_context, build_prompt_runtime_context,
+        resolve_channel_runtime_context, validate_prompt_agent_id,
     },
     prompt_queue::{
         broadcast_queued_prompts_status, normalize_queued_prompt_content,
@@ -617,9 +617,16 @@ impl LiveChatService {
         let session_agent_id = persona.agent_id.clone();
 
         // Discover enabled skills and apply the live per-agent policy.
-        let discovered_skills = discover_skills_if_enabled(&persona.config, &self.call_bus).await;
-        let discovered_skills =
-            filter_skills_for_agent(discovered_skills, &session_agent_id, &persona.agent.skills);
+        let discovered_skills = self
+            .call_bus
+            .call(chelix_call_bus::ListSkills::Agent {
+                id: session_agent_id.clone(),
+            })
+            .await
+            .map_err(|error| ServiceError::message(error.to_string()))?
+            .into_iter()
+            .map(|skill| skill.metadata)
+            .collect::<Vec<_>>();
         info!(
             session = %session_key,
             skills_len = discovered_skills.len(),
@@ -906,7 +913,6 @@ impl LiveChatService {
         };
 
         let queued_prompts = Arc::clone(&self.queued_prompts);
-        let call_bus = Arc::clone(&self.call_bus);
         let memory_forget_provider_resolver = MemoryForgetProviderResolver::new(
             Arc::clone(&self.providers),
             Arc::clone(&self.session_metadata),
@@ -1031,7 +1037,6 @@ impl LiveChatService {
                             manager: Arc::clone(&tool_permissions),
                             metadata: Arc::clone(&session_metadata),
                         }),
-                        &call_bus,
                     )
                     .await
                 }
