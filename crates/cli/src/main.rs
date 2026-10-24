@@ -416,14 +416,15 @@ async fn handle_skills(action: SkillAction) -> anyhow::Result<()> {
         registry::{InMemoryRegistry, SkillRegistry},
     };
 
-    let bus = chelix_skills::skill_file::open_skill_bus().map_err(anyhow::Error::msg)?;
+    let files = chelix_skills::skill_file::SkillFiles::new().map_err(anyhow::Error::msg)?;
     let search_paths = FsSkillDiscoverer::default_paths();
-    let discoverer = FsSkillDiscoverer::new(search_paths, std::sync::Arc::clone(&bus));
+    let discoverer = FsSkillDiscoverer::new(search_paths, std::sync::Arc::clone(&files));
 
     match action {
         SkillAction::List => {
             let registry =
-                InMemoryRegistry::from_discoverer(&discoverer, std::sync::Arc::clone(&bus)).await?;
+                InMemoryRegistry::from_discoverer(&discoverer, std::sync::Arc::clone(&files))
+                    .await?;
             let skills = registry.list_skills().await?;
             if skills.is_empty() {
                 println!("No skills found.");
@@ -440,7 +441,8 @@ async fn handle_skills(action: SkillAction) -> anyhow::Result<()> {
         },
         SkillAction::Info { name } => {
             let registry =
-                InMemoryRegistry::from_discoverer(&discoverer, std::sync::Arc::clone(&bus)).await?;
+                InMemoryRegistry::from_discoverer(&discoverer, std::sync::Arc::clone(&files))
+                    .await?;
             let content = registry.load_skill(&name).await?;
             let meta = &content.metadata;
             println!("Name:        {}", meta.name);

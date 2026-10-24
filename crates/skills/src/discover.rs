@@ -21,15 +21,18 @@ pub trait SkillDiscoverer: Send + Sync {
 pub struct FsSkillDiscoverer {
     /// (path, source) pairs to scan, in priority order.
     search_paths: Vec<(PathBuf, SkillSource)>,
-    bus: Arc<chelix_call_bus::CallBus>,
+    files: Arc<crate::skill_file::SkillFiles>,
 }
 
 impl FsSkillDiscoverer {
     pub fn new(
         search_paths: Vec<(PathBuf, SkillSource)>,
-        bus: Arc<chelix_call_bus::CallBus>,
+        files: Arc<crate::skill_file::SkillFiles>,
     ) -> Self {
-        Self { search_paths, bus }
+        Self {
+            search_paths,
+            files,
+        }
     }
 
     /// Build the default search paths for skill discovery.
@@ -68,7 +71,7 @@ impl SkillDiscoverer for FsSkillDiscoverer {
             match source {
                 // Project/Personal: scan one level deep (always enabled).
                 SkillSource::Project | SkillSource::Personal => {
-                    discover_flat(&self.bus, base_path, source, &mut skills).await;
+                    discover_flat(&self.files, base_path, source, &mut skills).await;
                 },
                 // Bundled skills are handled by CompositeSkillDiscoverer,
                 // not by filesystem path scanning.
@@ -124,7 +127,7 @@ impl SkillDiscoverer for CompositeSkillDiscoverer {
 
 /// Scan one level deep for SKILL.md dirs (project/personal sources).
 async fn discover_flat(
-    bus: &chelix_call_bus::CallBus,
+    files: &crate::skill_file::SkillFiles,
     base_path: &Path,
     source: &SkillSource,
     skills: &mut Vec<SkillMetadata>,
@@ -143,7 +146,7 @@ async fn discover_flat(
         if !skill_md.is_file() {
             continue;
         }
-        match crate::skill_file::read_on(bus, &skill_md, None).await {
+        match crate::skill_file::read(files, &skill_md, None).await {
             Ok(content) => {
                 let mut meta = content.metadata;
                 meta.source = Some(source.clone());
@@ -167,8 +170,8 @@ async fn discover_flat(
 mod tests {
     use super::*;
 
-    fn bus() -> Arc<chelix_call_bus::CallBus> {
-        crate::skill_file::open_skill_bus().unwrap()
+    fn files() -> Arc<crate::skill_file::SkillFiles> {
+        crate::skill_file::SkillFiles::new().unwrap()
     }
 
     #[test]
@@ -210,7 +213,7 @@ mod tests {
         .unwrap();
 
         let discoverer =
-            FsSkillDiscoverer::new(vec![(skills_dir.clone(), SkillSource::Project)], bus());
+            FsSkillDiscoverer::new(vec![(skills_dir.clone(), SkillSource::Project)], files());
         let skills = discoverer.discover().await.unwrap();
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].name, "my-skill");
@@ -221,7 +224,7 @@ mod tests {
     async fn test_discover_skips_missing_dirs() {
         let discoverer = FsSkillDiscoverer::new(
             vec![(PathBuf::from("/nonexistent/path"), SkillSource::Personal)],
-            bus(),
+            files(),
         );
         let skills = discoverer.discover().await.unwrap();
         assert!(skills.is_empty());
@@ -234,7 +237,7 @@ mod tests {
         std::fs::create_dir_all(skills_dir.join("not-a-skill")).unwrap();
         std::fs::write(skills_dir.join("not-a-skill/README.md"), "hello").unwrap();
 
-        let discoverer = FsSkillDiscoverer::new(vec![(skills_dir, SkillSource::Project)], bus());
+        let discoverer = FsSkillDiscoverer::new(vec![(skills_dir, SkillSource::Project)], files());
         let skills = discoverer.discover().await.unwrap();
         assert!(skills.is_empty());
     }
@@ -246,7 +249,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let discoverer = FsSkillDiscoverer::new(
             vec![(tmp.path().to_path_buf(), SkillSource::Personal)],
-            bus(),
+            files(),
         );
         for declaration in ["allowed_agents: hello", "denied_agents: [2]"] {
             std::fs::write(
@@ -273,7 +276,7 @@ mod tests {
         std::fs::create_dir_all(skills_dir.join("bad-skill")).unwrap();
         std::fs::write(skills_dir.join("bad-skill/SKILL.md"), "no frontmatter here").unwrap();
 
-        let discoverer = FsSkillDiscoverer::new(vec![(skills_dir, SkillSource::Project)], bus());
+        let discoverer = FsSkillDiscoverer::new(vec![(skills_dir, SkillSource::Project)], files());
         let skills = discoverer.discover().await.unwrap();
         assert!(skills.is_empty());
     }

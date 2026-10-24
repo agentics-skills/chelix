@@ -54,38 +54,38 @@ fn seed_test_skill(name: &str, body: &str) -> (TempDir, std::path::PathBuf) {
 
 /// Hermetic discoverer that only sees `<data_dir>/skills` as a Personal
 /// source — avoids hitting the user's real `~/.chelix` during tests.
-fn skill_bus() -> Arc<chelix_call_bus::CallBus> {
-    chelix_skills::skill_file::open_skill_bus().unwrap()
+fn skill_files() -> Arc<chelix_skills::skill_file::SkillFiles> {
+    chelix_skills::skill_file::SkillFiles::new().unwrap()
 }
 
 fn hermetic_discoverer(
     data_dir: &Path,
-    bus: Arc<chelix_call_bus::CallBus>,
+    files: Arc<chelix_skills::skill_file::SkillFiles>,
 ) -> Arc<dyn SkillDiscoverer> {
     Arc::new(FsSkillDiscoverer::new(
         vec![(data_dir.join("skills"), SkillSource::Personal)],
-        bus,
+        files,
     ))
 }
 
 /// Build a `ToolRegistry` populated the same way `server.rs` does for
 /// skill-management tools, but scoped to a single temporary data directory.
 fn registry_for(data_dir: &Path) -> ToolRegistry {
-    let bus = skill_bus();
+    let files = skill_files();
     let mut registry = ToolRegistry::new();
 
     // Mirror the gateway's skill tool registration block from `server.rs`.
     registry.register(Box::new(chelix_tools::skill_tools::CreateSkillTool::new(
         data_dir.to_path_buf(),
-        Arc::clone(&bus),
+        Arc::clone(&files),
     )));
     registry.register(Box::new(chelix_tools::skill_tools::UpdateSkillTool::new(
         data_dir.to_path_buf(),
-        Arc::clone(&bus),
+        Arc::clone(&files),
     )));
     registry.register(Box::new(chelix_tools::skill_tools::DeleteSkillTool::new(
         data_dir.to_path_buf(),
-        Arc::clone(&bus),
+        Arc::clone(&files),
     )));
     // `WriteSkillFilesTool` is gated behind `config.skills.enable_agent_sidecar_files`
     // in production; the integration suite always registers it so we can
@@ -93,7 +93,7 @@ fn registry_for(data_dir: &Path) -> ToolRegistry {
     registry.register(Box::new(
         chelix_tools::skill_tools::WriteSkillFilesTool::new(
             data_dir.to_path_buf(),
-            Arc::clone(&bus),
+            Arc::clone(&files),
         ),
     ));
 
@@ -101,8 +101,8 @@ fn registry_for(data_dir: &Path) -> ToolRegistry {
     // directory the other tools write to. This intentionally does not include
     // the global default paths — the test must be hermetic.
     registry.register(Box::new(chelix_tools::skill_tools::ReadSkillTool::new(
-        hermetic_discoverer(data_dir, Arc::clone(&bus)),
-        bus,
+        hermetic_discoverer(data_dir, Arc::clone(&files)),
+        files,
     )));
 
     registry
@@ -392,8 +392,8 @@ async fn read_skill_resolves_every_name_listed_in_prompt() {
 
     // Share ONE discoverer between the prompt builder and the tool —
     // this is the parity invariant in production too.
-    let bus = skill_bus();
-    let discoverer = hermetic_discoverer(tmp.path(), Arc::clone(&bus));
+    let files = skill_files();
+    let discoverer = hermetic_discoverer(tmp.path(), Arc::clone(&files));
 
     // Build the prompt from the discoverer's snapshot.
     let skills = discoverer.discover().await.unwrap();
@@ -418,7 +418,7 @@ async fn read_skill_resolves_every_name_listed_in_prompt() {
 
     // For each name the prompt lists, the tool must resolve it — no
     // fabrication, no MCP fallback, just the discoverer's view.
-    let tool = chelix_tools::skill_tools::ReadSkillTool::new(discoverer, bus);
+    let tool = chelix_tools::skill_tools::ReadSkillTool::new(discoverer, files);
     for name in &listed_names {
         let result = tool
             .execute(json!({ "name": name }))

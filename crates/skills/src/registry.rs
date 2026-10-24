@@ -21,29 +21,29 @@ pub trait SkillRegistry: Send + Sync {
 /// In-memory registry backed by a discoverer.
 pub struct InMemoryRegistry {
     skills: HashMap<String, SkillMetadata>,
-    bus: std::sync::Arc<chelix_call_bus::CallBus>,
+    files: std::sync::Arc<crate::skill_file::SkillFiles>,
 }
 
 impl InMemoryRegistry {
     /// Create a new empty registry.
-    pub fn new(bus: std::sync::Arc<chelix_call_bus::CallBus>) -> Self {
+    pub fn new(files: std::sync::Arc<crate::skill_file::SkillFiles>) -> Self {
         Self {
             skills: HashMap::new(),
-            bus,
+            files,
         }
     }
 
     /// Populate the registry from a discoverer.
     pub async fn from_discoverer(
         discoverer: &dyn SkillDiscoverer,
-        bus: std::sync::Arc<chelix_call_bus::CallBus>,
+        files: std::sync::Arc<crate::skill_file::SkillFiles>,
     ) -> Result<Self> {
         let discovered = discoverer.discover().await?;
         let mut skills = HashMap::new();
         for meta in discovered {
             skills.insert(meta.name.clone(), meta);
         }
-        Ok(Self { skills, bus })
+        Ok(Self { skills, files })
     }
 
     /// Add a skill directly (useful for testing).
@@ -64,7 +64,7 @@ impl SkillRegistry for InMemoryRegistry {
             .get(name)
             .ok_or_else(|| Error::NotFound(format!("skill '{}' not found", name)))?;
 
-        crate::skill_file::read_on(&self.bus, &meta.path.join("SKILL.md"), None).await
+        crate::skill_file::read(&self.files, &meta.path.join("SKILL.md"), None).await
     }
 }
 
@@ -84,7 +84,7 @@ mod tests {
         )
         .unwrap();
 
-        let mut reg = InMemoryRegistry::new(crate::skill_file::open_skill_bus().unwrap());
+        let mut reg = InMemoryRegistry::new(crate::skill_file::SkillFiles::new().unwrap());
         reg.insert(SkillMetadata {
             name: "my-skill".into(),
             description: "test".into(),
@@ -102,7 +102,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_load_nonexistent_skill() {
-        let reg = InMemoryRegistry::new(crate::skill_file::open_skill_bus().unwrap());
+        let reg = InMemoryRegistry::new(crate::skill_file::SkillFiles::new().unwrap());
         assert!(reg.load_skill("nope").await.is_err());
     }
 }

@@ -507,7 +507,7 @@ impl ChatService for LiveChatService {
                     manager: Arc::clone(&self.tool_permissions),
                     metadata: Arc::clone(&self.session_metadata),
                 }),
-                &self.call_bus,
+                &self.skill_files,
             )
             .await
         };
@@ -590,19 +590,15 @@ impl ChatService for LiveChatService {
         if run_id.is_none() && session_key.is_none() {
             return Err("missing 'runId' or 'sessionKey'".into());
         }
-        let request = match (session_key.clone(), run_id) {
-            (Some(key), run_id) => chelix_service_traits::StopSession::Session {
-                key: chelix_sessions::SessionKey::new(key),
-                run_id,
+        let outcome = match (session_key.clone(), run_id) {
+            (Some(key), run_id) => {
+                self.stop_current_session(key.as_str(), run_id.as_deref())
+                    .await
             },
-            (None, Some(run_id)) => chelix_service_traits::StopSession::Run { run_id },
+            (None, Some(run_id)) => self.stop_run(run_id).await,
             (None, None) => return Err("missing 'runId' or 'sessionKey'".into()),
-        };
-        let outcome = self
-            .call_bus
-            .call(request)
-            .await
-            .map_err(|error| ServiceError::message(error.to_string()))?;
+        }
+        .map_err(|error| ServiceError::message(error.to_string()))?;
         let response_session_key = match session_key {
             Some(key) => Value::String(key),
             None => Value::Null,
@@ -890,7 +886,7 @@ impl ChatService for LiveChatService {
                 &list_agent_id,
                 memory_setup,
                 visible_tools,
-                &self.call_bus,
+                &self.skill_files,
             )
             .map_err(|error| ServiceError::message(error.to_string()))?;
             let catalog = effective_registry
@@ -966,7 +962,7 @@ impl ChatService for LiveChatService {
         // `[skills] enabled` is true — see #655).
         let skills_list: Vec<Value> = if tools_enabled {
             skills_context_entries(
-                discover_skills_if_enabled(&prompt_persona.config, &self.call_bus).await,
+                discover_skills_if_enabled(&prompt_persona.config, &self.skill_files).await,
                 &prompt_persona.agent_id,
                 &prompt_persona.agent.skills,
             )
@@ -1060,7 +1056,8 @@ impl ChatService for LiveChatService {
             .map_err(ServiceError::message)?;
 
         // Discover skills (gated on `[skills] enabled` — see #655).
-        let discovered_skills = discover_skills_if_enabled(&persona.config, &self.call_bus).await;
+        let discovered_skills =
+            discover_skills_if_enabled(&persona.config, &self.skill_files).await;
 
         let raw_prompt_agent_id = persona.agent_id.clone();
 
@@ -1105,7 +1102,7 @@ impl ChatService for LiveChatService {
                 &raw_prompt_agent_id,
                 memory_setup,
                 visible_tools,
-                &self.call_bus,
+                &self.skill_files,
             )
         }
         .map_err(|e| ServiceError::message(e.to_string()))?;
@@ -1223,7 +1220,8 @@ impl ChatService for LiveChatService {
             .map_err(ServiceError::message)?;
 
         // Discover skills (gated on `[skills] enabled` — see #655).
-        let discovered_skills = discover_skills_if_enabled(&persona.config, &self.call_bus).await;
+        let discovered_skills =
+            discover_skills_if_enabled(&persona.config, &self.skill_files).await;
 
         // Build filtered tool registry.
         let full_ctx_agent_id = persona.agent_id.clone();
@@ -1265,7 +1263,7 @@ impl ChatService for LiveChatService {
                 &full_ctx_agent_id,
                 memory_setup,
                 visible_tools,
-                &self.call_bus,
+                &self.skill_files,
             )
         }
         .map_err(|e| ServiceError::message(e.to_string()))?;
@@ -1880,8 +1878,8 @@ mod tests {
             config.clone(),
             agents_config,
             chelix_config::ToolsConfigSource::snapshot(config.tools),
-            chelix_skills::skill_file::open_skill_bus()
-                .unwrap_or_else(|error| panic!("skill bus: {error}")),
+            chelix_skills::skill_file::SkillFiles::new()
+                .unwrap_or_else(|error| panic!("skill files: {error}")),
         );
         service.test_broadcasts = broadcasts;
         (

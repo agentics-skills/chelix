@@ -5,7 +5,6 @@ default-members = [
   "crates/auth",
   "crates/auto-reply",
   "crates/benchmarks",
-  "crates/call-bus",
   "crates/channels",
   "crates/chat",
   "crates/cli",
@@ -56,7 +55,6 @@ members = [
   "crates/auth",
   "crates/auto-reply",
   "crates/benchmarks",
-  "crates/call-bus",
   "crates/channels",
   "crates/chat",
   "crates/cli",
@@ -265,7 +263,6 @@ zeroize               = { features = ["derive"], version = "1" }
 # Workspace crates
 chelix-agents           = { path = "crates/agents" }
 chelix-auth             = { path = "crates/auth" }
-chelix-call-bus         = { path = "crates/call-bus" }
 chelix-channels         = { path = "crates/channels" }
 chelix-chat             = { path = "crates/chat" }
 chelix-code-index       = { path = "crates/code-index" }

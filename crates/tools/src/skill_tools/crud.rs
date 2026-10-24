@@ -19,7 +19,7 @@ use {super::helpers::SkillWriteRecorder, crate::error::Error};
 /// Tool that creates a new personal skill in `<data_dir>/skills/`.
 pub struct CreateSkillTool {
     data_dir: PathBuf,
-    bus: Arc<chelix_call_bus::CallBus>,
+    files: Arc<chelix_skills::skill_file::SkillFiles>,
     usage_store: Option<Arc<dyn SkillWriteRecorder>>,
 }
 
@@ -53,16 +53,21 @@ impl CreateSkillTool {
             .into());
         }
         tokio::fs::create_dir_all(&skill_dir).await?;
-        self.bus
-            .call(chelix_service_traits::CreateSkillFile {
-                path: skill_dir.join("SKILL.md"),
+        chelix_skills::skill_file::create(
+            &self.files,
+            &skill_dir.join("SKILL.md"),
+            chelix_skills::skill_file::SkillFields {
                 name: name.to_string(),
                 description: description.to_string(),
                 body: body.to_string(),
-                creator_agent_id: on_create.map(str::to_string),
-            })
-            .await
-            .map_err(|error| anyhow::anyhow!(error))?;
+            },
+            on_create,
+        )
+        .await
+        .map_err(|error| match error {
+            chelix_skills::Error::AlreadyExists(message) => anyhow::anyhow!(message),
+            other => anyhow::anyhow!(other),
+        })?;
 
         if let Some(ref store) = self.usage_store {
             store.record_write(name).await;
@@ -77,10 +82,10 @@ impl CreateSkillTool {
         }))
     }
 
-    pub fn new(data_dir: PathBuf, bus: Arc<chelix_call_bus::CallBus>) -> Self {
+    pub fn new(data_dir: PathBuf, files: Arc<chelix_skills::skill_file::SkillFiles>) -> Self {
         Self {
             data_dir,
-            bus,
+            files,
             usage_store: None,
         }
     }
@@ -153,15 +158,15 @@ impl AgentTool for CreateSkillTool {
 /// Tool that updates an existing personal skill in `<data_dir>/skills/`.
 pub struct UpdateSkillTool {
     data_dir: PathBuf,
-    bus: Arc<chelix_call_bus::CallBus>,
+    files: Arc<chelix_skills::skill_file::SkillFiles>,
     usage_store: Option<Arc<dyn SkillWriteRecorder>>,
 }
 
 impl UpdateSkillTool {
-    pub fn new(data_dir: PathBuf, bus: Arc<chelix_call_bus::CallBus>) -> Self {
+    pub fn new(data_dir: PathBuf, files: Arc<chelix_skills::skill_file::SkillFiles>) -> Self {
         Self {
             data_dir,
-            bus,
+            files,
             usage_store: None,
         }
     }
@@ -243,15 +248,17 @@ impl AgentTool for UpdateSkillTool {
             .into());
         }
 
-        self.bus
-            .call(chelix_service_traits::ReplaceSkillFile {
-                path: skill_dir.join("SKILL.md"),
+        chelix_skills::skill_file::replace(
+            &self.files,
+            &skill_dir.join("SKILL.md"),
+            chelix_skills::skill_file::SkillFields {
                 name: name.to_string(),
                 description: description.to_string(),
                 body: body.to_string(),
-            })
-            .await
-            .map_err(|error| anyhow::anyhow!(error))?;
+            },
+        )
+        .await
+        .map_err(|error| anyhow::anyhow!(error))?;
 
         if let Some(ref store) = self.usage_store {
             store.record_write(name).await;
@@ -272,15 +279,15 @@ impl AgentTool for UpdateSkillTool {
 /// Tool that deletes a personal skill from `<data_dir>/skills/`.
 pub struct DeleteSkillTool {
     data_dir: PathBuf,
-    bus: Arc<chelix_call_bus::CallBus>,
+    files: Arc<chelix_skills::skill_file::SkillFiles>,
     usage_store: Option<SkillUsageStore>,
 }
 
 impl DeleteSkillTool {
-    pub fn new(data_dir: PathBuf, bus: Arc<chelix_call_bus::CallBus>) -> Self {
+    pub fn new(data_dir: PathBuf, files: Arc<chelix_skills::skill_file::SkillFiles>) -> Self {
         Self {
             data_dir,
-            bus,
+            files,
             usage_store: None,
         }
     }
@@ -334,18 +341,11 @@ impl AgentTool for DeleteSkillTool {
             return Err(Error::message(format!("skill '{name}' not found")).into());
         }
 
-        match self
-            .bus
-            .call(chelix_service_traits::ReadSkillFile {
-                path: skill_dir.join("SKILL.md"),
-                max_bytes: None,
-            })
-            .await
+        match chelix_skills::skill_file::read(&self.files, &skill_dir.join("SKILL.md"), None).await
         {
             Ok(_) => {},
-            Err(chelix_call_bus::CallError::Failed(
-                chelix_service_traits::SkillFileError::NotFound(_),
-            )) => {},
+            Err(chelix_skills::Error::NotFound(_)) => {},
+            Err(chelix_skills::Error::Io(io)) if io.kind() == std::io::ErrorKind::NotFound => {},
             Err(error) => return Err(error.into()),
         }
         tokio::fs::remove_dir_all(&skill_dir).await?;

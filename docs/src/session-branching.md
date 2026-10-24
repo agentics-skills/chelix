@@ -109,8 +109,8 @@ one. An error for one session is kept, the other snapshotted sessions are
 still deleted, and the response is the collected errors. Share rows of a
 deleted session are deleted.
 
-For one session, an uncommitted worktree is checked before `StopSession`.
-That error and a `StopSession` error return before the `sessions` row and its
+For one session, an uncommitted worktree is checked before the session's current activity is stopped.
+That error and an error from that stop return before the `sessions` row and its
 `channel_sessions` rows are deleted. After those steps the deletion removes
 the worktree, media, tool results, and history. When `sandbox.mode` is `On`
 and the session owns its sandbox, container removal starts in the background.
@@ -147,7 +147,7 @@ archive sets that session's archived metadata. If one session fails, the batch
 still processes the rest of the snapshot, including the parent last, and then
 returns the collected errors.
 
-After that metadata is set, `StopSession` is called. An error from `StopSession` cancels starting the background stop.
+After that metadata is set, the session's current activity is stopped. An error from that stop cancels starting the background stop.
 When the archived session owns its sandbox (`sandbox_owner_key` is absent or
 equal to the session key), the single-session archive starts a background
 `docker stop`, `podman stop`, or Apple Container `stop`.

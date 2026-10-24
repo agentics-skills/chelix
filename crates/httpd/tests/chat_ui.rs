@@ -357,8 +357,8 @@ async fn gateway_startup_with_llm_wiring_does_not_block() {
             chelix_config::ToolsConfigSource::snapshot(
                 chelix_config::schema::ToolsConfig::default(),
             ),
-            chelix_skills::skill_file::open_skill_bus()
-                .unwrap_or_else(|error| panic!("skill bus: {error}")),
+            chelix_skills::skill_file::SkillFiles::new()
+                .unwrap_or_else(|error| panic!("skill files: {error}")),
         )));
     }
 
@@ -394,8 +394,8 @@ async fn gateway_startup_with_llm_wiring_does_not_block() {
             chelix_config::AgentsConfig::default(),
         )),
         chelix_config::ToolsConfigSource::snapshot(chelix_config::schema::ToolsConfig::default()),
-        chelix_skills::skill_file::open_skill_bus()
-            .unwrap_or_else(|error| panic!("skill bus: {error}")),
+        chelix_skills::skill_file::SkillFiles::new()
+            .unwrap_or_else(|error| panic!("skill files: {error}")),
     )));
 
     // Verify chat override is active — chat.send should use the LiveChatService,

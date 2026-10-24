@@ -27,7 +27,7 @@ struct AgentScopedSkillTool {
     policy: AgentSkillPolicy,
     config: Arc<ChelixConfig>,
     data_dir: PathBuf,
-    bus: Arc<chelix_call_bus::CallBus>,
+    files: Arc<chelix_skills::skill_file::SkillFiles>,
 }
 
 impl AgentScopedSkillTool {
@@ -37,7 +37,7 @@ impl AgentScopedSkillTool {
         };
         if matches!(self.kind, SkillToolKind::Read) {
             let visible = filter_skills_for_agent(
-                discover_skills_if_enabled(&self.config, &self.bus).await,
+                discover_skills_if_enabled(&self.config, &self.files).await,
                 &self.agent_id,
                 &self.policy,
             );
@@ -64,20 +64,17 @@ impl AgentScopedSkillTool {
             return Ok(());
         }
         let skill_dir = self.data_dir.join("skills").join(name);
-        let skill = match self
-            .bus
-            .call(chelix_service_traits::ReadSkillFile {
-                path: skill_dir.join("SKILL.md"),
-                max_bytes: None,
-            })
-            .await
-        {
-            Ok(skill) => skill.metadata,
-            Err(chelix_call_bus::CallError::Failed(
-                chelix_service_traits::SkillFileError::NotFound(_),
-            )) => return Ok(()),
-            Err(error) => return Err(error.into()),
-        };
+        let skill =
+            match chelix_skills::skill_file::read(&self.files, &skill_dir.join("SKILL.md"), None)
+                .await
+            {
+                Ok(skill) => skill.metadata,
+                Err(chelix_skills::Error::NotFound(_)) => return Ok(()),
+                Err(chelix_skills::Error::Io(io)) if io.kind() == std::io::ErrorKind::NotFound => {
+                    return Ok(());
+                },
+                Err(error) => return Err(error.into()),
+            };
         if chelix_skills::visible_to_agent(&self.agent_id, &skill, &self.policy) {
             return Ok(());
         }
@@ -153,7 +150,7 @@ pub(crate) fn install_agent_scoped_skill_tools(
     registry: &mut ToolRegistry,
     config: &ChelixConfig,
     agent_id: &str,
-    bus: &Arc<chelix_call_bus::CallBus>,
+    files: &Arc<chelix_skills::skill_file::SkillFiles>,
 ) -> anyhow::Result<()> {
     let config = Arc::new(config.clone());
     let policy = config
@@ -178,7 +175,7 @@ pub(crate) fn install_agent_scoped_skill_tools(
                 policy: policy.clone(),
                 config: Arc::clone(&config),
                 data_dir: chelix_config::data_dir(),
-                bus: Arc::clone(bus),
+                files: Arc::clone(files),
             }));
         }
     }
@@ -255,7 +252,7 @@ mod tests {
             "agent1",
         );
         let config = Arc::new(ChelixConfig::default());
-        let bus = chelix_skills::skill_file::open_skill_bus().map_err(anyhow::Error::msg)?;
+        let files = chelix_skills::skill_file::SkillFiles::new().map_err(anyhow::Error::msg)?;
         for (name, kind, hidden_error) in [
             (
                 "create_skill",
@@ -296,7 +293,7 @@ mod tests {
                 policy: AgentSkillPolicy::default(),
                 config: Arc::clone(&config),
                 data_dir: dir.path().to_path_buf(),
-                bus: Arc::clone(&bus),
+                files: Arc::clone(&files),
             };
             assert_eq!(wrapper.parameters_schema(), schema);
             let invalid = "---\nname: demo\nallowed_agents: hello\n---\nbody";
@@ -374,14 +371,14 @@ mod tests {
             chelix_sessions::SessionKey::new("session:test"),
             "agent1",
         );
-        let bus = chelix_skills::skill_file::open_skill_bus().map_err(anyhow::Error::msg)?;
+        let files = chelix_skills::skill_file::SkillFiles::new().map_err(anyhow::Error::msg)?;
         let discoverer = Arc::new(chelix_skills::discover::FsSkillDiscoverer::new(
             chelix_skills::discover::FsSkillDiscoverer::default_paths_for(dir.path()),
-            Arc::clone(&bus),
+            Arc::clone(&files),
         ));
         let inner: Arc<dyn AgentTool> = Arc::new(chelix_tools::skill_tools::ReadSkillTool::new(
             discoverer,
-            Arc::clone(&bus),
+            Arc::clone(&files),
         ));
         let schema = inner.parameters_schema();
         let mut config = ChelixConfig::default();
@@ -395,9 +392,9 @@ mod tests {
         );
         let mut registry = ToolRegistry::new();
         registry.register(Box::new(
-            chelix_tools::skill_tools::ReadSkillTool::with_default_paths(Arc::clone(&bus)),
+            chelix_tools::skill_tools::ReadSkillTool::with_default_paths(Arc::clone(&files)),
         ));
-        install_agent_scoped_skill_tools(&mut registry, &config, "agent1", &bus)?;
+        install_agent_scoped_skill_tools(&mut registry, &config, "agent1", &files)?;
         assert_eq!(registry.list_names(), ["read_skill"]);
         let installed = registry
             .get("read_skill")

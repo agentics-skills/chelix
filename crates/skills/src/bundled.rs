@@ -32,13 +32,13 @@ pub struct BundledSkillStore {
     /// Directory where bundled sidecar files (scripts, templates, etc.)
     /// are materialized on disk so they can be executed by the agent.
     materialize_dir: PathBuf,
-    bus: std::sync::Arc<chelix_call_bus::CallBus>,
+    files: std::sync::Arc<crate::skill_file::SkillFiles>,
 }
 
 impl BundledSkillStore {
     /// Create a new store, preferring the filesystem in dev mode.
     #[must_use]
-    pub fn new(bus: std::sync::Arc<chelix_call_bus::CallBus>) -> Self {
+    pub fn new(files: std::sync::Arc<crate::skill_file::SkillFiles>) -> Self {
         let cargo_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/assets");
         let materialize_dir = chelix_config::data_dir().join("bundled-skills");
         let source = if cargo_dir.is_dir() {
@@ -51,7 +51,7 @@ impl BundledSkillStore {
         Self {
             source,
             materialize_dir,
-            bus,
+            files,
         }
     }
 
@@ -62,7 +62,7 @@ impl BundledSkillStore {
     #[must_use]
     pub fn with_materialize_dir(
         materialize_dir: PathBuf,
-        bus: std::sync::Arc<chelix_call_bus::CallBus>,
+        files: std::sync::Arc<crate::skill_file::SkillFiles>,
     ) -> Self {
         let cargo_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/assets");
         let source = if cargo_dir.is_dir() {
@@ -73,7 +73,7 @@ impl BundledSkillStore {
         Self {
             source,
             materialize_dir,
-            bus,
+            files,
         }
     }
 
@@ -83,7 +83,7 @@ impl BundledSkillStore {
     /// parses frontmatter, and tags each with [`SkillSource::Bundled`].
     pub async fn discover(&self) -> Vec<SkillMetadata> {
         match &self.source {
-            AssetSource::Filesystem(dir) => discover_from_fs(&self.bus, dir).await,
+            AssetSource::Filesystem(dir) => discover_from_fs(&self.files, dir).await,
             AssetSource::Embedded => discover_from_embedded(),
         }
     }
@@ -91,7 +91,7 @@ impl BundledSkillStore {
     /// Read the full body of a bundled skill by name.
     pub async fn read_skill(&self, name: &str) -> Option<String> {
         match &self.source {
-            AssetSource::Filesystem(dir) => read_skill_body_fs(&self.bus, dir, name).await,
+            AssetSource::Filesystem(dir) => read_skill_body_fs(&self.files, dir, name).await,
             AssetSource::Embedded => read_skill_body_embedded(name),
         }
     }
@@ -187,14 +187,17 @@ impl BundledSkillStore {
 
 /// Recursively walk the assets directory for SKILL.md files on the filesystem.
 /// Supports arbitrary nesting (e.g. `mlops/training/axolotl/SKILL.md`).
-async fn discover_from_fs(bus: &chelix_call_bus::CallBus, assets_dir: &Path) -> Vec<SkillMetadata> {
+async fn discover_from_fs(
+    files: &crate::skill_file::SkillFiles,
+    assets_dir: &Path,
+) -> Vec<SkillMetadata> {
     let mut skills = Vec::new();
-    discover_from_fs_recursive(bus, assets_dir, assets_dir, &mut skills).await;
+    discover_from_fs_recursive(files, assets_dir, assets_dir, &mut skills).await;
     skills
 }
 
 async fn discover_from_fs_recursive(
-    bus: &chelix_call_bus::CallBus,
+    files: &crate::skill_file::SkillFiles,
     assets_root: &Path,
     dir: &Path,
     skills: &mut Vec<SkillMetadata>,
@@ -209,7 +212,7 @@ async fn discover_from_fs_recursive(
         }
         let skill_md = path.join("SKILL.md");
         if skill_md.is_file() {
-            match crate::skill_file::read_on(bus, &skill_md, None).await {
+            match crate::skill_file::read(files, &skill_md, None).await {
                 Ok(content) => {
                     let mut meta = content.metadata;
                     meta.source = Some(SkillSource::Bundled);
@@ -222,7 +225,13 @@ async fn discover_from_fs_recursive(
             }
         } else {
             // No SKILL.md here — recurse into subdirectories (category nesting).
-            Box::pin(discover_from_fs_recursive(bus, assets_root, &path, skills)).await;
+            Box::pin(discover_from_fs_recursive(
+                files,
+                assets_root,
+                &path,
+                skills,
+            ))
+            .await;
         }
     }
 }
@@ -237,12 +246,12 @@ fn category_from_path(assets_root: &Path, skill_dir: &Path) -> Option<String> {
 
 /// Read SKILL.md body from the filesystem.
 async fn read_skill_body_fs(
-    bus: &chelix_call_bus::CallBus,
+    files: &crate::skill_file::SkillFiles,
     assets_dir: &Path,
     name: &str,
 ) -> Option<String> {
     let skill_dir = find_skill_dir_fs(assets_dir, name)?;
-    crate::skill_file::read_on(bus, &skill_dir.join("SKILL.md"), None)
+    crate::skill_file::read(files, &skill_dir.join("SKILL.md"), None)
         .await
         .ok()
         .map(|skill| skill.body)
@@ -448,7 +457,7 @@ mod tests {
     const EXPECTED_BUNDLED_SKILLS: &[(&str, &str)] = &[("mcp-servers", "devops")];
 
     fn store() -> BundledSkillStore {
-        BundledSkillStore::new(crate::skill_file::open_skill_bus().unwrap())
+        BundledSkillStore::new(crate::skill_file::SkillFiles::new().unwrap())
     }
 
     fn assert_expected_skills(skills: &[SkillMetadata]) {
@@ -480,7 +489,7 @@ mod tests {
         BundledSkillStore {
             source: AssetSource::Filesystem(assets),
             materialize_dir: root.join("materialized"),
-            bus: crate::skill_file::open_skill_bus().unwrap(),
+            files: crate::skill_file::SkillFiles::new().unwrap(),
         }
     }
 

@@ -1,5 +1,7 @@
 use {async_trait::async_trait, serde_json::Value, std::sync::Arc};
 
+use chelix_skills::types::SkillSource;
+
 use super::skills_helpers::*;
 
 // Pull in ServiceResult, ServiceError, security_audit, etc. from services module
@@ -39,13 +41,13 @@ impl SkillsService for UnwiredSkillsService {
 }
 
 pub struct NoopSkillsService {
-    bus: Arc<chelix_call_bus::CallBus>,
+    files: Arc<chelix_skills::skill_file::SkillFiles>,
 }
 
 impl NoopSkillsService {
     #[must_use]
-    pub fn new(bus: Arc<chelix_call_bus::CallBus>) -> Self {
-        Self { bus }
+    pub fn new(files: Arc<chelix_skills::skill_file::SkillFiles>) -> Self {
+        Self { files }
     }
 }
 
@@ -54,12 +56,12 @@ impl SkillsService for NoopSkillsService {
     async fn list(&self) -> ServiceResult {
         use chelix_skills::discover::{FsSkillDiscoverer, SkillDiscoverer};
         let fs_discoverer =
-            FsSkillDiscoverer::new(FsSkillDiscoverer::default_paths(), Arc::clone(&self.bus));
+            FsSkillDiscoverer::new(FsSkillDiscoverer::default_paths(), Arc::clone(&self.files));
 
         #[cfg(feature = "bundled-skills")]
         let skills = {
             let bundled = Arc::new(chelix_skills::bundled::BundledSkillStore::new(Arc::clone(
-                &self.bus,
+                &self.files,
             )));
             let composite = chelix_skills::discover::CompositeSkillDiscoverer::new(
                 Box::new(fs_discoverer),
@@ -96,7 +98,7 @@ impl SkillsService for NoopSkillsService {
     async fn skill_enable(&self, params: Value) -> ServiceResult {
         let source = params.get("source").and_then(|v| v.as_str()).unwrap_or("");
         if source == "bundled" {
-            return toggle_bundled_skill(&self.bus, &params, true).await;
+            return toggle_bundled_skill(&self.files, &params, true).await;
         }
         Err(format!("unsupported skill source '{source}'").into())
     }
@@ -110,7 +112,7 @@ impl SkillsService for NoopSkillsService {
         }
 
         if source == "bundled" {
-            return toggle_bundled_skill(&self.bus, &params, false).await;
+            return toggle_bundled_skill(&self.files, &params, false).await;
         }
 
         Err(format!("unsupported skill source '{source}'").into())
@@ -120,7 +122,7 @@ impl SkillsService for NoopSkillsService {
     async fn bundled_categories(&self) -> ServiceResult {
         #[cfg(feature = "bundled-skills")]
         {
-            let store = chelix_skills::bundled::BundledSkillStore::new(Arc::clone(&self.bus));
+            let store = chelix_skills::bundled::BundledSkillStore::new(Arc::clone(&self.files));
             let skills = store.discover().await;
             let config = chelix_config::discover_and_load().map_err(ServiceError::message)?;
             let disabled = &config.skills.disabled_bundled_categories;
@@ -197,13 +199,13 @@ impl SkillsService for NoopSkillsService {
 
         // Personal/project skills: look up directly by name in discovered paths.
         if source == "personal" || source == "project" {
-            return skill_detail_discovered(&self.bus, source, skill_name).await;
+            return skill_detail_discovered(&self.files, source, skill_name).await;
         }
 
         // Bundled skills: read from the embedded store.
         #[cfg(feature = "bundled-skills")]
         if source == "bundled" {
-            return skill_detail_bundled(&self.bus, skill_name).await;
+            return skill_detail_bundled(&self.files, skill_name).await;
         }
 
         Err(format!("unsupported skill source '{source}'").into())
@@ -235,15 +237,17 @@ impl SkillsService for NoopSkillsService {
         let skill_md = skill_dir.join("SKILL.md");
         std::fs::create_dir_all(&skill_dir)
             .map_err(|e| format!("failed to create skill directory: {e}"))?;
-        self.bus
-            .call(ReplaceSkillFile {
-                path: skill_md,
+        chelix_skills::skill_file::replace(
+            &self.files,
+            &skill_md,
+            chelix_skills::skill_file::SkillFields {
                 name: name.to_string(),
                 description: description.to_string(),
                 body: body.to_string(),
-            })
-            .await
-            .map_err(|error| format!("failed to write SKILL.md: {error}"))?;
+            },
+        )
+        .await
+        .map_err(|error| format!("failed to write SKILL.md: {error}"))?;
 
         Ok(serde_json::json!({
             "saved": true,
@@ -276,9 +280,9 @@ mod tests {
         let config = ConfigDirGuard::new(dir.path().to_path_buf());
         chelix_config::set_data_dir(dir.path().to_path_buf());
         let _guard = SkillDataDirGuard { _config: config };
-        let bus =
-            chelix_skills::skill_file::open_skill_bus().map_err(|error| anyhow::anyhow!(error))?;
-        let service = NoopSkillsService::new(Arc::clone(&bus));
+        let files =
+            chelix_skills::skill_file::SkillFiles::new().map_err(|error| anyhow::anyhow!(error))?;
+        let service = NoopSkillsService::new(Arc::clone(&files));
         let params = serde_json::json!({
             "name": "demo",
             "description": "Use when: X\nNext step",
@@ -289,24 +293,14 @@ mod tests {
         let content = std::fs::read_to_string(&path)?;
         assert!(content.contains("allowed_agents:\n"));
         assert!(content.contains("denied_agents:\n"));
-        let metadata = bus
-            .call(ReadSkillFile {
-                path: path.clone(),
-                max_bytes: None,
-            })
-            .await?;
+        let metadata = chelix_skills::skill_file::read(&files, &path, None).await?;
         assert_eq!(metadata.metadata.description, "Use when: X\nNext step");
         std::fs::write(
             &path,
             "---\nname: demo\ndescription: old\nallowed_agents:\n- agent1\ndenied_agents:\n---\nold body",
         )?;
         service.skill_save(params.clone()).await?;
-        let saved = bus
-            .call(ReadSkillFile {
-                path: path.clone(),
-                max_bytes: None,
-            })
-            .await?;
+        let saved = chelix_skills::skill_file::read(&files, &path, None).await?;
         assert_eq!(saved.metadata.allowed_agents, ["agent1"]);
         let invalid = "---\nname: demo\nallowed_agents: hello\n---\nbody";
         std::fs::write(&path, invalid)?;
@@ -346,9 +340,9 @@ mod tests {
         let dir = tempfile::tempdir()?;
         let _guard = ConfigDirGuard::new(dir.path().to_path_buf());
 
-        let bus =
-            chelix_skills::skill_file::open_skill_bus().map_err(|error| anyhow::anyhow!(error))?;
-        let service = NoopSkillsService::new(Arc::clone(&bus));
+        let files =
+            chelix_skills::skill_file::SkillFiles::new().map_err(|error| anyhow::anyhow!(error))?;
+        let service = NoopSkillsService::new(Arc::clone(&files));
         let result = service
             .skill_disable(serde_json::json!({ "source": "bundled", "skill": "mcp-servers" }))
             .await?;
@@ -377,9 +371,9 @@ mod tests {
         let dir = tempfile::tempdir()?;
         let _guard = ConfigDirGuard::new(dir.path().to_path_buf());
 
-        let bus =
-            chelix_skills::skill_file::open_skill_bus().map_err(|error| anyhow::anyhow!(error))?;
-        let service = NoopSkillsService::new(Arc::clone(&bus));
+        let files =
+            chelix_skills::skill_file::SkillFiles::new().map_err(|error| anyhow::anyhow!(error))?;
+        let service = NoopSkillsService::new(Arc::clone(&files));
         service
             .skill_disable(serde_json::json!({ "source": "bundled", "skill": "mcp-servers" }))
             .await?;

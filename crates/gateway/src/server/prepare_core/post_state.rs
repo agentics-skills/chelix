@@ -79,7 +79,7 @@ pub(super) struct PostStateInputs {
     pub telephony_webhook_plugin: Arc<tokio::sync::RwLock<chelix_telephony::TelephonyPlugin>>,
     #[cfg(feature = "vault")]
     pub vault: Option<Arc<chelix_vault::Vault>>,
-    pub call_bus: Arc<chelix_call_bus::CallBus>,
+    pub skill_files: Arc<chelix_skills::skill_file::SkillFiles>,
 }
 
 async fn build_webauthn_registry(
@@ -199,28 +199,6 @@ async fn build_webauthn_registry(
     }
 }
 
-fn register_stop_session(
-    call_bus: &chelix_call_bus::CallBus,
-    chat: Arc<LiveChatService>,
-) -> anyhow::Result<()> {
-    call_bus
-        .register(move |request: chelix_service_traits::StopSession| {
-            let chat = Arc::clone(&chat);
-            async move {
-                match request {
-                    chelix_service_traits::StopSession::Run { run_id } => {
-                        chat.stop_run(run_id).await
-                    },
-                    chelix_service_traits::StopSession::Session { key, run_id } => {
-                        chat.stop_current_session(key.as_str(), run_id.as_deref())
-                            .await
-                    },
-                }
-            }
-        })
-        .map_err(|error| anyhow::anyhow!(error.to_string()))
-}
-
 pub(super) async fn complete_startup(
     inputs: PostStateInputs,
 ) -> anyhow::Result<PreparedGatewayCore> {
@@ -265,7 +243,7 @@ pub(super) async fn complete_startup(
         code_index,
         #[cfg(feature = "code-index-builtin")]
         project_store,
-        call_bus,
+        skill_files,
     } = inputs;
 
     let is_localhost =
@@ -353,9 +331,9 @@ pub(super) async fn complete_startup(
         .set_tools_service(Arc::clone(&tools_service))
         .map_err(|_| anyhow::anyhow!("managed tools service was already initialized"))?;
     state
-        .call_bus
-        .set(Arc::clone(&call_bus))
-        .map_err(|_| anyhow::anyhow!("call bus was already installed"))?;
+        .skill_files
+        .set(Arc::clone(&skill_files))
+        .map_err(|_| anyhow::anyhow!("skill files were already installed"))?;
 
     // Wire the shared LLM provider registry for lightweight generation
     // (auto-title).
@@ -671,41 +649,41 @@ pub(super) async fn complete_startup(
             tool_registry.register(Box::new(
                 chelix_tools::skill_tools::CreateSkillTool::new(
                     data_dir.clone(),
-                    Arc::clone(&call_bus),
+                    Arc::clone(&skill_files),
                 )
                 .with_usage_store(skill_usage.clone()),
             ));
             tool_registry.register(Box::new(
                 chelix_tools::skill_tools::UpdateSkillTool::new(
                     data_dir.clone(),
-                    Arc::clone(&call_bus),
+                    Arc::clone(&skill_files),
                 )
                 .with_usage_store(skill_usage.clone()),
             ));
             tool_registry.register(Box::new(
                 chelix_tools::skill_tools::PatchSkillTool::new(
                     data_dir.clone(),
-                    Arc::clone(&call_bus),
+                    Arc::clone(&skill_files),
                 )
                 .with_usage_store(skill_usage.clone()),
             ));
             tool_registry.register(Box::new(
                 chelix_tools::skill_tools::DeleteSkillTool::new(
                     data_dir.clone(),
-                    Arc::clone(&call_bus),
+                    Arc::clone(&skill_files),
                 )
                 .with_usage_store(skill_usage.clone()),
             ));
 
             let fs_discoverer = FsSkillDiscoverer::new(
                 FsSkillDiscoverer::default_paths_for(&data_dir),
-                Arc::clone(&call_bus),
+                Arc::clone(&skill_files),
             );
 
             #[cfg(feature = "bundled-skills")]
             {
                 let bundled_store = Arc::new(chelix_skills::bundled::BundledSkillStore::new(
-                    Arc::clone(&call_bus),
+                    Arc::clone(&skill_files),
                 ));
                 let read_discoverer: Arc<dyn chelix_skills::discover::SkillDiscoverer> =
                     Arc::new(chelix_skills::discover::CompositeSkillDiscoverer::new(
@@ -716,7 +694,7 @@ pub(super) async fn complete_startup(
                     chelix_tools::skill_tools::ReadSkillTool::with_bundled(
                         read_discoverer,
                         bundled_store,
-                        Arc::clone(&call_bus),
+                        Arc::clone(&skill_files),
                     )
                     .with_usage_store(skill_usage.clone()),
                 ));
@@ -727,7 +705,7 @@ pub(super) async fn complete_startup(
                 tool_registry.register(Box::new(
                     chelix_tools::skill_tools::ReadSkillTool::new(
                         read_discoverer,
-                        Arc::clone(&call_bus),
+                        Arc::clone(&skill_files),
                     )
                     .with_usage_store(skill_usage.clone()),
                 ));
@@ -737,7 +715,7 @@ pub(super) async fn complete_startup(
                 tool_registry.register(Box::new(
                     chelix_tools::skill_tools::WriteSkillFilesTool::new(
                         data_dir.clone(),
-                        Arc::clone(&call_bus),
+                        Arc::clone(&skill_files),
                     ),
                 ));
             }
@@ -784,7 +762,7 @@ pub(super) async fn complete_startup(
             config.clone(),
             Arc::clone(&agents_config),
             chelix_config::ToolsConfigSource::Filesystem,
-            Arc::clone(&call_bus),
+            Arc::clone(&skill_files),
         )
         .with_session_state_store(Arc::clone(&session_state_store))
         .with_tools(Arc::clone(&shared_tool_registry))
@@ -795,11 +773,7 @@ pub(super) async fn complete_startup(
         }
 
         let live_chat = Arc::new(chat_service);
-        register_stop_session(&call_bus, Arc::clone(&live_chat))?;
-        call_bus
-            .seal()
-            .map_err(|error| anyhow::anyhow!(error.to_string()))?;
-        crate::server::hooks::seed_example_skill(&call_bus).await?;
+        crate::server::hooks::seed_example_skill(&skill_files).await?;
         state.set_chat(Arc::clone(&live_chat) as Arc<dyn crate::services::ChatService>);
 
         live_mcp

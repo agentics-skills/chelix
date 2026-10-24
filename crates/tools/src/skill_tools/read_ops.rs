@@ -33,7 +33,7 @@ const SIDECAR_SUBDIRS: &[&str] = chelix_skills::SIDECAR_SUBDIRS;
 /// filesystem MCP server to load `SKILL.md` by absolute path.
 pub struct ReadSkillTool {
     discoverer: Arc<dyn SkillDiscoverer>,
-    bus: Arc<chelix_call_bus::CallBus>,
+    files: Arc<chelix_skills::skill_file::SkillFiles>,
     usage_store: Option<SkillUsageStore>,
     #[cfg(feature = "bundled-skills")]
     bundled_store: Option<Arc<chelix_skills::bundled::BundledSkillStore>>,
@@ -42,10 +42,13 @@ pub struct ReadSkillTool {
 impl ReadSkillTool {
     /// Construct a `ReadSkillTool` backed by the given discoverer.
     #[must_use]
-    pub fn new(discoverer: Arc<dyn SkillDiscoverer>, bus: Arc<chelix_call_bus::CallBus>) -> Self {
+    pub fn new(
+        discoverer: Arc<dyn SkillDiscoverer>,
+        files: Arc<chelix_skills::skill_file::SkillFiles>,
+    ) -> Self {
         Self {
             discoverer,
-            bus,
+            files,
             usage_store: None,
             #[cfg(feature = "bundled-skills")]
             bundled_store: None,
@@ -58,11 +61,11 @@ impl ReadSkillTool {
     pub fn with_bundled(
         discoverer: Arc<dyn SkillDiscoverer>,
         bundled_store: Arc<chelix_skills::bundled::BundledSkillStore>,
-        bus: Arc<chelix_call_bus::CallBus>,
+        files: Arc<chelix_skills::skill_file::SkillFiles>,
     ) -> Self {
         Self {
             discoverer,
-            bus,
+            files,
             usage_store: None,
             bundled_store: Some(bundled_store),
         }
@@ -77,15 +80,15 @@ impl ReadSkillTool {
 
     /// Convenience constructor that uses default filesystem paths.
     #[must_use]
-    pub fn with_default_paths(bus: Arc<chelix_call_bus::CallBus>) -> Self {
+    pub fn with_default_paths(files: Arc<chelix_skills::skill_file::SkillFiles>) -> Self {
         use chelix_skills::discover::FsSkillDiscoverer;
         let discoverer = Arc::new(FsSkillDiscoverer::new(
             FsSkillDiscoverer::default_paths(),
-            Arc::clone(&bus),
+            Arc::clone(&files),
         ));
         Self {
             discoverer,
-            bus,
+            files,
             usage_store: None,
             #[cfg(feature = "bundled-skills")]
             bundled_store: None,
@@ -158,7 +161,7 @@ impl AgentTool for ReadSkillTool {
             return read_sidecar(name, &meta.path, rel).await;
         }
 
-        let result = read_primary(&self.bus, name, meta).await?;
+        let result = read_primary(&self.files, name, meta).await?;
 
         // Record activation (primary reads only, not sidecar reads).
         if let Some(ref store) = self.usage_store {
@@ -177,7 +180,7 @@ impl AgentTool for ReadSkillTool {
 /// Read the main SKILL.md body plus the list of sidecar files available in
 /// `references/`, `templates/`, `assets/`, and `scripts/`.
 async fn read_primary(
-    bus: &chelix_call_bus::CallBus,
+    files: &chelix_skills::skill_file::SkillFiles,
     name: &str,
     meta: &chelix_skills::types::SkillMetadata,
 ) -> anyhow::Result<Value> {
@@ -186,13 +189,10 @@ async fn read_primary(
         .map_err(|e| Error::message(format!("skill directory not accessible for '{name}': {e}")))?;
 
     let skill_md_path = canonical_skill_dir.join("SKILL.md");
-    let content = bus
-        .call(chelix_service_traits::ReadSkillFile {
-            path: skill_md_path,
-            max_bytes: Some(MAX_SKILL_BODY_BYTES as u64),
-        })
-        .await
-        .map_err(|error| Error::message(format!("failed to load skill '{name}': {error}")))?;
+    let content =
+        chelix_skills::skill_file::read(files, &skill_md_path, Some(MAX_SKILL_BODY_BYTES as u64))
+            .await
+            .map_err(|error| Error::message(format!("failed to load skill '{name}': {error}")))?;
     let linked_files = list_skill_sidecar_files(&canonical_skill_dir).await?;
     let loaded_meta = content.metadata;
     let body = content.body;

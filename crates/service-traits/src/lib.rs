@@ -7,8 +7,6 @@ mod chat_request;
 mod error;
 mod interfaces;
 mod session_mutations;
-mod skill_file;
-mod stop_session;
 
 pub use crate::{
     chat_request::{
@@ -19,11 +17,6 @@ pub use crate::{
     error::{ServiceError, ServiceResult},
     interfaces::*,
     session_mutations::{SessionBusyReason, SessionMutationCoordinator, SessionTurnPermit},
-    skill_file::{
-        CreateSkillFile, MAX_SKILL_FILE_BYTES, PatchSkillFile, ReadSkillFile, ReplaceSkillFile,
-        SkillContent, SkillFileError, SkillMetadata, SkillOrigin, SkillSource,
-    },
-    stop_session::{StopSession, StopSessionOutcome},
 };
 
 #[cfg(test)]

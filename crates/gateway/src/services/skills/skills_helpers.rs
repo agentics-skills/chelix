@@ -1,5 +1,7 @@
 use serde_json::Value;
 
+use chelix_skills::types::SkillMetadata;
+
 // Pull in ServiceResult, ServiceError, security_audit, etc. from services module
 use super::super::*;
 
@@ -63,7 +65,7 @@ pub(super) fn skill_document_json(metadata: &SkillMetadata, body: &str) -> serde
 
 /// Load skill detail for a personal or project skill by name.
 pub(super) async fn skill_detail_discovered(
-    bus: &chelix_call_bus::CallBus,
+    files: &chelix_skills::skill_file::SkillFiles,
     source_type: &str,
     skill_name: &str,
 ) -> ServiceResult {
@@ -75,11 +77,7 @@ pub(super) async fn skill_detail_discovered(
     };
 
     let skill_dir = search_dir.join(skill_name);
-    let content = bus
-        .call(ReadSkillFile {
-            path: skill_dir.join("SKILL.md"),
-            max_bytes: None,
-        })
+    let content = chelix_skills::skill_file::read(files, &skill_dir.join("SKILL.md"), None)
         .await
         .map_err(|error| format!("failed to read SKILL.md for '{skill_name}': {error}"))?;
 
@@ -101,10 +99,10 @@ pub(super) async fn skill_detail_discovered(
 /// Load skill detail for a bundled skill by name.
 #[cfg(feature = "bundled-skills")]
 pub(super) async fn skill_detail_bundled(
-    bus: &Arc<chelix_call_bus::CallBus>,
+    files: &Arc<chelix_skills::skill_file::SkillFiles>,
     skill_name: &str,
 ) -> ServiceResult {
-    let store = chelix_skills::bundled::BundledSkillStore::new(Arc::clone(bus));
+    let store = chelix_skills::bundled::BundledSkillStore::new(Arc::clone(files));
     let skills = store.discover().await;
     let meta = skills
         .iter()
@@ -140,7 +138,7 @@ pub(super) async fn skill_detail_bundled(
 /// Toggle a bundled skill by adding or removing its name from
 /// `disabled_bundled_skills`.
 pub(super) async fn toggle_bundled_skill(
-    bus: &Arc<chelix_call_bus::CallBus>,
+    files: &Arc<chelix_skills::skill_file::SkillFiles>,
     params: &Value,
     enabled: bool,
 ) -> ServiceResult {
@@ -152,7 +150,7 @@ pub(super) async fn toggle_bundled_skill(
     // Find the category for this bundled skill.
     #[cfg(feature = "bundled-skills")]
     {
-        let store = chelix_skills::bundled::BundledSkillStore::new(Arc::clone(bus));
+        let store = chelix_skills::bundled::BundledSkillStore::new(Arc::clone(files));
         let skills = store.discover().await;
         let skill = skills
             .iter()

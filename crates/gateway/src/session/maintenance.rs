@@ -9,13 +9,14 @@ impl LiveSessionService {
             .map_err(ServiceError::message)?
             .ok_or_else(|| ServiceError::message("not found"))?;
         self.preflight_session_delete(&entry, force).await?;
-        self.call_bus
-            .call(chelix_service_traits::StopSession::Session {
-                key: SessionKey::new(key),
-                run_id: None,
-            })
-            .await
-            .map_err(|error| ServiceError::message(error.to_string()))?;
+        let state = self
+            .deferred_state
+            .get()
+            .ok_or_else(|| ServiceError::message("gateway not ready"))?;
+        state
+            .chat()
+            .abort(serde_json::json!({ "sessionKey": key }))
+            .await?;
 
         let removed = self
             .metadata
