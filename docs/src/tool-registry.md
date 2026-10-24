@@ -277,9 +277,20 @@ else is passed to rg verbatim so rg itself rejects unknown types.
 Exceeding a match/file/output limit or the timeout stops the search early,
 kills the rg process, and marks the result `truncated` with a
 `truncatedReason` (`maxMatches`, `maxFiles`, `maxOutputChars`, `timeout`).
-The result mirrors the limits, a summary (`filesWithMatches`, `matchCount`,
-`elapsed`, `stats`), rows per detail mode, captured `stderr`, and the rg
-`exitCode`. Exit code 2 (for example an invalid regex) is a tool error.
+That truncated result is returned with `limit` set to the configured
+`maxMatches`, `maxFiles`, `maxOutputChars`, or `timeoutMs` for that reason,
+including when rg produced no JSONL and the captured status is missing.
+`summary` contains `filesWithMatches`, `matchCount`, and `searchedFiles`
+when the parsed ripgrep summary contains `searches`. Detail `files` includes
+`files`. Details `lines` and `lines+submatches` include `matches`;
+`lines+submatches` includes submatches. Non-empty `context` and non-empty
+`stderr` are included. `exitCode` is included for every captured value other
+than 0, including `null` for a missing status. A non-truncated search whose
+rg status is neither 0 nor 1 returns its result together with that `exitCode`
+once at least one JSONL record has parsed; `stderr` is included only when rg
+wrote it. Spawn failures, stream read failures, and malformed JSON are tool
+errors. A non-truncated rg status other than 0 or 1 with no parsed JSONL
+record, and a non-truncated missing status, are tool errors.
 
 ## Context7 tools
 

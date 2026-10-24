@@ -360,6 +360,7 @@ struct ScanState {
     match_count: usize,
     truncated_reason: Option<String>,
     stats: Option<Value>,
+    has_json_output: bool,
 }
 
 impl ScanState {
@@ -375,6 +376,7 @@ impl ScanState {
             match_count: 0,
             truncated_reason: None,
             stats: None,
+            has_json_output: false,
         }
     }
 
@@ -396,6 +398,7 @@ impl ScanState {
         }
         let message: RgMessage = serde_json::from_str(line)
             .with_context(|| format!("rg JSON parse error for line {line:?}"))?;
+        self.has_json_output = true;
         match message {
             RgMessage::Match(data) => self.process_match(&data),
             RgMessage::Context(data) => self.process_context(&data),
@@ -768,6 +771,7 @@ async fn run_search(input: &RipgrepInput, runtime: &RipgrepRuntime) -> Result<Ri
     if !truncated {
         match status.code() {
             Some(0 | 1) => {},
+            Some(_) if state.has_json_output => {},
             Some(code) => {
                 let suffix = output
                     .stderr_text()
@@ -1551,5 +1555,43 @@ mod tests {
         assert!(result.timed_out);
         assert!(result.truncated);
         assert_eq!(result.truncated_reason.as_deref(), Some("timeout"));
+    }
+
+    #[tokio::test]
+    async fn search_returns_match_json_when_one_path_is_missing() {
+        let directory = setup_tree().await;
+        let result = run_tool(
+            input(json!({
+                "pattern": "ripgrep-needle here",
+                "fixedStrings": true,
+                "cwd": directory.path(),
+                "paths": ["alpha.txt", "missing.txt"]
+            })),
+            &runtime(directory.path()),
+        )
+        .await
+        .unwrap();
+
+        assert!(result.found);
+        assert_eq!(result.summary.match_count, 1);
+        assert_eq!(result.exit_code, Some(2));
+        let stderr = result.stderr.unwrap();
+        assert!(
+            stderr.contains("missing.txt") && stderr.contains("(os error 2)"),
+            "{stderr:?}"
+        );
+        let matches = result.matches.unwrap();
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].path, "alpha.txt");
+        assert_eq!(matches[0].line_number, 2);
+        assert_eq!(matches[0].lines, "ripgrep-needle here\n");
+        assert_eq!(
+            result
+                .summary
+                .stats
+                .as_ref()
+                .and_then(|stats| stats.get("searches")),
+            Some(&json!(1))
+        );
     }
 }

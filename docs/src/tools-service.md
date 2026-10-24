@@ -425,7 +425,13 @@ The typed result contains `tool`, `detail`, `found`, `timedOut`, `truncated`,
 the applied `limits`, `summary`, and `exitCode`. Depending on `detail`, it also
 contains `files` or typed `matches` and `context`; `lines+submatches` includes
 typed byte-offset submatches. `truncatedReason`, `stderr`, and ripgrep `stats`
-are emitted only when present.
+are emitted only when present. Statuses 0 and 1 return this typed result.
+Any other status returns the same typed result once one JSONL record has
+parsed; `exitCode` is that status and `stderr` is present only when rg wrote
+stderr text. A truncated search returns this typed result with the captured
+status, including a missing status as `exitCode` null and including a result
+with no parsed JSONL record. A non-truncated status other than 0 or 1 with no
+parsed JSONL record, and a non-truncated missing status, are errors.
 
 Malformed JSONL, invalid base64, and invalid UTF-8 JSON output are explicit tool
 errors rather than silently skipped data. Match and context rows without a
