@@ -292,21 +292,21 @@ pub(crate) fn prompt_build_limits_from_config(
 /// injecting skills into the LLM context when the operator has disabled them.
 pub(crate) async fn discover_skills_if_enabled(
     config: &chelix_config::ChelixConfig,
-    bus: &Arc<chelix_call_bus::CallBus>,
+    files: &Arc<chelix_skills::skill_file::SkillFiles>,
 ) -> Vec<chelix_skills::types::SkillMetadata> {
     if !config.skills.enabled {
         return Vec::new();
     }
     let fs_discoverer = chelix_skills::discover::FsSkillDiscoverer::new(
         chelix_skills::discover::FsSkillDiscoverer::default_paths(),
-        Arc::clone(bus),
+        Arc::clone(files),
     );
 
     #[cfg(feature = "bundled-skills")]
     let skills = {
         use chelix_skills::discover::SkillDiscoverer;
         let bundled = Arc::new(chelix_skills::bundled::BundledSkillStore::new(Arc::clone(
-            bus,
+            files,
         )));
         let composite = chelix_skills::discover::CompositeSkillDiscoverer::new(
             Box::new(fs_discoverer),
@@ -587,7 +587,7 @@ pub(crate) fn prepare_run_registry(
         crate::memory_tools::MemoryForgetProviderResolver,
     )>,
     visible_tools: std::collections::HashSet<String>,
-    call_bus: &Arc<chelix_call_bus::CallBus>,
+    skill_files: &Arc<chelix_skills::skill_file::SkillFiles>,
 ) -> anyhow::Result<chelix_agents::tool_registry::ToolRegistry> {
     let mut registry = if tools_enabled {
         apply_runtime_tool_filters(base, config, skills, policy_context)
@@ -610,7 +610,7 @@ pub(crate) fn prepare_run_registry(
         &mut registry,
         config,
         agent_id,
-        call_bus,
+        skill_files,
     )?;
 
     let max_tool_result_bytes =
@@ -840,8 +840,8 @@ mod tests {
             "preloaded",
             None,
             std::collections::HashSet::from(["mcp__github__builtin_named_like_mcp".to_string()]),
-            &chelix_skills::skill_file::open_skill_bus()
-                .unwrap_or_else(|error| panic!("skill bus: {error}")),
+            &chelix_skills::skill_file::SkillFiles::new()
+                .unwrap_or_else(|error| panic!("skill files: {error}")),
         )
         .unwrap_or_else(|error| panic!("run registry preparation succeeds: {error}"));
 

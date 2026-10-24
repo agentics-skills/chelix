@@ -51,7 +51,7 @@ pub struct LiveSessionService {
     pub(super) state_store: Option<Arc<SessionStateStore>>,
     pub(super) queued_prompts: Option<Arc<QueuedPrompts>>,
     pub(super) session_mutations: Arc<chelix_service_traits::SessionMutationCoordinator>,
-    pub(super) call_bus: Arc<chelix_call_bus::CallBus>,
+    pub(super) deferred_state: Arc<tokio::sync::OnceCell<Arc<crate::state::GatewayState>>>,
 }
 
 impl LiveSessionService {
@@ -61,7 +61,7 @@ impl LiveSessionService {
         sandbox_router: Arc<SandboxRouter>,
         agents_config: Arc<tokio::sync::RwLock<chelix_config::AgentsConfig>>,
         model_service: Arc<dyn ModelService>,
-        call_bus: Arc<chelix_call_bus::CallBus>,
+        deferred_state: Arc<tokio::sync::OnceCell<Arc<crate::state::GatewayState>>>,
     ) -> Self {
         Self {
             store,
@@ -79,7 +79,7 @@ impl LiveSessionService {
             session_mutations: Arc::new(
                 chelix_service_traits::SessionMutationCoordinator::default(),
             ),
-            call_bus,
+            deferred_state,
         }
     }
 
@@ -90,7 +90,7 @@ impl LiveSessionService {
         sandbox_router: Arc<SandboxRouter>,
         agents_config: Arc<tokio::sync::RwLock<chelix_config::AgentsConfig>>,
         model_service: Arc<dyn ModelService>,
-        call_bus: Arc<chelix_call_bus::CallBus>,
+        deferred_state: Arc<tokio::sync::OnceCell<Arc<crate::state::GatewayState>>>,
     ) -> Self {
         Self::from_router(
             store,
@@ -98,7 +98,7 @@ impl LiveSessionService {
             sandbox_router,
             agents_config,
             model_service,
-            call_bus,
+            deferred_state,
         )
     }
 
@@ -122,8 +122,19 @@ impl LiveSessionService {
             Arc::new(SandboxRouter::disabled()),
             Arc::new(tokio::sync::RwLock::new(agents)),
             Arc::new(crate::services::NoopModelService),
-            sealed_test_call_bus(),
+            Arc::new(tokio::sync::OnceCell::new()),
         )
+    }
+
+    #[cfg(test)]
+    pub fn with_chat(self, chat: Arc<dyn crate::services::ChatService>) -> Self {
+        let state = crate::state::GatewayState::new(
+            crate::auth::resolve_auth(None, None),
+            crate::services::GatewayServices::noop(),
+        );
+        state.set_chat(chat);
+        let _ = self.deferred_state.set(state);
+        self
     }
 
     pub fn with_agents_config(
@@ -139,11 +150,6 @@ impl LiveSessionService {
         session_mutations: Arc<chelix_service_traits::SessionMutationCoordinator>,
     ) -> Self {
         self.session_mutations = session_mutations;
-        self
-    }
-
-    pub fn with_call_bus(mut self, call_bus: Arc<chelix_call_bus::CallBus>) -> Self {
-        self.call_bus = call_bus;
         self
     }
 
@@ -463,13 +469,14 @@ impl LiveSessionService {
             })
             .await
             .map_err(ServiceError::message)?;
-        self.call_bus
-            .call(chelix_service_traits::StopSession::Session {
-                key: SessionKey::new(key),
-                run_id: None,
-            })
-            .await
-            .map_err(|error| ServiceError::message(error.to_string()))?;
+        let state = self
+            .deferred_state
+            .get()
+            .ok_or_else(|| ServiceError::message("gateway not ready"))?;
+        state
+            .chat()
+            .abort(serde_json::json!({ "sessionKey": key }))
+            .await?;
         if entry
             .sandbox_owner_key
             .as_deref()
@@ -480,20 +487,6 @@ impl LiveSessionService {
         }
         Ok(session_patch_response(&entry))
     }
-}
-
-#[cfg(test)]
-fn sealed_test_call_bus() -> Arc<chelix_call_bus::CallBus> {
-    let bus = chelix_call_bus::CallBus::new();
-    let _ = bus.require::<chelix_service_traits::StopSession>();
-    let _ = bus.register(|_request: chelix_service_traits::StopSession| async move {
-        Ok(chelix_service_traits::StopSessionOutcome {
-            cancelled: false,
-            run_id: None,
-        })
-    });
-    let _ = bus.seal();
-    bus
 }
 
 fn session_patch_response(entry: &chelix_sessions::metadata::SessionEntry) -> Value {

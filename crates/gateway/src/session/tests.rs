@@ -1330,7 +1330,8 @@ reasoning_supported_efforts = ["off"]
         .execute(&pool)
         .await
         .unwrap();
-        let service = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata));
+        let service = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata))
+            .with_chat(Arc::new(chelix_service_traits::NoopChatService));
 
         let error = service
             .clear_all()
@@ -1566,7 +1567,8 @@ reasoning_supported_efforts = ["off"]
         let metadata = Arc::new(SqliteSessionMetadata::new(pool));
         create_test_session(&metadata, "session:archive-me", Some("Test")).await;
 
-        let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata));
+        let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata))
+            .with_chat(Arc::new(chelix_service_traits::NoopChatService));
 
         let result = svc
             .patch(serde_json::json!({ "key": "session:archive-me", "archived": true }))
@@ -1594,6 +1596,7 @@ reasoning_supported_efforts = ["off"]
 
         let mutations = Arc::new(chelix_service_traits::SessionMutationCoordinator::default());
         let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata))
+            .with_chat(Arc::new(chelix_service_traits::NoopChatService))
             .with_session_mutations(Arc::clone(&mutations));
         let turn = mutations
             .try_acquire_turn(KEY)
@@ -1859,7 +1862,8 @@ reasoning_supported_efforts = ["off"]
             .await
             .unwrap();
 
-        let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata));
+        let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata))
+            .with_chat(Arc::new(chelix_service_traits::NoopChatService));
 
         let result = svc
             .patch(serde_json::json!({ "key": "session:telegram-archive", "archived": true }))
@@ -1884,7 +1888,8 @@ reasoning_supported_efforts = ["off"]
         let metadata = Arc::new(SqliteSessionMetadata::new(pool));
         create_test_session(&metadata, "cron:archive-me", Some("Cron archive")).await;
 
-        let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata));
+        let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata))
+            .with_chat(Arc::new(chelix_service_traits::NoopChatService));
 
         let result = svc
             .patch(serde_json::json!({ "key": "cron:archive-me", "archived": true }))
@@ -1944,7 +1949,8 @@ reasoning_supported_efforts = ["off"]
         .await
         .unwrap();
 
-        let service = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata));
+        let service = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata))
+            .with_chat(Arc::new(chelix_service_traits::NoopChatService));
         assert!(
             service
                 .delete(serde_json::json!({ "key": KEY }))
@@ -1992,7 +1998,8 @@ reasoning_supported_efforts = ["off"]
             .await
             .unwrap();
 
-        let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata));
+        let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata))
+            .with_chat(Arc::new(chelix_service_traits::NoopChatService));
 
         svc.delete(serde_json::json!({ "key": "session:root" }))
             .await
@@ -2024,7 +2031,8 @@ reasoning_supported_efforts = ["off"]
             .await
             .unwrap();
 
-        let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata));
+        let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata))
+            .with_chat(Arc::new(chelix_service_traits::NoopChatService));
 
         svc.delete(serde_json::json!({ "key": "session:root" }))
             .await
@@ -2110,7 +2118,7 @@ reasoning_supported_efforts = ["off"]
         async fn stop(&self, _id: &chelix_tools::sandbox::SandboxId) {
             assert!(
                 self.mark.load(Ordering::SeqCst),
-                "background stop ran before StopSession recorded its mark"
+                "background stop ran before session stop recorded its mark"
             );
             self.stops.fetch_add(1, Ordering::SeqCst);
             self.stop_notify.notify_one();
@@ -2147,7 +2155,9 @@ reasoning_supported_efforts = ["off"]
         .unwrap();
         let watch = router.watch_background_stops();
         (
-            LiveSessionService::new(store, metadata).with_sandbox_router(Arc::new(router)),
+            LiveSessionService::new(store, metadata)
+                .with_chat(Arc::new(chelix_service_traits::NoopChatService))
+                .with_sandbox_router(Arc::new(router)),
             watch,
         )
     }

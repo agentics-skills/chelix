@@ -1,4 +1,4 @@
-//! Coordinates `StopSession` with turns that already hold a permit or are about to enqueue.
+//! Coordinates stopping a session or run with turns that already hold a permit or are about to enqueue.
 
 use std::{
     collections::{HashMap, HashSet},
@@ -409,20 +409,26 @@ impl StopGate {
     }
 }
 
+/// Result of stopping a session or a run.
+pub(in crate::service) struct StopSessionOutcome {
+    pub cancelled: bool,
+    pub run_id: Option<String>,
+}
+
 impl super::types::LiveChatService {
-    pub async fn current_run(&self, key: &str) -> Option<String> {
+    pub(in crate::service) async fn current_run(&self, key: &str) -> Option<String> {
         self.active_runs_by_session.read().await.get(key).cloned()
     }
 
-    pub async fn stop_run(
+    pub(in crate::service) async fn stop_run(
         &self,
         run_id: String,
-    ) -> Result<chelix_service_traits::StopSessionOutcome, ServiceError> {
+    ) -> Result<StopSessionOutcome, ServiceError> {
         let active = self.active_runs.read().await;
         let slot = self.stop_gate.capture_run(&active, &run_id);
         drop(active);
         let Some(slot) = slot else {
-            return Ok(chelix_service_traits::StopSessionOutcome {
+            return Ok(StopSessionOutcome {
                 cancelled: false,
                 run_id: Some(run_id),
             });
@@ -435,19 +441,19 @@ impl super::types::LiveChatService {
         };
         let result = wait_run_done(slot).await;
         result.map_err(ServiceError::message)?;
-        Ok(chelix_service_traits::StopSessionOutcome {
+        Ok(StopSessionOutcome {
             cancelled,
             run_id: Some(run_id),
         })
     }
 
-    pub async fn stop_current_session(
+    pub(in crate::service) async fn stop_current_session(
         &self,
         key: &str,
         expected: Option<&str>,
-    ) -> Result<chelix_service_traits::StopSessionOutcome, ServiceError> {
+    ) -> Result<StopSessionOutcome, ServiceError> {
         let Some(run) = self.stop_gate.choose_stop(key, expected) else {
-            return Ok(chelix_service_traits::StopSessionOutcome {
+            return Ok(StopSessionOutcome {
                 cancelled: false,
                 run_id: expected.map(str::to_string),
             });
@@ -510,7 +516,7 @@ impl super::types::LiveChatService {
         }
         stop_depth.active = false;
         self.stop_gate.end_stop(key);
-        Ok(chelix_service_traits::StopSessionOutcome { cancelled, run_id })
+        Ok(StopSessionOutcome { cancelled, run_id })
     }
 }
 

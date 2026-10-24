@@ -790,14 +790,14 @@ pub async fn start_gateway(
 
     let skill_count = {
         use chelix_skills::discover::{FsSkillDiscoverer, SkillDiscoverer};
-        match state.call_bus.get() {
-            Some(bus) => {
+        match state.skill_files.get() {
+            Some(files) => {
                 let discoverer =
-                    FsSkillDiscoverer::new(FsSkillDiscoverer::default_paths(), Arc::clone(bus));
+                    FsSkillDiscoverer::new(FsSkillDiscoverer::default_paths(), Arc::clone(files));
                 discoverer.discover().await.map(|s| s.len()).unwrap_or(0)
             },
             None => {
-                return Err(crate::Error::Config("call bus is not installed".into()));
+                return Err(crate::Error::Config("skill files are not installed".into()));
             },
         }
     };
@@ -918,10 +918,9 @@ pub async fn start_gateway(
     }
 
     // Spawn shutdown handler:
-    // - SIGTERM / SIGHUP (Docker/systemd): graceful — close the call bus and exit
+    // - SIGTERM / SIGHUP (Docker/systemd): graceful exit
     // - SIGINT  (ctrl-c): immediate exit
     {
-        let call_bus_for_shutdown = state.call_bus.get().cloned();
         tokio::spawn(async move {
             #[cfg(unix)]
             let signal_name: &str = {
@@ -959,11 +958,6 @@ pub async fn start_gateway(
             }
 
             info!(signal = signal_name, "starting graceful shutdown");
-            if let Some(call_bus) = call_bus_for_shutdown {
-                call_bus.close().await;
-            } else {
-                tracing::error!("call bus was not installed before graceful shutdown");
-            }
 
             #[cfg(feature = "mdns")]
             if let Some(ref daemon) = _mdns_daemon {

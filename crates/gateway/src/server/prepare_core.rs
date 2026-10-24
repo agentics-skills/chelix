@@ -735,14 +735,10 @@ pub async fn prepare_gateway_core(
     // ── Hook discovery & registration ─────────────────────────────────────
     seed_default_workspace_markdown_files();
     warn_on_workspace_prompt_file_truncation(&config);
-    let call_bus = chelix_call_bus::CallBus::new();
-    call_bus
-        .require::<chelix_service_traits::StopSession>()
-        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
-    chelix_skills::skill_file::bind_skill_files(&call_bus)
-        .map_err(|error| anyhow::anyhow!(error))?;
+    let skill_files =
+        chelix_skills::skill_file::SkillFiles::new().map_err(|error| anyhow::anyhow!(error))?;
     services.skills = Arc::new(crate::services::NoopSkillsService::new(Arc::clone(
-        &call_bus,
+        &skill_files,
     )));
     super::hooks::seed_example_hook();
     let persisted_disabled = crate::methods::load_disabled_hooks();
@@ -763,7 +759,7 @@ pub async fn prepare_gateway_core(
             Arc::clone(&sandbox_router),
             Arc::clone(&agents_config),
             Arc::clone(&services.model),
-            Arc::clone(&call_bus),
+            Arc::clone(&deferred_state),
         )
         .with_tts_service(Arc::clone(&services.tts))
         .with_share_store(Arc::clone(&session_share_store))
@@ -890,7 +886,7 @@ pub async fn prepare_gateway_core(
         code_index,
         #[cfg(feature = "code-index-builtin")]
         project_store: Arc::clone(&project_store),
-        call_bus,
+        skill_files,
     })
     .await
 }

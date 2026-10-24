@@ -998,17 +998,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "chelix-call-bus"
-version = "0.1.0"
-dependencies = [
- "chelix-metrics",
- "metrics 0.24.6",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "chelix-channels"
 version = "0.1.0"
 dependencies = [
@@ -1031,7 +1020,6 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "chelix-agents",
- "chelix-call-bus",
  "chelix-channels",
  "chelix-common",
  "chelix-config",
@@ -1254,7 +1242,6 @@ dependencies = [
  "bytes",
  "chelix-agents",
  "chelix-auth",
- "chelix-call-bus",
  "chelix-channels",
  "chelix-chat",
  "chelix-code-index",
@@ -1699,7 +1686,6 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
- "chelix-call-bus",
  "chelix-channels",
  "chelix-common",
  "chelix-config",
@@ -1735,10 +1721,8 @@ name = "chelix-skills"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "chelix-call-bus",
  "chelix-config",
  "chelix-metrics",
- "chelix-service-traits",
  "include_dir",
  "notify-debouncer-full",
  "rstest",
@@ -1858,7 +1842,6 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "chelix-agents",
- "chelix-call-bus",
  "chelix-common",
  "chelix-config",
  "chelix-cron",

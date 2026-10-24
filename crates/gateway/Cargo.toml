@@ -11,7 +11,6 @@ base64                  = { workspace = true }
 bytes                   = { workspace = true }
 chelix-agents           = { workspace = true }
 chelix-auth             = { workspace = true }
-chelix-call-bus         = { workspace = true }
 chelix-channels         = { workspace = true }
 chelix-chat             = { workspace = true }
 chelix-code-index       = { workspace = true }
@@ -122,7 +121,6 @@ google = ["dep:chelix-google"]
 linkup = ["dep:chelix-linkup"]
 mdns = ["dep:mdns-sd"]
 metrics = [
-  "chelix-call-bus/metrics",
   "chelix-chat/metrics",
   "chelix-context7?/metrics",
   "chelix-duckduckgo?/metrics",

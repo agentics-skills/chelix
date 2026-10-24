@@ -1,5 +1,99 @@
 use super::*;
 
+enum ArchiveChat {
+    Count(Arc<std::sync::atomic::AtomicUsize>),
+    Wait {
+        entered: Arc<tokio::sync::Notify>,
+        release: Arc<tokio::sync::Notify>,
+        mark: Arc<std::sync::atomic::AtomicBool>,
+    },
+    Fail,
+}
+
+#[async_trait::async_trait]
+impl chelix_service_traits::ChatService for ArchiveChat {
+    async fn send(
+        &self,
+        _request: chelix_service_traits::ChatSendRequest,
+        _context: chelix_service_traits::ChatExecutionContext,
+    ) -> ServiceResult {
+        Err("chat not configured".into())
+    }
+
+    async fn send_sync(
+        &self,
+        _request: chelix_service_traits::ChatSendSyncRequest,
+        _context: chelix_service_traits::ChatExecutionContext,
+    ) -> ServiceResult {
+        Err("chat not configured".into())
+    }
+
+    async fn abort(&self, _params: Value) -> ServiceResult {
+        match self {
+            Self::Count(calls) => {
+                calls.fetch_add(1, Ordering::SeqCst);
+                Ok(serde_json::json!({}))
+            },
+            Self::Wait {
+                entered,
+                release,
+                mark,
+            } => {
+                let wait = release.notified();
+                mark.store(true, Ordering::SeqCst);
+                entered.notify_one();
+                wait.await;
+                Ok(serde_json::json!({}))
+            },
+            Self::Fail => Err(ServiceError::message("stop failed")),
+        }
+    }
+
+    async fn history(&self, _params: Value) -> ServiceResult {
+        Ok(serde_json::json!([]))
+    }
+
+    async fn inject(&self, _params: Value) -> ServiceResult {
+        Err("chat not configured".into())
+    }
+
+    async fn clear(&self, _params: Value) -> ServiceResult {
+        Ok(serde_json::json!({ "ok": true }))
+    }
+
+    async fn compact(
+        &self,
+        _request: chelix_service_traits::ChatCompactRequest,
+        _context: chelix_service_traits::ChatExecutionContext,
+    ) -> ServiceResult {
+        Err("chat not configured".into())
+    }
+
+    async fn context(
+        &self,
+        _request: chelix_service_traits::ChatContextRequest,
+        _context: chelix_service_traits::ChatExecutionContext,
+    ) -> ServiceResult {
+        Ok(serde_json::json!({ "session": {}, "project": null, "tools": [], "providers": [] }))
+    }
+
+    async fn raw_prompt(
+        &self,
+        _request: chelix_service_traits::ChatRawPromptRequest,
+        _context: chelix_service_traits::ChatExecutionContext,
+    ) -> ServiceResult {
+        Err("chat not configured".into())
+    }
+
+    async fn full_context(
+        &self,
+        _request: chelix_service_traits::ChatFullContextRequest,
+        _context: chelix_service_traits::ChatExecutionContext,
+    ) -> ServiceResult {
+        Err("chat not configured".into())
+    }
+}
+
 #[tokio::test]
 async fn archive_patch_error_does_not_call_stop_session() {
     let dir = tempfile::tempdir().unwrap();
@@ -13,22 +107,8 @@ async fn archive_patch_error_does_not_call_stop_session() {
         .await
         .unwrap();
     let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    let seen = Arc::clone(&calls);
-    let bus = chelix_call_bus::CallBus::new();
-    bus.require::<chelix_service_traits::StopSession>().unwrap();
-    bus.register(move |_request: chelix_service_traits::StopSession| {
-        let seen = Arc::clone(&seen);
-        async move {
-            seen.fetch_add(1, Ordering::SeqCst);
-            Ok(chelix_service_traits::StopSessionOutcome {
-                cancelled: false,
-                run_id: None,
-            })
-        }
-    })
-    .unwrap();
-    bus.seal().unwrap();
-    let svc = LiveSessionService::new(store, metadata).with_call_bus(bus);
+    let svc = LiveSessionService::new(store, metadata)
+        .with_chat(Arc::new(ArchiveChat::Count(Arc::clone(&calls))));
     let error = svc
         .patch(serde_json::json!({ "key": "telegram:bot1:123", "archived": true }))
         .await
@@ -199,12 +279,6 @@ fn archive_router(backend: Arc<RecordingSandbox>) -> Arc<SandboxRouter> {
     )
 }
 
-fn sealed_archive_bus() -> Arc<chelix_call_bus::CallBus> {
-    let bus = chelix_call_bus::CallBus::new();
-    bus.require::<chelix_service_traits::StopSession>().unwrap();
-    bus
-}
-
 #[tokio::test(flavor = "current_thread")]
 async fn archive_patch_error_does_not_stop_sandbox() {
     let dir = tempfile::tempdir().unwrap();
@@ -217,25 +291,11 @@ async fn archive_patch_error_does_not_stop_sandbox() {
         .await
         .unwrap();
     let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    let seen = Arc::clone(&calls);
-    let bus = sealed_archive_bus();
-    bus.register(move |_request: chelix_service_traits::StopSession| {
-        let seen = Arc::clone(&seen);
-        async move {
-            seen.fetch_add(1, Ordering::SeqCst);
-            Ok(chelix_service_traits::StopSessionOutcome {
-                cancelled: false,
-                run_id: None,
-            })
-        }
-    })
-    .unwrap();
-    bus.seal().unwrap();
     let backend = Arc::new(RecordingSandbox::new());
     let router = archive_router(Arc::clone(&backend));
     let watch = router.watch_background_stops();
     let svc = LiveSessionService::new(store, metadata)
-        .with_call_bus(bus)
+        .with_chat(Arc::new(ArchiveChat::Count(Arc::clone(&calls))))
         .with_sandbox_router(router);
     let error = svc
         .patch(serde_json::json!({ "key": "telegram:bot1:123", "archived": true }))
@@ -256,31 +316,14 @@ async fn archive_calls_stop_session_before_background_stop() {
     let release = Arc::new(tokio::sync::Notify::new());
     let entered = Arc::new(tokio::sync::Notify::new());
     let backend = Arc::new(RecordingSandbox::new());
-    let mark = Arc::clone(&backend.mark);
-    let bus = sealed_archive_bus();
-    let release_for_handler = Arc::clone(&release);
-    let entered_for_handler = Arc::clone(&entered);
-    bus.register(move |_request: chelix_service_traits::StopSession| {
-        let release = Arc::clone(&release_for_handler);
-        let entered = Arc::clone(&entered_for_handler);
-        let mark = Arc::clone(&mark);
-        async move {
-            let wait = release.notified();
-            mark.store(true, Ordering::SeqCst);
-            entered.notify_one();
-            wait.await;
-            Ok(chelix_service_traits::StopSessionOutcome {
-                cancelled: false,
-                run_id: None,
-            })
-        }
-    })
-    .unwrap();
-    bus.seal().unwrap();
     let router = archive_router(Arc::clone(&backend));
     let watch = router.watch_background_stops();
     let svc = LiveSessionService::new(store, Arc::clone(&metadata))
-        .with_call_bus(bus)
+        .with_chat(Arc::new(ArchiveChat::Wait {
+            entered: Arc::clone(&entered),
+            release: Arc::clone(&release),
+            mark: Arc::clone(&backend.mark),
+        }))
         .with_sandbox_router(router);
     let entered_wait = entered.notified();
     let archived = tokio::spawn(async move {
@@ -289,7 +332,7 @@ async fn archive_calls_stop_session_before_background_stop() {
     });
     tokio::time::timeout(std::time::Duration::from_secs(2), entered_wait)
         .await
-        .expect("StopSession did not start");
+        .expect("session stop did not start");
     assert_eq!(backend.stops.load(Ordering::SeqCst), 0);
     let stopped = backend.stop_notify.notified();
     release.notify_one();
@@ -316,17 +359,11 @@ async fn archive_stop_session_error_skips_background_stop() {
     let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
     let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
     create_test_session(&metadata, "session:owner", Some("Owner")).await;
-    let bus = sealed_archive_bus();
-    bus.register(|_request: chelix_service_traits::StopSession| async move {
-        Err(ServiceError::message("stop failed"))
-    })
-    .unwrap();
-    bus.seal().unwrap();
     let backend = Arc::new(RecordingSandbox::new());
     let router = archive_router(Arc::clone(&backend));
     let watch = router.watch_background_stops();
     let svc = LiveSessionService::new(store, Arc::clone(&metadata))
-        .with_call_bus(bus)
+        .with_chat(Arc::new(ArchiveChat::Fail))
         .with_sandbox_router(router);
     let error = svc
         .patch(serde_json::json!({ "key": "session:owner", "archived": true }))
@@ -357,25 +394,11 @@ async fn archive_foreign_owner_skips_background_stop() {
         .await
         .unwrap();
     let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    let seen = Arc::clone(&calls);
-    let bus = sealed_archive_bus();
-    bus.register(move |_request: chelix_service_traits::StopSession| {
-        let seen = Arc::clone(&seen);
-        async move {
-            seen.fetch_add(1, Ordering::SeqCst);
-            Ok(chelix_service_traits::StopSessionOutcome {
-                cancelled: false,
-                run_id: None,
-            })
-        }
-    })
-    .unwrap();
-    bus.seal().unwrap();
     let backend = Arc::new(RecordingSandbox::new());
     let router = archive_router(Arc::clone(&backend));
     let watch = router.watch_background_stops();
     let svc = LiveSessionService::new(store, metadata)
-        .with_call_bus(bus)
+        .with_chat(Arc::new(ArchiveChat::Count(Arc::clone(&calls))))
         .with_sandbox_router(router);
     svc.patch(serde_json::json!({ "key": "session:child", "archived": true }))
         .await

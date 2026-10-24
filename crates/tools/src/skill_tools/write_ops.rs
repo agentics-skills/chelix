@@ -25,12 +25,12 @@ use {
 /// Tool that writes supplementary text files inside an existing personal skill.
 pub struct WriteSkillFilesTool {
     data_dir: PathBuf,
-    bus: Arc<chelix_call_bus::CallBus>,
+    files: Arc<chelix_skills::skill_file::SkillFiles>,
 }
 
 impl WriteSkillFilesTool {
-    pub fn new(data_dir: PathBuf, bus: Arc<chelix_call_bus::CallBus>) -> Self {
-        Self { data_dir, bus }
+    pub fn new(data_dir: PathBuf, files: Arc<chelix_skills::skill_file::SkillFiles>) -> Self {
+        Self { data_dir, files }
     }
 
     fn skills_dir(&self) -> PathBuf {
@@ -110,11 +110,7 @@ impl AgentTool for WriteSkillFilesTool {
         }
 
         let skill_md_path = skill_dir.join("SKILL.md");
-        self.bus
-            .call(chelix_service_traits::ReadSkillFile {
-                path: skill_md_path,
-                max_bytes: None,
-            })
+        chelix_skills::skill_file::read(&self.files, &skill_md_path, None)
             .await
             .map_err(|error| anyhow::anyhow!(error))?;
         write_sidecar_files(&skill_dir, &validated).await?;
@@ -141,15 +137,15 @@ const MAX_PATCHES_PER_CALL: usize = 10;
 /// hallucination risk and token cost.
 pub struct PatchSkillTool {
     data_dir: PathBuf,
-    bus: Arc<chelix_call_bus::CallBus>,
+    files: Arc<chelix_skills::skill_file::SkillFiles>,
     usage_store: Option<SkillUsageStore>,
 }
 
 impl PatchSkillTool {
-    pub fn new(data_dir: PathBuf, bus: Arc<chelix_call_bus::CallBus>) -> Self {
+    pub fn new(data_dir: PathBuf, files: Arc<chelix_skills::skill_file::SkillFiles>) -> Self {
         Self {
             data_dir,
-            bus,
+            files,
             usage_store: None,
         }
     }
@@ -262,15 +258,14 @@ impl AgentTool for PatchSkillTool {
                 .ok_or_else(|| Error::message(format!("patch[{i}]: missing 'replace'")))?;
             replacements.push((find.to_string(), replace.to_string()));
         }
-        let patched = self
-            .bus
-            .call(chelix_service_traits::PatchSkillFile {
-                path: skill_md_path,
-                patches: replacements.clone(),
-                description: new_description.map(str::to_string),
-            })
-            .await
-            .map_err(|error| anyhow::anyhow!(error))?;
+        let patched = chelix_skills::skill_file::patch(
+            &self.files,
+            &skill_md_path,
+            &replacements,
+            new_description,
+        )
+        .await
+        .map_err(|error| anyhow::anyhow!(error))?;
         let applied = replacements.len();
         let patched_body = patched.body;
 

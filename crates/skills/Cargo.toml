@@ -5,9 +5,7 @@ version.workspace = true
 
 [dependencies]
 async-trait           = { workspace = true }
-chelix-call-bus       = { workspace = true }
 chelix-config         = { workspace = true }
-chelix-service-traits = { workspace = true }
 chelix-metrics        = { optional = true, workspace = true }
 include_dir           = { optional = true, workspace = true }
 notify-debouncer-full = { optional = true, workspace = true }

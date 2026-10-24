@@ -688,7 +688,7 @@ pub(crate) async fn run_with_tools(
     sender_name: Option<String>,
     tool_choice: Option<ToolChoice>,
     tool_permission: Option<crate::tool_permission::ToolPermissionRuntime>,
-    call_bus: &Arc<chelix_call_bus::CallBus>,
+    skill_files: &Arc<chelix_skills::skill_file::SkillFiles>,
 ) -> ChatRunOutcome {
     let ui_run = match crate::ui_history_ingress::begin(
         session_store,
@@ -792,7 +792,7 @@ pub(crate) async fn run_with_tools(
             agent_id,
             memory_setup,
             visible_tools,
-            call_bus,
+            skill_files,
         )
     };
     let filtered_registry = match filtered_registry {

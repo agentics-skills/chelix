@@ -1,8 +1,8 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 use super::*;
 
-fn skill_bus() -> Arc<chelix_call_bus::CallBus> {
-    chelix_skills::skill_file::open_skill_bus().unwrap()
+fn skill_files() -> Arc<chelix_skills::skill_file::SkillFiles> {
+    chelix_skills::skill_file::SkillFiles::new().unwrap()
 }
 
 struct CheckingWriteRecorder {
@@ -16,11 +16,7 @@ struct CheckingWriteRecorder {
 impl helpers::SkillWriteRecorder for CheckingWriteRecorder {
     async fn record_write(&self, name: &str) {
         let dir = self.data_dir.join("skills").join(name);
-        let content = skill_bus()
-            .call(chelix_service_traits::ReadSkillFile {
-                path: dir.join("SKILL.md"),
-                max_bytes: None,
-            })
+        let content = chelix_skills::skill_file::read(&skill_files(), &dir.join("SKILL.md"), None)
             .await
             .unwrap();
         assert_eq!(content.metadata.allowed_agents, self.expected_allow);
@@ -46,7 +42,7 @@ async fn create_and_update_publish_access_before_usage_accounting() {
             expected_allow: agent_id.into_iter().map(String::from).collect(),
             expected_body: "created body".into(),
         });
-        let create = CreateSkillTool::new(tmp.path().to_path_buf(), skill_bus())
+        let create = CreateSkillTool::new(tmp.path().to_path_buf(), skill_files())
             .with_write_recorder(recorder.clone());
         let params = json!({ "name": name, "description": "test", "body": "created body" });
         if let Some(agent_id) = agent_id {
@@ -74,7 +70,7 @@ async fn create_and_update_publish_access_before_usage_accounting() {
         expected_allow: vec!["agent1".into()],
         expected_body: "updated body".into(),
     });
-    let update = UpdateSkillTool::new(tmp.path().to_path_buf(), skill_bus())
+    let update = UpdateSkillTool::new(tmp.path().to_path_buf(), skill_files())
         .with_write_recorder(recorder.clone());
     update
         .execute(json!({ "name": name, "description": "test", "body": "updated body" }))
@@ -91,7 +87,7 @@ async fn personal_mutations_reject_invalid_frontmatter_before_writing() {
     let path = dir.join("SKILL.md");
     let original = "---\nname: demo\nallowed_agents: hello\n---\nbody\n";
     std::fs::write(&path, original).unwrap();
-    let create = CreateSkillTool::new(tmp.path().to_path_buf(), skill_bus());
+    let create = CreateSkillTool::new(tmp.path().to_path_buf(), skill_files());
     let create_error = create
         .execute(json!({ "name": "demo", "description": "test", "body": "changed" }))
         .await
@@ -101,12 +97,18 @@ async fn personal_mutations_reject_invalid_frontmatter_before_writing() {
         "{create_error}"
     );
     let tools: Vec<Box<dyn AgentTool>> = vec![
-        Box::new(UpdateSkillTool::new(tmp.path().to_path_buf(), skill_bus())),
-        Box::new(PatchSkillTool::new(tmp.path().to_path_buf(), skill_bus())),
-        Box::new(DeleteSkillTool::new(tmp.path().to_path_buf(), skill_bus())),
+        Box::new(UpdateSkillTool::new(
+            tmp.path().to_path_buf(),
+            skill_files(),
+        )),
+        Box::new(PatchSkillTool::new(tmp.path().to_path_buf(), skill_files())),
+        Box::new(DeleteSkillTool::new(
+            tmp.path().to_path_buf(),
+            skill_files(),
+        )),
         Box::new(WriteSkillFilesTool::new(
             tmp.path().to_path_buf(),
-            skill_bus(),
+            skill_files(),
         )),
     ];
     for tool in tools {
@@ -136,7 +138,7 @@ async fn patch_rewrites_skill_file_and_sidecar_write_leaves_it_unchanged() {
     let path = dir.join("SKILL.md");
     let original = "---\nname: demo\ndescription: test\n---\n\noriginal body\n";
     std::fs::write(&path, original).unwrap();
-    let patch = PatchSkillTool::new(tmp.path().to_path_buf(), skill_bus());
+    let patch = PatchSkillTool::new(tmp.path().to_path_buf(), skill_files());
     patch
         .execute(
             json!({ "name": "demo", "patches": [{ "find": "original", "replace": "patched" }] }),
@@ -148,7 +150,7 @@ async fn patch_rewrites_skill_file_and_sidecar_write_leaves_it_unchanged() {
     assert!(patched.contains("denied_agents:"));
     assert!(patched.contains("patched body"));
     std::fs::write(&path, original).unwrap();
-    let write = WriteSkillFilesTool::new(tmp.path().to_path_buf(), skill_bus());
+    let write = WriteSkillFilesTool::new(tmp.path().to_path_buf(), skill_files());
     write.execute(json!({ "name": "demo", "files": [{ "path": "references/api.md", "content": "reference" }] })).await.unwrap();
     assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
     assert_eq!(
@@ -171,7 +173,7 @@ async fn sidecar_symlink_write_preserves_link_and_updates_target() {
     std::fs::write(&target, "original").unwrap();
     let link = dir.join("references/api.md");
     symlink(&target, &link).unwrap();
-    let tool = WriteSkillFilesTool::new(tmp.path().to_path_buf(), skill_bus());
+    let tool = WriteSkillFilesTool::new(tmp.path().to_path_buf(), skill_files());
     tool.execute(
         json!({ "name": "demo", "files": [{ "path": "references/api.md", "content": "updated" }] }),
     )
@@ -189,7 +191,7 @@ async fn sidecar_symlink_write_preserves_link_and_updates_target() {
 #[tokio::test]
 async fn test_create_invalid_name() {
     let tmp = tempfile::tempdir().unwrap();
-    let tool = CreateSkillTool::new(tmp.path().to_path_buf(), skill_bus());
+    let tool = CreateSkillTool::new(tmp.path().to_path_buf(), skill_files());
 
     let result = tool
         .execute(json!({
@@ -204,7 +206,7 @@ async fn test_create_invalid_name() {
 #[tokio::test]
 async fn test_create_duplicate_fails() {
     let tmp = tempfile::tempdir().unwrap();
-    let tool = CreateSkillTool::new(tmp.path().to_path_buf(), skill_bus());
+    let tool = CreateSkillTool::new(tmp.path().to_path_buf(), skill_files());
 
     tool.execute(json!({
         "name": "my-skill",
@@ -227,8 +229,8 @@ async fn test_create_duplicate_fails() {
 #[tokio::test]
 async fn test_update_skill() {
     let tmp = tempfile::tempdir().unwrap();
-    let create = CreateSkillTool::new(tmp.path().to_path_buf(), skill_bus());
-    let update = UpdateSkillTool::new(tmp.path().to_path_buf(), skill_bus());
+    let create = CreateSkillTool::new(tmp.path().to_path_buf(), skill_files());
+    let update = UpdateSkillTool::new(tmp.path().to_path_buf(), skill_files());
 
     create
         .execute(json!({
@@ -257,7 +259,7 @@ async fn test_update_skill() {
 #[tokio::test]
 async fn test_update_nonexistent_fails() {
     let tmp = tempfile::tempdir().unwrap();
-    let tool = UpdateSkillTool::new(tmp.path().to_path_buf(), skill_bus());
+    let tool = UpdateSkillTool::new(tmp.path().to_path_buf(), skill_files());
 
     let result = tool
         .execute(json!({
@@ -272,8 +274,8 @@ async fn test_update_nonexistent_fails() {
 #[tokio::test]
 async fn test_delete_skill() {
     let tmp = tempfile::tempdir().unwrap();
-    let create = CreateSkillTool::new(tmp.path().to_path_buf(), skill_bus());
-    let delete = DeleteSkillTool::new(tmp.path().to_path_buf(), skill_bus());
+    let create = CreateSkillTool::new(tmp.path().to_path_buf(), skill_files());
+    let delete = DeleteSkillTool::new(tmp.path().to_path_buf(), skill_files());
 
     create
         .execute(json!({
@@ -292,7 +294,7 @@ async fn test_delete_skill() {
 #[tokio::test]
 async fn test_delete_nonexistent_fails() {
     let tmp = tempfile::tempdir().unwrap();
-    let tool = DeleteSkillTool::new(tmp.path().to_path_buf(), skill_bus());
+    let tool = DeleteSkillTool::new(tmp.path().to_path_buf(), skill_files());
 
     let result = tool.execute(json!({ "name": "nope" })).await;
     assert!(result.is_err());
@@ -312,7 +314,7 @@ async fn test_delete_skill_removes_alias_and_preserves_target() {
     let alias_dir = skills_dir.join("alias-skill");
     symlink(&real_dir, &alias_dir).unwrap();
 
-    let tool = DeleteSkillTool::new(tmp.path().to_path_buf(), skill_bus());
+    let tool = DeleteSkillTool::new(tmp.path().to_path_buf(), skill_files());
     let result = tool.execute(json!({ "name": "alias-skill" })).await;
 
     assert_eq!(result.unwrap()["deleted"], true);
@@ -326,8 +328,8 @@ async fn test_delete_skill_removes_alias_and_preserves_target() {
 #[tokio::test]
 async fn test_write_skill_files_writes_sidecars_and_audits() {
     let tmp = tempfile::tempdir().unwrap();
-    let create = CreateSkillTool::new(tmp.path().to_path_buf(), skill_bus());
-    let write = WriteSkillFilesTool::new(tmp.path().to_path_buf(), skill_bus());
+    let create = CreateSkillTool::new(tmp.path().to_path_buf(), skill_files());
+    let write = WriteSkillFilesTool::new(tmp.path().to_path_buf(), skill_files());
 
     create
         .execute(json!({
@@ -369,7 +371,7 @@ async fn test_write_skill_files_writes_sidecars_and_audits() {
 #[tokio::test]
 async fn test_write_skill_files_requires_existing_skill() {
     let tmp = tempfile::tempdir().unwrap();
-    let write = WriteSkillFilesTool::new(tmp.path().to_path_buf(), skill_bus());
+    let write = WriteSkillFilesTool::new(tmp.path().to_path_buf(), skill_files());
 
     let result = write
         .execute(json!({
@@ -384,8 +386,8 @@ async fn test_write_skill_files_requires_existing_skill() {
 #[tokio::test]
 async fn test_write_skill_files_rejects_path_traversal() {
     let tmp = tempfile::tempdir().unwrap();
-    let create = CreateSkillTool::new(tmp.path().to_path_buf(), skill_bus());
-    let write = WriteSkillFilesTool::new(tmp.path().to_path_buf(), skill_bus());
+    let create = CreateSkillTool::new(tmp.path().to_path_buf(), skill_files());
+    let write = WriteSkillFilesTool::new(tmp.path().to_path_buf(), skill_files());
 
     create
         .execute(json!({
@@ -410,8 +412,8 @@ async fn test_write_skill_files_rejects_path_traversal() {
 #[tokio::test]
 async fn test_write_skill_files_rejects_reserved_skill_md() {
     let tmp = tempfile::tempdir().unwrap();
-    let create = CreateSkillTool::new(tmp.path().to_path_buf(), skill_bus());
-    let write = WriteSkillFilesTool::new(tmp.path().to_path_buf(), skill_bus());
+    let create = CreateSkillTool::new(tmp.path().to_path_buf(), skill_files());
+    let write = WriteSkillFilesTool::new(tmp.path().to_path_buf(), skill_files());
 
     create
         .execute(json!({
@@ -435,8 +437,8 @@ async fn test_write_skill_files_rejects_reserved_skill_md() {
 #[tokio::test]
 async fn test_write_skill_files_rejects_hidden_paths() {
     let tmp = tempfile::tempdir().unwrap();
-    let create = CreateSkillTool::new(tmp.path().to_path_buf(), skill_bus());
-    let write = WriteSkillFilesTool::new(tmp.path().to_path_buf(), skill_bus());
+    let create = CreateSkillTool::new(tmp.path().to_path_buf(), skill_files());
+    let write = WriteSkillFilesTool::new(tmp.path().to_path_buf(), skill_files());
 
     create
         .execute(json!({
@@ -460,8 +462,8 @@ async fn test_write_skill_files_rejects_hidden_paths() {
 #[tokio::test]
 async fn test_write_skill_files_rejects_duplicate_paths() {
     let tmp = tempfile::tempdir().unwrap();
-    let create = CreateSkillTool::new(tmp.path().to_path_buf(), skill_bus());
-    let write = WriteSkillFilesTool::new(tmp.path().to_path_buf(), skill_bus());
+    let create = CreateSkillTool::new(tmp.path().to_path_buf(), skill_files());
+    let write = WriteSkillFilesTool::new(tmp.path().to_path_buf(), skill_files());
 
     create
         .execute(json!({
@@ -488,8 +490,8 @@ async fn test_write_skill_files_rejects_duplicate_paths() {
 #[tokio::test]
 async fn test_write_skill_files_rejects_oversize_file() {
     let tmp = tempfile::tempdir().unwrap();
-    let create = CreateSkillTool::new(tmp.path().to_path_buf(), skill_bus());
-    let write = WriteSkillFilesTool::new(tmp.path().to_path_buf(), skill_bus());
+    let create = CreateSkillTool::new(tmp.path().to_path_buf(), skill_files());
+    let write = WriteSkillFilesTool::new(tmp.path().to_path_buf(), skill_files());
 
     create
         .execute(json!({
@@ -516,9 +518,9 @@ async fn test_write_skill_files_rejects_oversize_file() {
 #[tokio::test]
 async fn test_delete_skill_removes_sidecar_files() {
     let tmp = tempfile::tempdir().unwrap();
-    let create = CreateSkillTool::new(tmp.path().to_path_buf(), skill_bus());
-    let write = WriteSkillFilesTool::new(tmp.path().to_path_buf(), skill_bus());
-    let delete = DeleteSkillTool::new(tmp.path().to_path_buf(), skill_bus());
+    let create = CreateSkillTool::new(tmp.path().to_path_buf(), skill_files());
+    let write = WriteSkillFilesTool::new(tmp.path().to_path_buf(), skill_files());
+    let delete = DeleteSkillTool::new(tmp.path().to_path_buf(), skill_files());
 
     create
         .execute(json!({
@@ -555,7 +557,7 @@ async fn test_write_skill_files_follows_symlinked_skill_root() {
     std::fs::write(real_dir.join("SKILL.md"), "---\nname: demo\n---\n").unwrap();
     symlink(&real_dir, skills_dir.join("demo")).unwrap();
 
-    let write = WriteSkillFilesTool::new(tmp.path().to_path_buf(), skill_bus());
+    let write = WriteSkillFilesTool::new(tmp.path().to_path_buf(), skill_files());
     let result = write
         .execute(json!({
             "name": "demo",
@@ -575,8 +577,8 @@ async fn test_write_skill_files_follows_symlinked_skill_root() {
 #[tokio::test]
 async fn test_patch_skill_single_patch() {
     let tmp = tempfile::tempdir().unwrap();
-    let create = CreateSkillTool::new(tmp.path().to_path_buf(), skill_bus());
-    let patch = PatchSkillTool::new(tmp.path().to_path_buf(), skill_bus());
+    let create = CreateSkillTool::new(tmp.path().to_path_buf(), skill_files());
+    let patch = PatchSkillTool::new(tmp.path().to_path_buf(), skill_files());
 
     create
         .execute(json!({
@@ -612,8 +614,8 @@ async fn test_patch_skill_single_patch() {
 #[tokio::test]
 async fn test_patch_skill_multiple_patches_in_order() {
     let tmp = tempfile::tempdir().unwrap();
-    let create = CreateSkillTool::new(tmp.path().to_path_buf(), skill_bus());
-    let patch = PatchSkillTool::new(tmp.path().to_path_buf(), skill_bus());
+    let create = CreateSkillTool::new(tmp.path().to_path_buf(), skill_files());
+    let patch = PatchSkillTool::new(tmp.path().to_path_buf(), skill_files());
 
     create
         .execute(json!({
@@ -644,8 +646,8 @@ async fn test_patch_skill_multiple_patches_in_order() {
 #[tokio::test]
 async fn test_patch_skill_find_not_found_fails() {
     let tmp = tempfile::tempdir().unwrap();
-    let create = CreateSkillTool::new(tmp.path().to_path_buf(), skill_bus());
-    let patch = PatchSkillTool::new(tmp.path().to_path_buf(), skill_bus());
+    let create = CreateSkillTool::new(tmp.path().to_path_buf(), skill_files());
+    let patch = PatchSkillTool::new(tmp.path().to_path_buf(), skill_files());
 
     create
         .execute(json!({
@@ -673,7 +675,7 @@ async fn test_patch_skill_find_not_found_fails() {
 #[tokio::test]
 async fn test_patch_skill_nonexistent_fails() {
     let tmp = tempfile::tempdir().unwrap();
-    let patch = PatchSkillTool::new(tmp.path().to_path_buf(), skill_bus());
+    let patch = PatchSkillTool::new(tmp.path().to_path_buf(), skill_files());
 
     let result = patch
         .execute(json!({
@@ -688,7 +690,7 @@ async fn test_patch_skill_nonexistent_fails() {
 #[tokio::test]
 async fn test_patch_skill_invalid_name_fails() {
     let tmp = tempfile::tempdir().unwrap();
-    let patch = PatchSkillTool::new(tmp.path().to_path_buf(), skill_bus());
+    let patch = PatchSkillTool::new(tmp.path().to_path_buf(), skill_files());
 
     let result = patch
         .execute(json!({
@@ -703,8 +705,8 @@ async fn test_patch_skill_invalid_name_fails() {
 #[tokio::test]
 async fn test_patch_skill_empty_patches_fails() {
     let tmp = tempfile::tempdir().unwrap();
-    let create = CreateSkillTool::new(tmp.path().to_path_buf(), skill_bus());
-    let patch = PatchSkillTool::new(tmp.path().to_path_buf(), skill_bus());
+    let create = CreateSkillTool::new(tmp.path().to_path_buf(), skill_files());
+    let patch = PatchSkillTool::new(tmp.path().to_path_buf(), skill_files());
 
     create
         .execute(json!({
@@ -732,27 +734,19 @@ async fn test_patch_skill_updates_description_after_multiline_publication() {
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("SKILL.md");
     std::fs::write(&path, "---\nname: my-skill\ndescription: \"first\\nsecond\"\nallowed_agents:\n- agent1\ndenied_agents:\n- agent2\n---\n\nHello world\n").unwrap();
-    let patch = PatchSkillTool::new(tmp.path().to_path_buf(), skill_bus());
+    let patch = PatchSkillTool::new(tmp.path().to_path_buf(), skill_files());
     patch
         .execute(
             json!({ "name": "my-skill", "patches": [{ "find": "Hello", "replace": "Welcome" }] }),
         )
         .await
         .unwrap();
-    let first = skill_bus()
-        .call(chelix_service_traits::ReadSkillFile {
-            path: path.clone(),
-            max_bytes: None,
-        })
+    let first = chelix_skills::skill_file::read(&skill_files(), &path, None)
         .await
         .unwrap();
     assert_eq!(first.metadata.description, "first\nsecond");
     patch.execute(json!({ "name": "my-skill", "patches": [{ "find": "Welcome", "replace": "Goodbye" }], "description": "new desc" })).await.unwrap();
-    let parsed = skill_bus()
-        .call(chelix_service_traits::ReadSkillFile {
-            path: path.clone(),
-            max_bytes: None,
-        })
+    let parsed = chelix_skills::skill_file::read(&skill_files(), &path, None)
         .await
         .unwrap();
     assert_eq!(parsed.metadata.description, "new desc");
@@ -764,8 +758,8 @@ async fn test_patch_skill_updates_description_after_multiline_publication() {
 #[tokio::test]
 async fn test_patch_skill_empty_find_fails() {
     let tmp = tempfile::tempdir().unwrap();
-    let create = CreateSkillTool::new(tmp.path().to_path_buf(), skill_bus());
-    let patch = PatchSkillTool::new(tmp.path().to_path_buf(), skill_bus());
+    let create = CreateSkillTool::new(tmp.path().to_path_buf(), skill_files());
+    let patch = PatchSkillTool::new(tmp.path().to_path_buf(), skill_files());
 
     create
         .execute(json!({
@@ -805,7 +799,7 @@ async fn test_patch_skill_follows_symlinked_skill_root() {
     .unwrap();
     symlink(&real_dir, skills_dir.join("demo")).unwrap();
 
-    let patch = PatchSkillTool::new(tmp.path().to_path_buf(), skill_bus());
+    let patch = PatchSkillTool::new(tmp.path().to_path_buf(), skill_files());
     let result = patch
         .execute(json!({
             "name": "demo",
@@ -821,8 +815,8 @@ async fn test_patch_skill_follows_symlinked_skill_root() {
 #[tokio::test]
 async fn test_write_skill_files_keeps_first_file_on_error() {
     let tmp = tempfile::tempdir().unwrap();
-    let create = CreateSkillTool::new(tmp.path().to_path_buf(), skill_bus());
-    let write = WriteSkillFilesTool::new(tmp.path().to_path_buf(), skill_bus());
+    let create = CreateSkillTool::new(tmp.path().to_path_buf(), skill_files());
+    let write = WriteSkillFilesTool::new(tmp.path().to_path_buf(), skill_files());
 
     create
         .execute(json!({

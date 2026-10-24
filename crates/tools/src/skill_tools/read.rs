@@ -15,17 +15,17 @@ fn seed_personal_skill(root: &Path, name: &str, body: &str) -> PathBuf {
     skill_dir
 }
 
-fn skill_bus() -> Arc<chelix_call_bus::CallBus> {
-    chelix_skills::skill_file::open_skill_bus().unwrap()
+fn skill_files() -> Arc<chelix_skills::skill_file::SkillFiles> {
+    chelix_skills::skill_file::SkillFiles::new().unwrap()
 }
 
 /// Build a `ReadSkillTool` whose discoverer only sees the personal skills
 /// directory at `<root>/skills`.
 fn read_tool_for(root: &Path) -> ReadSkillTool {
     let paths = vec![(root.join("skills"), SkillSource::Personal)];
-    let bus = skill_bus();
-    let discoverer = Arc::new(FsSkillDiscoverer::new(paths, Arc::clone(&bus)));
-    ReadSkillTool::new(discoverer, bus)
+    let files = skill_files();
+    let discoverer = Arc::new(FsSkillDiscoverer::new(paths, Arc::clone(&files)));
+    ReadSkillTool::new(discoverer, files)
 }
 
 #[tokio::test]
@@ -229,7 +229,7 @@ async fn test_read_skill_rejects_skill_md_via_sidecar_path() {
 #[tokio::test]
 async fn test_read_skill_name_with_matching_metadata_tool_is_present() {
     // Sanity check on AgentTool shape.
-    let tool = ReadSkillTool::with_default_paths(skill_bus());
+    let tool = ReadSkillTool::with_default_paths(skill_files());
     assert_eq!(tool.name(), "read_skill");
     let schema = tool.parameters_schema();
     assert_eq!(schema["type"], "object");
@@ -738,15 +738,15 @@ async fn test_read_skill_multi_source_resolves_by_name() {
     // Seed a personal-scoped skill with a different name.
     seed_personal_skill(tmp.path(), "personal-only", "# From personal\n");
 
-    let bus = skill_bus();
+    let files = skill_files();
     let discoverer = Arc::new(FsSkillDiscoverer::new(
         vec![
             (project_dir, SkillSource::Project),
             (tmp.path().join("skills"), SkillSource::Personal),
         ],
-        Arc::clone(&bus),
+        Arc::clone(&files),
     ));
-    let tool = ReadSkillTool::new(discoverer, bus);
+    let tool = ReadSkillTool::new(discoverer, files);
 
     let a = tool.execute(json!({ "name": "shared" })).await.unwrap();
     assert_eq!(a["source"], "project");
@@ -940,7 +940,7 @@ async fn test_read_skill_primary_follows_symlinked_skill_directory() {
             ..Default::default()
         },
     ]));
-    let tool = ReadSkillTool::new(discoverer, skill_bus());
+    let tool = ReadSkillTool::new(discoverer, skill_files());
 
     let result = tool.execute(json!({ "name": "demo" })).await.unwrap();
     assert_eq!(result["body"], "# demo body\n");
@@ -985,7 +985,7 @@ async fn test_read_skill_sidecar_follows_symlinked_skill_directory() {
             ..Default::default()
         },
     ]));
-    let tool = ReadSkillTool::new(discoverer, skill_bus());
+    let tool = ReadSkillTool::new(discoverer, skill_files());
 
     let result = tool
         .execute(json!({
@@ -1040,10 +1040,10 @@ async fn test_read_bundled_skill_without_scripts_omits_skill_dir() {
     use chelix_skills::bundled::BundledSkillStore;
 
     let tmp = tempfile::tempdir().unwrap();
-    let bus = skill_bus();
+    let files = skill_files();
     let store = Arc::new(BundledSkillStore::with_materialize_dir(
         tmp.path().to_path_buf(),
-        Arc::clone(&bus),
+        Arc::clone(&files),
     ));
     let skills = store.discover().await;
 
@@ -1056,7 +1056,7 @@ async fn test_read_bundled_skill_without_scripts_omits_skill_dir() {
     let name = no_sidecars.name.clone();
 
     let discoverer: Arc<dyn SkillDiscoverer> = Arc::new(StaticDiscoverer::new(vec![no_sidecars]));
-    let tool = ReadSkillTool::with_bundled(discoverer, store, bus);
+    let tool = ReadSkillTool::with_bundled(discoverer, store, files);
 
     let result = tool.execute(json!({ "name": name })).await.unwrap();
     assert!(
