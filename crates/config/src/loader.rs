@@ -52,7 +52,7 @@ static DATA_DIR_OVERRIDE: Mutex<Option<PathBuf>> = Mutex::new(None);
 static SHARE_DIR_OVERRIDE: Mutex<Option<PathBuf>> = Mutex::new(None);
 
 /// Set a custom config directory. When set, config discovery only looks in
-/// this directory (project-local and user-global paths are skipped).
+/// this directory.
 /// Can be called multiple times (e.g. in tests) - each call replaces the
 /// previous override.
 pub fn set_config_dir(path: PathBuf) {
@@ -78,11 +78,19 @@ fn config_dir_override() -> Option<PathBuf> {
 fn resolve_explicit_config_dir(
     programmatic_override: Option<PathBuf>,
     env_override: Option<PathBuf>,
-) -> Option<PathBuf> {
-    programmatic_override.or_else(|| env_override.filter(|dir| !dir.as_os_str().is_empty()))
+) -> crate::Result<Option<PathBuf>> {
+    match env_override {
+        Some(path) if path.as_os_str().is_empty() => Ok(programmatic_override),
+        Some(path) if !path.is_absolute() => Err(crate::Error::message(format!(
+            "CHELIX_CONFIG_DIR must be an absolute path: {}",
+            path.display()
+        ))),
+        Some(path) => Ok(programmatic_override.or(Some(path))),
+        None => Ok(programmatic_override),
+    }
 }
 
-fn explicit_config_dir() -> Option<PathBuf> {
+fn explicit_config_dir() -> crate::Result<Option<PathBuf>> {
     resolve_explicit_config_dir(
         config_dir_override(),
         std::env::var_os("CHELIX_CONFIG_DIR").map(PathBuf::from),
@@ -165,10 +173,18 @@ fn default_config_dir() -> Option<PathBuf> {
     home_dir().map(|home| home.join(".config").join("chelix"))
 }
 
-/// Returns the config directory: programmatic override -> `CHELIX_CONFIG_DIR` env ->
-/// `~/.config/chelix/`.
-pub fn config_dir() -> Option<PathBuf> {
-    explicit_config_dir().or_else(default_config_dir)
+/// Returns the config directory.
+///
+/// Resolution: programmatic override, then absolute `CHELIX_CONFIG_DIR`,
+/// then `~/.config/chelix/`.
+/// A non-empty `CHELIX_CONFIG_DIR` that is not absolute is an error.
+/// A missing home directory is an error.
+pub fn config_dir() -> crate::Result<PathBuf> {
+    match explicit_config_dir()? {
+        Some(dir) => Ok(dir),
+        None => default_config_dir()
+            .ok_or_else(|| crate::Error::message("unable to resolve config directory")),
+    }
 }
 
 /// Returns the data directory: programmatic override -> `CHELIX_DATA_DIR` env ->

@@ -103,15 +103,17 @@ pub(crate) fn host_visible_path(
 }
 
 /// Effective host path used when shared home persistence is enabled.
-pub fn shared_home_dir_path(config: &SandboxConfig) -> PathBuf {
+pub fn shared_home_dir_path(config: &SandboxConfig) -> Result<PathBuf> {
     let cli = detected_container_cli(config);
     let mut mount_config = mount_plan_config(config, cli.is_some());
     mount_config.home_persistence = chelix_config::schema::HomePersistenceConfig::Shared;
-    sandbox_mount_plan(&mount_config)
+    let mounts = sandbox_mount_plan(&mount_config)
+        .map_err(|error| crate::error::Error::external("config directory", error))?;
+    Ok(mounts
         .into_iter()
         .find(|mount| mount.guest == FsPath::new(SANDBOX_HOME_DIR))
         .map(|mount| host_visible_mount_path(config, cli, &mount))
-        .unwrap_or_else(|| host_visible_data_dir(config, cli))
+        .unwrap_or_else(|| host_visible_data_dir(config, cli)))
 }
 
 fn mount_plan_config(
@@ -167,7 +169,8 @@ pub(crate) fn resolved_sandbox_mount_plan(
     id: &SandboxId,
 ) -> Result<Vec<SandboxMount>> {
     let session_home = config.home_persistence == HomePersistence::Session;
-    let mut mounts = sandbox_mount_plan(&mount_plan_config(config, cli.is_some()));
+    let mut mounts = sandbox_mount_plan(&mount_plan_config(config, cli.is_some()))
+        .map_err(|error| crate::error::Error::external("config directory", error))?;
 
     for mount in &mut mounts {
         if session_home && mount.guest == FsPath::new(SANDBOX_HOME_DIR) {

@@ -574,8 +574,13 @@ fn load_channels_offered_from_config_path(
 }
 
 fn resolve_channels_offered(cached_channels_offered: Vec<String>) -> Vec<String> {
-    let Some(path) = chelix_config::loader::find_config_file() else {
-        return cached_channels_offered;
+    let path = match chelix_config::loader::find_config_file() {
+        Ok(Some(path)) => path,
+        Ok(None) => return cached_channels_offered,
+        Err(error) => {
+            tracing::error!(error = %error, "config file discovery failed");
+            return cached_channels_offered;
+        },
     };
 
     match load_channels_offered_from_config_path(&path) {

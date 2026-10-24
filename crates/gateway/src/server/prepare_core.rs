@@ -48,16 +48,12 @@ pub async fn prepare_gateway_core(
     port: u16,
     no_tls: bool,
     log_buffer: Option<crate::logs::LogBuffer>,
-    config_dir: Option<PathBuf>,
     data_dir: Option<PathBuf>,
     session_event_bus: Option<SessionEventBus>,
 ) -> anyhow::Result<PreparedGatewayCore> {
     let session_event_bus = session_event_bus.unwrap_or_default();
 
     // Apply directory overrides before loading config.
-    if let Some(dir) = config_dir {
-        chelix_config::set_config_dir(dir);
-    }
     if let Some(ref dir) = data_dir {
         chelix_config::set_data_dir(dir.clone());
     }
@@ -113,7 +109,7 @@ pub async fn prepare_gateway_core(
         (reg.provider_summary(), !reg.is_empty())
     };
     if !providers_available_at_startup {
-        let config_path = chelix_config::find_or_default_config_path();
+        let config_path = chelix_config::find_or_default_config_path()?;
         match config.agents.resolve_state() {
             Ok(chelix_config::AgentsConfigState::Setup) => warn!(
                 provider_summary = %provider_summary,
@@ -151,7 +147,7 @@ pub async fn prepare_gateway_core(
     )));
 
     // Wire live onboarding service.
-    let onboarding_config_path = chelix_config::find_or_default_config_path();
+    let onboarding_config_path = chelix_config::find_or_default_config_path()?;
     let live_onboarding =
         chelix_onboarding::service::LiveOnboardingService::new(onboarding_config_path);
 
@@ -265,15 +261,14 @@ pub async fn prepare_gateway_core(
         )
     });
 
-    let config_dir_resolved =
-        chelix_config::config_dir().unwrap_or_else(|| PathBuf::from(".chelix"));
+    let config_dir_resolved = chelix_config::config_dir()?;
     std::fs::create_dir_all(&config_dir_resolved).unwrap_or_else(|e| {
         panic!(
             "failed to create config directory {}: {e}",
             config_dir_resolved.display()
         )
     });
-    log_startup_config_storage_diagnostics();
+    log_startup_config_storage_diagnostics()?;
 
     log_persistence::spawn_startup_log_persistence(log_buffer.as_ref(), &data_dir);
     let db_path = data_dir.join("chelix.db");
@@ -433,8 +428,7 @@ pub async fn prepare_gateway_core(
     );
 
     // Migrate from projects.toml if it exists.
-    let config_dir_for_migration =
-        chelix_config::config_dir().unwrap_or_else(|| PathBuf::from(".chelix"));
+    let config_dir_for_migration = chelix_config::config_dir()?;
     let projects_toml_path = config_dir_for_migration.join("projects.toml");
     if projects_toml_path.exists() {
         info!("migrating projects.toml to SQLite");

@@ -41,7 +41,6 @@ mod voicecall_commands;
 use openssl as _;
 
 use {
-    anyhow::anyhow,
     chelix_gateway::logs::{EnabledLogLevels, LogBroadcastLayer, LogBuffer},
     clap::{Parser, Subcommand},
     tracing::info,
@@ -73,9 +72,6 @@ struct Cli {
     /// Port to listen on (overrides config value).
     #[arg(long, global = true)]
     port: Option<u16>,
-    /// Custom config directory (overrides default ~/.config/chelix/).
-    #[arg(long, global = true, env = "CHELIX_CONFIG_DIR")]
-    config_dir: Option<std::path::PathBuf>,
     /// Custom data directory (overrides default data dir).
     #[arg(long, global = true, env = "CHELIX_DATA_DIR")]
     data_dir: Option<std::path::PathBuf>,
@@ -317,10 +313,7 @@ async fn main() -> anyhow::Result<()> {
     info!(version = chelix_config::VERSION, "chelix starting");
 
     // Apply directory overrides before any command so all subcommands
-    // (config check, db, sandbox, etc.) respect --config-dir / --data-dir.
-    if let Some(ref dir) = cli.config_dir {
-        chelix_config::set_config_dir(dir.clone());
-    }
+    // (config check, db, sandbox, etc.) respect --data-dir.
     if let Some(ref dir) = cli.data_dir {
         chelix_config::set_data_dir(dir.clone());
     }
@@ -330,8 +323,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Ensure config/data directories exist for every command path. This is a
     // hard requirement for startup; fail fast if directory initialization fails.
-    let config_dir =
-        chelix_config::config_dir().ok_or_else(|| anyhow!("unable to resolve config directory"))?;
+    let config_dir = chelix_config::config_dir()?;
     std::fs::create_dir_all(&config_dir).unwrap_or_else(|e| {
         panic!(
             "failed to create config directory {}: {e}",
@@ -376,17 +368,9 @@ async fn main() -> anyhow::Result<()> {
             #[cfg(not(feature = "web-ui"))]
             let extra_routes: Option<chelix_httpd::RouteEnhancer> = None;
 
-            chelix_httpd::start_gateway(
-                &bind,
-                port,
-                no_tls,
-                log_buffer,
-                cli.config_dir,
-                cli.data_dir,
-                extra_routes,
-            )
-            .await
-            .map_err(Into::into)
+            chelix_httpd::start_gateway(&bind, port, no_tls, log_buffer, cli.data_dir, extra_routes)
+                .await
+                .map_err(Into::into)
         },
         Some(Commands::Onboard) => {
             chelix_onboarding::wizard::run_onboarding().await?;

@@ -72,7 +72,20 @@ pub fn validate(path: Option<&Path>) -> ValidationResult {
     let config_path = if let Some(p) = path {
         Some(p.to_path_buf())
     } else {
-        crate::loader::find_config_file()
+        match crate::loader::find_config_file() {
+            Ok(found) => found,
+            Err(error) => {
+                return ValidationResult {
+                    diagnostics: vec![Diagnostic {
+                        severity: Severity::Error,
+                        category: "invalid-value",
+                        path: "CHELIX_CONFIG_DIR".into(),
+                        message: error.to_string(),
+                    }],
+                    config_path: None,
+                };
+            },
+        }
     };
 
     let Some(ref actual_path) = config_path else {

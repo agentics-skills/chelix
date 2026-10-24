@@ -119,18 +119,18 @@ struct SandboxMountAnalysis {
 struct MountPlanContext {
     guest_data_dir: PathBuf,
     host_data_dir: PathBuf,
-    config_dir: Option<PathBuf>,
+    config_dir: PathBuf,
 }
 
 impl MountPlanContext {
-    fn active(cfg: &SandboxConfig) -> Self {
+    fn active(cfg: &SandboxConfig) -> crate::Result<Self> {
         let guest_data_dir = normalize_path(&crate::data_dir());
         let host_data_dir = effective_host_data_dir(cfg, &guest_data_dir);
-        Self {
+        Ok(Self {
             guest_data_dir,
             host_data_dir,
-            config_dir: crate::config_dir().map(|path| normalize_path(&path)),
-        }
+            config_dir: normalize_path(&crate::config_dir()?),
+        })
     }
 }
 
@@ -140,9 +140,8 @@ impl MountPlanContext {
 /// home persistence the returned host path is the session *base* directory;
 /// the runtime layer appends the sanitized sandbox identifier before creating
 /// the bind mount.
-#[must_use]
-pub fn sandbox_mount_plan(cfg: &SandboxConfig) -> Vec<SandboxMount> {
-    let analysis = sandbox_mount_analysis_with_context(cfg, &MountPlanContext::active(cfg));
+pub fn sandbox_mount_plan(cfg: &SandboxConfig) -> crate::Result<Vec<SandboxMount>> {
+    let analysis = sandbox_mount_analysis_with_context(cfg, &MountPlanContext::active(cfg)?);
     for rejected in &analysis.validation.rejected_custom_mounts {
         warn!(
             mount_index = rejected.index,
@@ -151,7 +150,7 @@ pub fn sandbox_mount_plan(cfg: &SandboxConfig) -> Vec<SandboxMount> {
             "ignoring invalid custom sandbox mount"
         );
     }
-    analysis.mounts
+    Ok(analysis.mounts)
 }
 
 #[cfg(test)]
@@ -311,15 +310,14 @@ fn host_paths_overlap(first: &Path, second: &Path) -> bool {
 }
 
 fn data_mount_exposes_config_with_context(context: &MountPlanContext) -> bool {
-    context.config_dir.as_ref().is_some_and(|config_dir| {
-        paths_overlap(&context.guest_data_dir, config_dir)
-            || host_paths_overlap(&context.host_data_dir, config_dir)
-    })
+    paths_overlap(&context.guest_data_dir, &context.config_dir)
+        || host_paths_overlap(&context.host_data_dir, &context.config_dir)
 }
 
-#[must_use]
-pub(crate) fn sandbox_mount_validation(cfg: &SandboxConfig) -> SandboxMountValidation {
-    sandbox_mount_analysis_with_context(cfg, &MountPlanContext::active(cfg)).validation
+pub(crate) fn sandbox_mount_validation(
+    cfg: &SandboxConfig,
+) -> crate::Result<SandboxMountValidation> {
+    Ok(sandbox_mount_analysis_with_context(cfg, &MountPlanContext::active(cfg)?).validation)
 }
 
 fn shared_home_exposes_config_with_context(
@@ -327,9 +325,7 @@ fn shared_home_exposes_config_with_context(
     context: &MountPlanContext,
 ) -> bool {
     cfg.home_persistence == HomePersistenceConfig::Shared
-        && context.config_dir.as_ref().is_some_and(|config_dir| {
-            host_paths_overlap(&shared_home_host_path(cfg, context), config_dir)
-        })
+        && host_paths_overlap(&shared_home_host_path(cfg, context), &context.config_dir)
 }
 
 fn managed_guest_mounts_conflict_with_context(
@@ -399,16 +395,14 @@ fn custom_mount_violation_with_context(
         });
     }
 
-    if let Some(config_dir) = &context.config_dir
-        && host_paths_overlap(&host, config_dir)
-    {
+    if host_paths_overlap(&host, &context.config_dir) {
         return Some(MountViolation {
             kind: MountViolationKind::Host,
             reason: MountViolationReason::ConfigExposure,
             message: format!(
                 "sandbox mount source '{}' exposes the config directory '{}', which may contain credentials",
                 mount.host.display(),
-                config_dir.display()
+                context.config_dir.display()
             ),
         });
     }
@@ -664,7 +658,7 @@ mod tests {
         MountPlanContext {
             guest_data_dir: PathBuf::from("/agent/.chelix"),
             host_data_dir: PathBuf::from("/host/chelix-data"),
-            config_dir: Some(PathBuf::from("/agent/.config/chelix")),
+            config_dir: PathBuf::from("/agent/.config/chelix"),
         }
     }
 
@@ -858,7 +852,7 @@ mod tests {
         let context = MountPlanContext {
             guest_data_dir: PathBuf::from("/agent/.chelix"),
             host_data_dir: temp.path().join("data"),
-            config_dir: Some(config_dir),
+            config_dir,
         };
         let config = SandboxConfig {
             home_persistence: HomePersistenceConfig::Off,

@@ -112,20 +112,22 @@ struct PendingOAuthFlow {
 }
 
 impl McpOAuthProvider {
-    pub fn new(server_name: &str, server_url: &str) -> Self {
-        Self {
+    pub fn new(server_name: &str, server_url: &str) -> Result<Self> {
+        Ok(Self {
             server_name: server_name.to_string(),
             server_url: Secret::new(server_url.to_string()),
             server_url_display: sanitize_url_for_display(server_url),
             http_client: chelix_common::http_client::build_default_http_client(),
-            token_store: TokenStore::new(),
-            registration_store: RegistrationStore::new(),
+            token_store: TokenStore::new()
+                .map_err(|error| Error::external("config directory", error))?,
+            registration_store: RegistrationStore::new()
+                .map_err(|error| Error::external("config directory", error))?,
             state: RwLock::new(McpAuthState::NotRequired),
             cached_token: RwLock::new(None),
             pending_oauth: RwLock::new(None),
             last_www_authenticate: RwLock::new(None),
             oauth_override: None,
-        }
+        })
     }
 
     /// Create with custom stores (for testing).
@@ -1046,9 +1048,10 @@ mod tests {
     }
 
     #[test]
-    fn store_key_format() {
-        let provider = McpOAuthProvider::new("my-server", "https://mcp.example.com");
+    fn store_key_format() -> Result<()> {
+        let provider = McpOAuthProvider::new("my-server", "https://mcp.example.com")?;
         assert_eq!(provider.store_key(), "mcp:my-server");
+        Ok(())
     }
 
     // ── start_web_oauth_flow loopback rewrite ──────────────────────────────

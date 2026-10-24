@@ -137,7 +137,16 @@ pub async fn config_get(State(state): State<crate::server::AppState>) -> impl In
     }
 
     // Read raw file from disk to preserve comments.
-    let path = chelix_config::find_or_default_config_path();
+    let path = match chelix_config::find_or_default_config_path() {
+        Ok(path) => path,
+        Err(error) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(config_error(CONFIG_LOAD_FAILED, error.to_string())),
+            )
+                .into_response();
+        },
+    };
     let toml_str = if path.exists() {
         match std::fs::read_to_string(&path) {
             Ok(s) => s,
@@ -346,7 +355,16 @@ pub async fn restart(
     }
 
     // Validate the on-disk config before restarting to avoid crash loops.
-    let config_path = chelix_config::find_or_default_config_path();
+    let config_path = match chelix_config::find_or_default_config_path() {
+        Ok(path) => path,
+        Err(error) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(config_error(CONFIG_LOAD_FAILED, error.to_string())),
+            )
+                .into_response();
+        },
+    };
     if config_path.exists() {
         match std::fs::read_to_string(&config_path) {
             Ok(toml_str) => {

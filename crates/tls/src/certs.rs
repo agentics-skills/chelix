@@ -13,7 +13,7 @@ use {
     tracing::info,
 };
 
-use super::{Context, Result};
+use super::{Context, Error, Result};
 
 /// The hostname used for loopback URLs instead of raw `127.0.0.1`.
 /// Subdomains of `.localhost` resolve to loopback per RFC 6761.
@@ -149,7 +149,7 @@ impl FsCertManager {
 /// Returns the certificate storage directory (`~/.config/chelix/certs/`).
 pub fn cert_dir() -> Result<PathBuf> {
     let dir = chelix_config::config_dir()
-        .unwrap_or_else(|| PathBuf::from(".chelix"))
+        .map_err(|error| Error::message(error.to_string()))?
         .join("certs");
     std::fs::create_dir_all(&dir).context("failed to create certs directory")?;
     Ok(dir)

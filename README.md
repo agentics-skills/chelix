@@ -170,7 +170,7 @@ cargo run --release --bin chelix
 Open `https://chelix.localhost:3000`. On first run, a setup code is printed to
 the terminal — enter it in the web UI to set your password or register a passkey.
 
-Optional flags: `--config-dir /path/to/config --data-dir /path/to/data`
+Optional flag: `--data-dir /path/to/data`. Config directory override: absolute `CHELIX_CONFIG_DIR`.
 
 ### Docker
 

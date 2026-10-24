@@ -6,7 +6,6 @@ version.workspace = true
 [dependencies]
 async-trait           = { workspace = true }
 chelix-config         = { workspace = true }
-chelix-metrics        = { optional = true, workspace = true }
 include_dir           = { optional = true, workspace = true }
 notify-debouncer-full = { optional = true, workspace = true }
 serde                 = { workspace = true }
@@ -20,7 +19,6 @@ tracing               = { workspace = true }
 bundled-skills = ["dep:include_dir"]
 default        = []
 file-watcher   = ["dep:notify-debouncer-full"]
-metrics        = ["dep:chelix-metrics"]
 
 [dev-dependencies]
 rstest   = { workspace = true }

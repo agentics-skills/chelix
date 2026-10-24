@@ -53,9 +53,9 @@ pub struct RegistrationStore {
 }
 
 impl RegistrationStore {
-    pub fn new() -> Self {
-        let path = chelix_config_dir().join("mcp_oauth_registrations.json");
-        Self { path }
+    pub fn new() -> Result<Self> {
+        let path = chelix_config_dir()?.join("mcp_oauth_registrations.json");
+        Ok(Self { path })
     }
 
     /// Create a store at a specific path (useful for testing).
@@ -170,12 +170,6 @@ fn server_lookup_key(server_url: &str) -> String {
         let _ = write!(&mut key, "{byte:02x}");
     }
     key
-}
-
-impl Default for RegistrationStore {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]

@@ -73,7 +73,7 @@ build-release:
 dev-server: build-web-assets
     cargo build --bin chelix
     just codesign-debug
-    CHELIX_CONFIG_DIR=.chelix/config CHELIX_DATA_DIR=.chelix/ cargo run --bin chelix
+    CHELIX_CONFIG_DIR="{{justfile_directory()}}/.chelix/config" CHELIX_DATA_DIR=.chelix/ cargo run --bin chelix
 
 # Run all CI checks (format, lint, build, test)
 ci: format-check build-web-assets lint i18n-check build test

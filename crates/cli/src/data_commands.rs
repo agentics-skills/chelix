@@ -56,8 +56,7 @@ pub async fn handle_data(action: DataAction) -> anyhow::Result<()> {
 }
 
 async fn handle_export(output: Option<PathBuf>, include_media: bool) -> anyhow::Result<()> {
-    let config_dir =
-        chelix_config::config_dir().ok_or_else(|| anyhow::anyhow!("config directory not set"))?;
+    let config_dir = chelix_config::config_dir()?;
     let data_dir = chelix_config::data_dir();
 
     let opts = chelix_portable::ExportOptions { include_media };
@@ -100,8 +99,7 @@ async fn handle_import(
     conflict: &str,
     json: bool,
 ) -> anyhow::Result<()> {
-    let config_dir =
-        chelix_config::config_dir().ok_or_else(|| anyhow::anyhow!("config directory not set"))?;
+    let config_dir = chelix_config::config_dir()?;
     let data_dir = chelix_config::data_dir();
 
     let conflict_strategy = match conflict {

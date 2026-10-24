@@ -649,7 +649,6 @@ pub async fn prepare_gateway_embedded(
     port: u16,
     no_tls: bool,
     log_buffer: Option<chelix_gateway::logs::LogBuffer>,
-    config_dir: Option<PathBuf>,
     data_dir: Option<PathBuf>,
     extra_routes: Option<RouteEnhancer>,
     session_event_bus: Option<SessionEventBus>,
@@ -659,7 +658,6 @@ pub async fn prepare_gateway_embedded(
         port,
         no_tls,
         log_buffer,
-        config_dir,
         data_dir,
         extra_routes,
         session_event_bus,
@@ -681,7 +679,6 @@ pub async fn start_gateway(
     port: u16,
     no_tls: bool,
     log_buffer: Option<chelix_gateway::logs::LogBuffer>,
-    config_dir: Option<PathBuf>,
     data_dir: Option<PathBuf>,
     extra_routes: Option<RouteEnhancer>,
 ) -> crate::error::Result<()> {
@@ -690,7 +687,6 @@ pub async fn start_gateway(
         port,
         no_tls,
         log_buffer,
-        config_dir,
         data_dir,
         extra_routes,
         None, // session_event_bus — CLI creates its own
@@ -857,7 +853,9 @@ pub async fn start_gateway(
         format!("sandbox: {} backend", banner.sandbox_backend),
         format!(
             "config: {}",
-            chelix_config::find_or_default_config_path().display()
+            chelix_config::find_or_default_config_path()
+                .map_err(|error| crate::Error::Config(error.to_string()))?
+                .display()
         ),
         format!("data: {}", banner.data_dir.display()),
     ];

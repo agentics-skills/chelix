@@ -106,7 +106,6 @@ pub async fn prepare_gateway(
     port: u16,
     no_tls: bool,
     log_buffer: Option<chelix_gateway::logs::LogBuffer>,
-    config_dir: Option<PathBuf>,
     data_dir: Option<PathBuf>,
     extra_routes: Option<RouteEnhancer>,
     session_event_bus: Option<SessionEventBus>,
@@ -119,17 +118,9 @@ pub async fn prepare_gateway(
     #[cfg(feature = "tls")]
     let _ = rustls::crypto::ring::default_provider().install_default();
 
-    let core = prepare_gateway_core(
-        bind,
-        port,
-        no_tls,
-        log_buffer,
-        config_dir,
-        data_dir,
-        session_event_bus,
-    )
-    .await
-    .map_err(|e| crate::Error::Config(e.to_string()))?;
+    let core = prepare_gateway_core(bind, port, no_tls, log_buffer, data_dir, session_event_bus)
+        .await
+        .map_err(|e| crate::Error::Config(e.to_string()))?;
 
     let PreparedGatewayCore {
         state,

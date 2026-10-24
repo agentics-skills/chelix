@@ -82,8 +82,8 @@ fn substituted_config_value(
 /// After this, use [`discover_and_load`] (read-only) to load config.
 pub fn initialize_config() -> crate::Result<ChelixConfig> {
     // Write the config on first run (when no config file exists).
-    if find_config_file().is_none() {
-        let default_path = find_or_default_config_path();
+    if find_config_file()?.is_none() {
+        let default_path = find_or_default_config_path()?;
         debug!(
             path = %default_path.display(),
             "no config file found, writing default config with random port"
@@ -107,7 +107,7 @@ pub fn initialize_config() -> crate::Result<ChelixConfig> {
     // Persist randomly generated port so it stays stable across restarts.
     // Read-only discovery generates an in-memory port when the on-disk
     // value is 0 — write it back so the port is stable across restarts.
-    let path = find_config_file()
+    let path = find_config_file()?
         .ok_or_else(|| crate::Error::message("config file disappeared during initialization"))?;
     if cfg.server.port != 0 {
         let raw = std::fs::read_to_string(&path).map_err(|source| {
@@ -133,13 +133,12 @@ pub fn initialize_config() -> crate::Result<ChelixConfig> {
 /// once at process startup to prepare the config directory, then use this
 /// function everywhere else.
 ///
-/// User config search order:
-/// 1. `./chelix.toml` (project-local)
-/// 2. `~/.config/chelix/chelix.toml` (user-global)
+/// The config file is `chelix.toml` in the programmatic override directory,
+/// the absolute `CHELIX_CONFIG_DIR`, or `~/.config/chelix/`.
 ///
 /// Returns an error if no config file is found or the file is invalid.
 pub fn discover_and_load() -> crate::Result<ChelixConfig> {
-    let path = find_config_file().ok_or_else(|| crate::Error::message("no config file found"))?;
+    let path = find_config_file()?.ok_or_else(|| crate::Error::message("no config file found"))?;
     debug!(path = %path.display(), "loading config (read-only)");
     let mut cfg = load_config(&path)?;
     if cfg.server.port == 0 {
@@ -150,7 +149,7 @@ pub fn discover_and_load() -> crate::Result<ChelixConfig> {
 
 /// Load an in-memory candidate through the same pipeline as the next startup.
 pub fn load_layered_config_candidate(user_raw: &str) -> crate::Result<ChelixConfig> {
-    let user_path = find_or_default_config_path();
+    let user_path = find_or_default_config_path()?;
     load_config_source(user_raw, &user_path)
 }
 
@@ -158,39 +157,19 @@ fn find_config_file_in(dir: &Path) -> Option<PathBuf> {
     Some(dir.join(CONFIG_FILENAME)).filter(|path| path.exists())
 }
 
-pub(super) fn find_config_file_from_dirs(
-    explicit_dir: Option<&Path>,
-    project_dir: &Path,
-    default_dir: Option<&Path>,
-) -> Option<PathBuf> {
-    if let Some(dir) = explicit_dir {
-        return find_config_file_in(dir);
-    }
-
-    find_config_file_in(project_dir).or_else(|| default_dir.and_then(find_config_file_in))
-}
-
-/// Find the first config file in standard locations.
+/// Find the config file.
 ///
-/// When a programmatic or `CHELIX_CONFIG_DIR` override is set, only that
-/// directory is searched. Project-local and user-global paths are skipped.
-pub fn find_config_file() -> Option<PathBuf> {
-    let explicit_dir = explicit_config_dir();
-    let default_dir = default_config_dir();
-    find_config_file_from_dirs(
-        explicit_dir.as_deref(),
-        Path::new("."),
-        default_dir.as_deref(),
-    )
+/// A programmatic override or absolute `CHELIX_CONFIG_DIR` selects that
+/// directory. Otherwise the file is `~/.config/chelix/chelix.toml`.
+pub fn find_config_file() -> crate::Result<Option<PathBuf>> {
+    Ok(find_config_file_in(&config_dir()?))
 }
 
-pub fn find_or_default_config_path() -> PathBuf {
-    if let Some(path) = find_config_file() {
-        return path;
+pub fn find_or_default_config_path() -> crate::Result<PathBuf> {
+    if let Some(path) = find_config_file()? {
+        return Ok(path);
     }
-    config_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("chelix.toml")
+    Ok(config_dir()?.join("chelix.toml"))
 }
 
 /// Lock guarding config read-modify-write cycles.
@@ -215,7 +194,7 @@ pub(super) static CONFIG_SAVE_LOCK: Mutex<ConfigSaveState> =
 /// Returns the path written to.
 pub fn update_config(f: impl FnOnce(&mut ChelixConfig)) -> crate::Result<PathBuf> {
     let mut guard = CONFIG_SAVE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let target_path = find_or_default_config_path();
+    let target_path = find_or_default_config_path()?;
     guard.target_path = Some(target_path.clone());
     let mut config = discover_and_load()?;
     f(&mut config);
@@ -231,7 +210,7 @@ pub fn update_config_checked(
     f: impl FnOnce(&mut ChelixConfig) -> crate::Result<()>,
 ) -> crate::Result<PathBuf> {
     let mut guard = CONFIG_SAVE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let target_path = find_or_default_config_path();
+    let target_path = find_or_default_config_path()?;
     guard.target_path = Some(target_path.clone());
     let mut config = discover_and_load()?;
     f(&mut config)?;
@@ -270,7 +249,7 @@ pub fn update_provider_model_toml(
     remove_priority_id: Option<&str>,
     validate: impl FnOnce(&crate::schema::ModelConfigMap) -> crate::Result<()>,
 ) -> crate::Result<crate::schema::ModelConfigMap> {
-    let path = find_or_default_config_path();
+    let path = find_or_default_config_path()?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -500,7 +479,7 @@ pub(super) fn nested_table<'a>(
 /// Prefer [`update_config`] for read-modify-write cycles to avoid races.
 pub fn save_config(config: &ChelixConfig) -> crate::Result<PathBuf> {
     let mut guard = CONFIG_SAVE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let target_path = find_or_default_config_path();
+    let target_path = find_or_default_config_path()?;
     guard.target_path = Some(target_path.clone());
     save_user_config_to_path(&target_path, config)
 }
@@ -512,7 +491,7 @@ pub fn save_config(config: &ChelixConfig) -> crate::Result<PathBuf> {
 pub fn save_raw_config(toml_str: &str) -> crate::Result<PathBuf> {
     let _ = parse_config(toml_str, Path::new("chelix.toml"))?;
     let mut guard = CONFIG_SAVE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let path = find_or_default_config_path();
+    let path = find_or_default_config_path()?;
     guard.target_path = Some(path.clone());
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;

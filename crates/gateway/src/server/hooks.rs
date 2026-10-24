@@ -157,9 +157,10 @@ pub(crate) async fn discover_and_build_hooks(
         .map(|(parsed, _source)| parsed.metadata.name.as_str())
         .collect::<HashSet<_>>();
     let mut config_hook_count = 0;
-    let config_path = chelix_config::config_dir()
-        .map(|path| path.join("chelix.toml").display().to_string())
-        .unwrap_or_else(|| "chelix.toml".to_string());
+    let config_path = chelix_config::config_dir()?
+        .join("chelix.toml")
+        .display()
+        .to_string();
     let mut config_hook_names = HashSet::new();
 
     if let Some(hooks_config) = config.hooks.as_ref() {

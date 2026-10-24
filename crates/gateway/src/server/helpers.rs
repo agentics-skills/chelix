@@ -1,9 +1,4 @@
-use std::{
-    fs::OpenOptions,
-    io::Write,
-    path::{Path as FsPath, PathBuf},
-    sync::Arc,
-};
+use std::{fs::OpenOptions, io::Write, path::Path as FsPath, sync::Arc};
 
 use tracing::{debug, info, warn};
 
@@ -254,10 +249,10 @@ pub(crate) fn log_directory_write_probe(dir: &FsPath) {
 
 // ── Config / storage startup logging ─────────────────────────────────────────
 
-pub(crate) fn log_startup_config_storage_diagnostics() {
-    let config_dir = chelix_config::config_dir().unwrap_or_else(|| PathBuf::from(".chelix"));
-    let discovered_config = chelix_config::loader::find_config_file();
-    let expected_config = chelix_config::find_or_default_config_path();
+pub(crate) fn log_startup_config_storage_diagnostics() -> anyhow::Result<()> {
+    let config_dir = chelix_config::config_dir()?;
+    let discovered_config = chelix_config::loader::find_config_file()?;
+    let expected_config = chelix_config::find_or_default_config_path()?;
 
     let discovered_display = discovered_config
         .as_ref()
@@ -277,18 +272,13 @@ pub(crate) fn log_startup_config_storage_diagnostics() {
 
     if let Some(path) = discovered_config {
         log_path_diagnostics("config-file", &path);
-    } else if expected_config.exists() {
-        info!(
-            path = %expected_config.display(),
-            "default config file exists even though discovery did not report a named config"
-        );
-        log_path_diagnostics("config-file", &expected_config);
     } else {
         warn!(
             path = %expected_config.display(),
             "no config file detected on startup; Chelix is running with in-memory defaults until config is persisted"
         );
     }
+    Ok(())
 }
 
 // ── Cron delivery ────────────────────────────────────────────────────────────
