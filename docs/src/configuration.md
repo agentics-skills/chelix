@@ -12,7 +12,7 @@ same file. Reads and writes use `chelix.toml`.
 | Platform    | Default Path                                  |
 | ----------- | --------------------------------------------- |
 | macOS/Linux | `~/.config/chelix/chelix.toml`                |
-| Custom      | Set via `--config-dir` or `CHELIX_CONFIG_DIR` |
+| Custom      | Absolute path in `CHELIX_CONFIG_DIR` |
 
 ## Strict Loading
 
@@ -411,13 +411,13 @@ Precedence: config `[env]` > Settings UI.
 
 | Variable                             | Description                       |
 | ------------------------------------ | --------------------------------- |
-| `CHELIX_CONFIG_DIR`                  | Configuration directory           |
+| `CHELIX_CONFIG_DIR`                  | Absolute configuration directory |
 | `CHELIX_DATA_DIR`                    | Data directory                    |
 
 ## CLI Flags
 
 ```bash
-chelix --config-dir /path/to/config --data-dir /path/to/data
+chelix --data-dir /path/to/data
 ```
 
 ## Complete Example

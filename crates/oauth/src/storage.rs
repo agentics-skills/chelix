@@ -11,9 +11,9 @@ pub struct TokenStore {
 }
 
 impl TokenStore {
-    pub fn new() -> Self {
-        let path = chelix_config_dir().join("oauth_tokens.json");
-        Self { path }
+    pub fn new() -> Result<Self> {
+        let path = chelix_config_dir()?.join("oauth_tokens.json");
+        Ok(Self { path })
     }
 
     /// Create a token store at a specific path (useful for testing).
@@ -117,11 +117,5 @@ impl TokenStore {
             .and_then(|d| serde_json::from_str::<HashMap<String, OAuthTokens>>(&d).ok())
             .map(|m| m.into_keys().collect())
             .unwrap_or_default()
-    }
-}
-
-impl Default for TokenStore {
-    fn default() -> Self {
-        Self::new()
     }
 }

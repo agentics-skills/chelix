@@ -74,24 +74,27 @@ pub struct SandboxDefaultBackendUpdateRequest {
     backend: chelix_config::schema::SandboxBackend,
 }
 
-fn shared_home_config_payload(config: &chelix_config::ChelixConfig) -> serde_json::Value {
+fn shared_home_config_payload(
+    config: &chelix_config::ChelixConfig,
+) -> Result<serde_json::Value, chelix_tools::error::Error> {
     let runtime_cfg = chelix_tools::sandbox::SandboxConfig::from(&config.sandbox);
     let mode = match config.sandbox.home_persistence {
         chelix_config::schema::HomePersistenceConfig::Off => "off",
         chelix_config::schema::HomePersistenceConfig::Session => "session",
         chelix_config::schema::HomePersistenceConfig::Shared => "shared",
     };
-    serde_json::json!({
+    let path = chelix_tools::sandbox::shared_home_dir_path(&runtime_cfg)?
+        .display()
+        .to_string();
+    Ok(serde_json::json!({
         "enabled": matches!(
             config.sandbox.home_persistence,
             chelix_config::schema::HomePersistenceConfig::Shared
         ),
         "mode": mode,
-        "path": chelix_tools::sandbox::shared_home_dir_path(&runtime_cfg)
-            .display()
-            .to_string(),
+        "path": path,
         "configured_path": config.sandbox.shared_home_dir.clone(),
-    })
+    }))
 }
 
 // ── Session media ────────────────────────────────────────────────────────────
@@ -736,7 +739,14 @@ pub async fn api_get_shared_home_handler() -> impl IntoResponse {
         Ok(config) => config,
         Err(response) => return *response,
     };
-    Json(shared_home_config_payload(&config)).into_response()
+    match shared_home_config_payload(&config) {
+        Ok(payload) => Json(payload).into_response(),
+        Err(error) => api_error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            SANDBOX_SHARED_HOME_SAVE_FAILED,
+            error.to_string(),
+        ),
+    }
 }
 
 pub async fn api_set_shared_home_handler(
@@ -767,11 +777,21 @@ pub async fn api_set_shared_home_handler(
                 Ok(config) => config,
                 Err(response) => return *response,
             };
+            let payload = match shared_home_config_payload(&config) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return api_error_response(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        SANDBOX_SHARED_HOME_SAVE_FAILED,
+                        error.to_string(),
+                    );
+                },
+            };
             Json(serde_json::json!({
                 "ok": true,
                 "restart_required": true,
                 "config_path": saved_path.display().to_string(),
-                "config": shared_home_config_payload(&config),
+                "config": payload,
             }))
             .into_response()
         },

@@ -307,15 +307,14 @@ fn test_data_mount_exposes_agent_state_paths_in_sandbox_namespace() {
         chelix_config::container_mounts::MountMode::Rw
     );
 
-    if let Some(config_dir) = chelix_config::config_dir() {
-        for secret in ["credentials.json", "chelix.toml"] {
-            assert!(
-                mounts
-                    .iter()
-                    .all(|mount| !config_dir.join(secret).starts_with(&mount.guest)),
-                "config_dir secret {secret} must not be exposed by a sandbox mount"
-            );
-        }
+    let config_dir = chelix_config::config_dir().expect("config dir");
+    for secret in ["credentials.json", "chelix.toml"] {
+        assert!(
+            mounts
+                .iter()
+                .all(|mount| !config_dir.join(secret).starts_with(&mount.guest)),
+            "config_dir secret {secret} must not be exposed by a sandbox mount"
+        );
     }
 }
 

@@ -58,11 +58,11 @@ pub fn data_router() -> Router<AppState> {
 /// the synchronous `tar`/`flate2` writers to work naturally.
 async fn export_handler(Query(query): Query<ExportQuery>) -> impl IntoResponse {
     let config_dir = match chelix_config::config_dir() {
-        Some(d) => d,
-        None => {
+        Ok(dir) => dir,
+        Err(error) => {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"ok": false, "error": "config directory not set"})),
+                Json(serde_json::json!({"ok": false, "error": error.to_string()})),
             )
                 .into_response();
         },
@@ -182,11 +182,11 @@ async fn run_import(
     }
 
     let config_dir = match chelix_config::config_dir() {
-        Some(d) => d,
-        None => {
+        Ok(dir) => dir,
+        Err(error) => {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"ok": false, "error": "config directory not set"})),
+                Json(serde_json::json!({"ok": false, "error": error.to_string()})),
             )
                 .into_response();
         },

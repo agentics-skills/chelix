@@ -280,7 +280,7 @@ sudo systemctl enable --now podman.socket
 
 | Variable            | Description                                               |
 | ------------------- | --------------------------------------------------------- |
-| `CHELIX_CONFIG_DIR` | Override config directory (default: `~/.config/chelix`)   |
+| `CHELIX_CONFIG_DIR` | Absolute config directory (default: `~/.config/chelix`) |
 | `CHELIX_DATA_DIR`   | Override data directory (default: `~/.chelix`)            |
 
 Example:

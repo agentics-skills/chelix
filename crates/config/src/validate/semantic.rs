@@ -158,7 +158,18 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
         });
     }
 
-    let mount_validation = sandbox_mount_validation(&config.sandbox);
+    let mount_validation = match sandbox_mount_validation(&config.sandbox) {
+        Ok(validation) => validation,
+        Err(error) => {
+            diagnostics.push(Diagnostic {
+                severity: Severity::Error,
+                category: "invalid-value",
+                path: "CHELIX_CONFIG_DIR".into(),
+                message: error.to_string(),
+            });
+            return;
+        },
+    };
 
     if mount_validation.data_mount_exposes_config {
         diagnostics.push(Diagnostic {

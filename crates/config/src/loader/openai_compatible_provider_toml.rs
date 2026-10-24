@@ -45,7 +45,7 @@ pub fn delete_openai_compatible_provider_toml(name: &str) -> crate::Result<Vec<S
 fn with_provider_document<T>(
     edit: impl FnOnce(&mut toml_edit::Table) -> crate::Result<T>,
 ) -> crate::Result<T> {
-    let path = find_or_default_config_path();
+    let path = find_or_default_config_path()?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }

@@ -11,7 +11,8 @@ use crate::{
 
 /// Run the interactive onboarding wizard in the terminal.
 pub async fn run_onboarding() -> Result<()> {
-    let config_path = find_or_default_config_path();
+    let config_path =
+        find_or_default_config_path().map_err(|error| Error::message(error.to_string()))?;
     if !config_path.exists() {
         return Err(Error::message(format!(
             "onboarding config does not exist: {}",

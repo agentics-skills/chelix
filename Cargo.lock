@@ -1722,7 +1722,6 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chelix-config",
- "chelix-metrics",
  "include_dir",
  "notify-debouncer-full",
  "rstest",

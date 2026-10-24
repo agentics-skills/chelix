@@ -14,7 +14,7 @@ mode. The key settings are:
 | `--no-tls`                         | Disable TLS         | Provider handles HTTPS                       |
 | `--bind 0.0.0.0`                   | Bind all interfaces | Required for container networking            |
 | `--port <PORT>`                    | Listen port         | Must match provider's expected internal port |
-| `CHELIX_CONFIG_DIR=/data/config`   | Config directory    | Persist chelix.toml, credentials             |
+| `CHELIX_CONFIG_DIR=/data/config`   | Absolute config directory | Persist chelix.toml, credentials             |
 | `CHELIX_DATA_DIR=/data`            | Data directory      | Persist databases, sessions, memory          |
 | `CHELIX_DEPLOY_PLATFORM`           | Deploy platform     | Hides local-only providers (see below)       |
 | `CHELIX_PASSWORD`                  | Initial password    | Set auth password via environment variable   |

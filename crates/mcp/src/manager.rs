@@ -143,9 +143,9 @@ impl McpManager {
         name: &str,
         remote: &ResolvedRemoteConfig,
         oauth: Option<&McpOAuthConfig>,
-    ) -> SharedAuthProvider {
+    ) -> Result<SharedAuthProvider> {
         let provider = if let Some(ov) = oauth {
-            McpOAuthProvider::new(name, remote.request_url()).with_oauth_override(
+            McpOAuthProvider::new(name, remote.request_url())?.with_oauth_override(
                 McpOAuthOverride {
                     client_id: ov.client_id.clone(),
                     client_secret: ov.client_secret.clone(),
@@ -155,9 +155,9 @@ impl McpManager {
                 },
             )
         } else {
-            McpOAuthProvider::new(name, remote.request_url())
+            McpOAuthProvider::new(name, remote.request_url())?
         };
-        Arc::new(provider)
+        Ok(Arc::new(provider))
     }
 
     fn should_attempt_auth_connection(
@@ -214,9 +214,10 @@ impl McpManager {
                 };
 
                 let has_existing_auth_provider = existing_auth.is_some();
-                let auth_provider = existing_auth.unwrap_or_else(|| {
-                    Self::build_auth_provider(name, &remote, config.oauth.as_ref())
-                });
+                let auth_provider = match existing_auth {
+                    Some(provider) => provider,
+                    None => Self::build_auth_provider(name, &remote, config.oauth.as_ref())?,
+                };
 
                 let has_stored_token = if has_existing_auth_provider {
                     false
@@ -343,9 +344,10 @@ impl McpManager {
                 };
 
                 let has_existing_auth_provider = existing_auth.is_some();
-                let auth_provider = existing_auth.unwrap_or_else(|| {
-                    Self::build_auth_provider(name, &remote, config.oauth.as_ref())
-                });
+                let auth_provider = match existing_auth {
+                    Some(provider) => provider,
+                    None => Self::build_auth_provider(name, &remote, config.oauth.as_ref())?,
+                };
 
                 let has_stored_token = if has_existing_auth_provider {
                     false
@@ -554,8 +556,10 @@ impl McpManager {
             inner.auth_providers.get(name).cloned()
         };
         let has_existing_auth_provider = existing_auth.is_some();
-        let auth_provider = existing_auth
-            .unwrap_or_else(|| Self::build_auth_provider(name, &remote, config.oauth.as_ref()));
+        let auth_provider = match existing_auth {
+            Some(provider) => provider,
+            None => Self::build_auth_provider(name, &remote, config.oauth.as_ref())?,
+        };
 
         if !has_existing_auth_provider {
             let mut inner = self.inner.write().await;

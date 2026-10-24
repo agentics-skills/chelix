@@ -1,7 +1,7 @@
 //! Configuration loading, validation, and environment substitution.
 //!
 //! Config files: `chelix.toml`
-//! Searched in `./` then `~/.config/chelix/`.
+//! Searched in the programmatic config directory, `CHELIX_CONFIG_DIR`, or `~/.config/chelix/`.
 //!
 //! Supports `${ENV_VAR}` substitution in all string values.
 
