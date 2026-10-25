@@ -1,0 +1,47 @@
+[package]
+edition.workspace = true
+name              = "chelix-call-bus"
+version.workspace = true
+
+[features]
+default = ["host"]
+guest   = ["dep:wit-bindgen"]
+host = [
+  "dep:jsonschema",
+  "dep:tokio",
+  "dep:wasmtime",
+  "dep:wasmtime-wasi",
+  "dep:wasmtime-wasi-io",
+]
+metrics = ["dep:metrics"]
+testing = ["host", "dep:tempfile"]
+tracing = ["dep:tracing"]
+
+[dependencies]
+futures     = { workspace = true }
+schemars    = { workspace = true }
+semver      = { workspace = true }
+serde       = { workspace = true }
+serde_json  = { workspace = true }
+tempfile    = { optional = true, workspace = true }
+thiserror   = { workspace = true }
+jsonschema  = { optional = true, workspace = true }
+metrics     = { optional = true, workspace = true }
+tokio       = { optional = true, workspace = true }
+tracing     = { optional = true, workspace = true }
+wasmtime    = { optional = true, workspace = true }
+wasmtime-wasi = { optional = true, workspace = true }
+wasmtime-wasi-io = { optional = true, workspace = true }
+wit-bindgen = { optional = true, workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio    = { workspace = true }
+
+[lints]
+workspace = true
+
+[[bin]]
+name              = "chelix-plugin-doc"
+path              = "src/bin/chelix-plugin-doc.rs"
+required-features = ["host"]

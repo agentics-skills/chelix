@@ -514,6 +514,7 @@ async fn quick_result_bytes_overrides_runtime_limit_for_one_call() {
         None,
         None,
         &CancellationToken::new(),
+        chelix_call_bus::testing::shared_config_bus().as_ref(),
         limits,
     )
     .await

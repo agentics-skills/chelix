@@ -500,6 +500,8 @@ fi
 # These do not wait on local/zizmor, but local/zizmor remains required.
 run_check "local/lint" "$lint_cmd"
 
+run_check "local/build-plugins" "scripts/build-plugins.sh"
+
 # Compile all workspace targets (bin + test harnesses) using the same nightly
 # toolchain as clippy. After clippy this is near-instant (shared build cache)
 # and lets nextest reuse these artifacts without recompilation.

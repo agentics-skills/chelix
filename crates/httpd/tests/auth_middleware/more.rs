@@ -735,6 +735,7 @@ pub(super) async fn start_server_with_onboarding(
         false,
         None,
         None, // session_event_bus
+        chelix_call_bus::testing::shared_config_bus(),
         #[cfg(feature = "metrics")]
         None,
         #[cfg(feature = "metrics")]

@@ -1,0 +1,27 @@
+package chelix:plugin@1.0.0;
+
+interface host {
+    enum delivery { wait, queue, detach }
+    enum level { error, warn, info, debug, trace }
+
+    call: async func(request: string) -> string;
+    publish: async func(notification: string, delivery: delivery) -> result<u32, string>;
+    sleep: async func(duration-ms: u64);
+    log: func(level: level, message: string);
+    providers: func(point: string) -> string;
+    invoke: async func(point: string, plugin: string, request: string) -> string;
+    bind: async func(resource: string, path: string) -> result<_, string>;
+    read: async func(resource: string, path: string) -> result<list<u8>, string>;
+    atomic-write: async func(resource: string, path: string, contents: list<u8>) -> result<_, string>;
+}
+
+interface guest {
+    start: async func() -> result<_, string>;
+    handle: async func(request: string) -> string;
+    stop: async func();
+}
+
+world plugin {
+    import host;
+    export guest;
+}

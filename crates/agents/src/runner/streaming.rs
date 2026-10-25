@@ -184,14 +184,12 @@ pub async fn run_agent_loop_streaming_with_limits(
     sender_name: Option<String>,
     steer_inbox: Option<super::SteerInbox>,
     cancellation_token: &CancellationToken,
+    call_bus: &chelix_call_bus::CallBus,
     limits: AgentLoopLimits,
 ) -> Result<AgentRunResult, AgentRunError> {
     let tool_mode = provider.tool_mode();
     let native_tools = matches!(tool_mode, ToolMode::Native);
     let text_tools = matches!(tool_mode, ToolMode::Text);
-    let max_tool_result_bytes = limits
-        .max_tool_result_bytes
-        .unwrap_or(tools_config.max_tool_result_bytes);
     let max_auto_continues = tools_config.agent_max_auto_continues;
     let auto_continue_min_tool_calls = tools_config.agent_auto_continue_min_tool_calls;
 
@@ -1090,7 +1088,8 @@ pub async fn run_agent_loop_streaming_with_limits(
         let executor = ToolInvocationExecutor {
             tools,
             tool_result_store: &tool_result_store,
-            max_tool_result_bytes,
+            agent_max_tool_result_bytes: limits.max_tool_result_bytes,
+            call_bus,
             tool_context: tool_context.as_ref(),
             hook_registry: hook_registry.as_ref(),
             session_key: &session_key_for_hooks,

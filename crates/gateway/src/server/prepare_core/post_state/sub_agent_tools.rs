@@ -1730,7 +1730,11 @@ mod tests {
         store: Arc<SessionStore>,
     ) -> SubAgentRuntime {
         let services = crate::services::GatewayServices::noop().with_agents_config(agents);
-        let state = GatewayState::new(crate::auth::resolve_auth(None, None), services);
+        let state = GatewayState::new(
+            crate::auth::resolve_auth(None, None),
+            services,
+            chelix_call_bus::testing::shared_config_bus(),
+        );
         SubAgentRuntime {
             state,
             session_store: store,
@@ -1746,7 +1750,11 @@ mod tests {
         let services = crate::services::GatewayServices::noop()
             .with_agents_config(badge_test_agents())
             .with_chat(chat);
-        let state = GatewayState::new(crate::auth::resolve_auth(None, None), services);
+        let state = GatewayState::new(
+            crate::auth::resolve_auth(None, None),
+            services,
+            chelix_call_bus::testing::shared_config_bus(),
+        );
         SubAgentRuntime {
             state,
             session_store: store,
@@ -2005,7 +2013,11 @@ mod tests {
             .with_agents_config(Arc::clone(&agents))
             .with_model(model)
             .with_chat(chat.clone());
-        let state = GatewayState::new(crate::auth::resolve_auth(None, None), services);
+        let state = GatewayState::new(
+            crate::auth::resolve_auth(None, None),
+            services,
+            chelix_call_bus::testing::shared_config_bus(),
+        );
         let runtime = SubAgentRuntime {
             state,
             session_store: Arc::clone(&store),

@@ -470,6 +470,7 @@ mod tests {
                 password: None,
             },
             services,
+            chelix_call_bus::testing::shared_config_bus(),
         );
 
         chelix_config::update_config(|cfg| {

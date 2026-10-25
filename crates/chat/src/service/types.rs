@@ -369,6 +369,8 @@ pub struct LiveChatService {
     pub(in crate::service) active_reply_medium: Arc<RwLock<HashMap<String, ReplyMedium>>>,
     /// Startup configuration snapshot for non-agent chat settings.
     pub(in crate::service) config: chelix_config::ChelixConfig,
+    /// Bus used to read `tools.max_tool_result_bytes` for each tool call.
+    pub(in crate::service) call_bus: std::sync::Arc<chelix_call_bus::CallBus>,
     /// Skill file queue used by skill discovery and agent-scoped skill tools.
     pub(in crate::service) skill_files: Arc<chelix_skills::skill_file::SkillFiles>,
     /// Live agent registry shared with agent CRUD and chat runs.
@@ -422,6 +424,7 @@ impl LiveChatService {
         agents_config: Arc<RwLock<chelix_config::AgentsConfig>>,
         tools_config_source: chelix_config::ToolsConfigSource,
         skill_files: Arc<chelix_skills::skill_file::SkillFiles>,
+        call_bus: std::sync::Arc<chelix_call_bus::CallBus>,
     ) -> Self {
         Self {
             providers,
@@ -442,6 +445,7 @@ impl LiveChatService {
             active_partial_assistant: Arc::new(RwLock::new(HashMap::new())),
             active_reply_medium: Arc::new(RwLock::new(HashMap::new())),
             config,
+            call_bus,
             skill_files,
             agents_config,
             tools_config_source,

@@ -260,6 +260,9 @@ pub struct ChelixConfig {
     pub auxiliary: AuxiliaryModelsConfig,
     /// Code-index configuration for codebase search tools.
     pub code_index: CodeIndexTomlConfig,
+    /// Raw `[plugins]` table. The config plugin owns its meaning.
+    #[serde(default, skip_serializing_if = "toml::Table::is_empty")]
+    pub plugins: toml::Table,
     /// Upstream HTTP/SOCKS proxy for all outbound requests.
     ///
     /// Supports `http://`, `https://`, `socks5://`, and `socks5h://` schemes.

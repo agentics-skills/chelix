@@ -55,6 +55,7 @@ async fn permission_skip_returns_standard_tool_error_without_executing() {
         None,
         None,
         &CancellationToken::new(),
+        chelix_call_bus::testing::shared_config_bus().as_ref(),
         test_agent_loop_limits(),
     )
     .await
@@ -103,6 +104,7 @@ async fn permission_deny_returns_feedback_error() {
         None,
         None,
         &CancellationToken::new(),
+        chelix_call_bus::testing::shared_config_bus().as_ref(),
         test_agent_loop_limits(),
     )
     .await
@@ -141,6 +143,7 @@ async fn permission_approve_executes_tool() {
         None,
         None,
         &CancellationToken::new(),
+        chelix_call_bus::testing::shared_config_bus().as_ref(),
         test_agent_loop_limits(),
     )
     .await
@@ -180,6 +183,7 @@ async fn permission_runs_before_unknown_tool_validation() {
         None,
         None,
         &CancellationToken::new(),
+        chelix_call_bus::testing::shared_config_bus().as_ref(),
         test_agent_loop_limits(),
     )
     .await

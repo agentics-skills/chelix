@@ -55,7 +55,9 @@ Explicitly commands exactly from the list:
 ```bash
 cargo +nightly-2026-07-30 fmt --all                                                 # Format Rust
 cargo +nightly-2026-07-30 clippy --release --workspace --all-targets --all-features # Lint
+scripts/build-plugins.sh                                                            # Build plugins before tests
 cargo +nightly-2026-07-30 test --workspace                                          # The only allowed way to run tests
+just lint-plugins                                                                   # Lint plugin crates
 taplo fmt                                   # Format TOML files
 npx biome check --write crates/web/ui/src/  # Lint/format
 npx tsc --noEmit

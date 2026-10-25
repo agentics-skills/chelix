@@ -473,6 +473,7 @@ impl ChatService for LiveChatService {
                 persona,
                 compaction_reminder,
                 runtime_limits,
+                &self.call_bus,
                 &cancellation_token,
                 &state,
                 &run_id,
@@ -1880,6 +1881,7 @@ mod tests {
             chelix_config::ToolsConfigSource::snapshot(config.tools),
             chelix_skills::skill_file::SkillFiles::new()
                 .unwrap_or_else(|error| panic!("skill files: {error}")),
+            chelix_call_bus::testing::shared_config_bus(),
         );
         service.test_broadcasts = broadcasts;
         (

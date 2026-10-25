@@ -1,0 +1,5 @@
+package chelix:wasi-shadow;
+
+world shadow {
+  import wasi:sockets/ip-name-lookup@0.2.12;
+}

@@ -239,6 +239,7 @@ async fn start_auth_server_impl_with_webauthn(
         false,
         None,
         None, // session_event_bus
+        chelix_call_bus::testing::shared_config_bus(),
         #[cfg(feature = "metrics")]
         None,
         #[cfg(feature = "metrics")]
@@ -329,6 +330,7 @@ async fn start_localhost_server_with_vault() -> (
         false,
         None,
         None, // session_event_bus
+        chelix_call_bus::testing::shared_config_bus(),
         #[cfg(feature = "metrics")]
         None,
         #[cfg(feature = "metrics")]
@@ -430,6 +432,7 @@ async fn start_localhost_server_with_vault_and_session_store() -> (
         false,
         None,
         None, // session_event_bus
+        chelix_call_bus::testing::shared_config_bus(),
         #[cfg(feature = "metrics")]
         None,
         #[cfg(feature = "metrics")]
@@ -470,7 +473,7 @@ async fn start_noauth_server() -> SocketAddr {
 
     let resolved_auth = auth::resolve_auth(None, None);
     let services = with_test_web_services(GatewayServices::noop());
-    let state = GatewayState::new(resolved_auth, services);
+    let state = GatewayState::new(resolved_auth, services, chelix_call_bus::testing::shared_config_bus());
     let methods = Arc::new(MethodRegistry::new());
     #[cfg(feature = "push-notifications")]
     let (router, app_state) = build_gateway_base(state, methods, None, None);

@@ -51,6 +51,22 @@ pub async fn prepare_gateway_core(
     data_dir: Option<PathBuf>,
     session_event_bus: Option<SessionEventBus>,
 ) -> anyhow::Result<PreparedGatewayCore> {
+    let exe = std::env::current_exe().map_err(|error| anyhow::anyhow!(error))?;
+    let exe_dir = exe
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("current executable has no parent directory"))?
+        .to_path_buf();
+    let home = chelix_config::home_dir()
+        .ok_or_else(|| anyhow::anyhow!("unable to resolve home directory"))?;
+    let env: std::collections::HashMap<String, String> = std::env::vars().collect();
+    let call_bus = chelix_call_bus::CallBus::new(chelix_call_bus::BusOptions::new(
+        exe_dir, home, env,
+    ))
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "call bus refused to start");
+            anyhow::anyhow!(error)
+        })?;
     let session_event_bus = session_event_bus.unwrap_or_default();
 
     // Apply directory overrides before loading config.
@@ -843,6 +859,7 @@ pub async fn prepare_gateway_core(
         bind: bind.to_string(),
         port,
         config,
+        call_bus,
         log_buffer,
         data_dir,
         resolved_auth,

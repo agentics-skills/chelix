@@ -586,6 +586,7 @@ mod tests {
             false,
             None,
             None,
+            chelix_call_bus::testing::shared_config_bus(),
             #[cfg(feature = "metrics")]
             None,
             #[cfg(feature = "metrics")]

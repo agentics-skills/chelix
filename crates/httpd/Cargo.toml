@@ -72,6 +72,7 @@ voice = ["chelix-gateway/voice"]
 web-ui = ["chelix-gateway/web-ui"]
 
 [dev-dependencies]
+chelix-call-bus       = { features = ["host", "testing"], workspace = true }
 chelix-code-index     = { workspace = true }
 chelix-projects       = { workspace = true }
 chelix-providers      = { workspace = true }

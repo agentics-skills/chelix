@@ -11,6 +11,7 @@ base64                  = { workspace = true }
 bytes                   = { workspace = true }
 chelix-agents           = { workspace = true }
 chelix-auth             = { workspace = true }
+chelix-call-bus         = { features = ["host", "tracing"], workspace = true }
 chelix-channels         = { workspace = true }
 chelix-chat             = { workspace = true }
 chelix-code-index       = { workspace = true }
@@ -121,6 +122,7 @@ google = ["dep:chelix-google"]
 linkup = ["dep:chelix-linkup"]
 mdns = ["dep:mdns-sd"]
 metrics = [
+  "chelix-call-bus/metrics",
   "chelix-chat/metrics",
   "chelix-context7?/metrics",
   "chelix-duckduckgo?/metrics",
@@ -142,6 +144,7 @@ voice = ["dep:chelix-voice"]
 web-ui = ["chelix-chat/web-ui"]
 
 [dev-dependencies]
+chelix-call-bus = { features = ["host", "testing"], workspace = true }
 chelix-tools = { features = ["test-util"], workspace = true }
 serial_test  = { workspace = true }
 tokio-stream = { workspace = true }

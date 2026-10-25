@@ -1211,6 +1211,7 @@ mod tests {
                 password: None,
             },
             GatewayServices::noop(),
+            chelix_call_bus::testing::shared_config_bus(),
         );
         let registry = MethodRegistry::new();
 
@@ -1264,6 +1265,7 @@ mod tests {
                 password: None,
             },
             GatewayServices::noop(),
+            chelix_call_bus::testing::shared_config_bus(),
         );
         let runtime = tokio::runtime::Builder::new_current_thread()
             .build()

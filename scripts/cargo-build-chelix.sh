@@ -31,6 +31,11 @@ done
 
 cargo build -p chelix --no-default-features --features "$features" "$@"
 cargo build -p chelix-tools-service "$@"
+if [[ "$profile" == "release" ]]; then
+	scripts/build-plugins.sh --release
+else
+	scripts/build-plugins.sh
+fi
 
 is_macos_target=false
 if [[ "$target" == *-apple-darwin ]]; then

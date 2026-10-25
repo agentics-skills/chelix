@@ -131,6 +131,7 @@ impl LiveSessionService {
         let state = crate::state::GatewayState::new(
             crate::auth::resolve_auth(None, None),
             crate::services::GatewayServices::noop(),
+            chelix_call_bus::testing::shared_config_bus(),
         );
         state.set_chat(chat);
         let _ = self.deferred_state.set(state);

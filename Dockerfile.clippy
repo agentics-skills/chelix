@@ -11,6 +11,7 @@ RUN apt-get update -qq && \
         ca-certificates \
         cmake \
         git \
+        jq \
         pkg-config && \
     rm -rf /var/lib/apt/lists/*
 
@@ -24,8 +25,10 @@ FROM rust-system AS rust-toolchain
 
 COPY rust-toolchain.toml ./
 RUN NIGHTLY="$(sed -nE 's/^channel[[:space:]]*=[[:space:]]*"([^"]+)"/\1/p' rust-toolchain.toml)" \
-    && rustup install "$NIGHTLY" && rustup default "$NIGHTLY"
+    && rustup install "$NIGHTLY" && rustup default "$NIGHTLY" \
+    && rustup target add wasm32-wasip2 --toolchain "$NIGHTLY"
 RUN rustup component add clippy --toolchain nightly-2026-07-30
+RUN cargo +nightly-2026-07-30 install just --version 1.59.0 --locked
 RUN cargo +nightly-2026-07-30 install cargo-chef --version 0.1.77 --locked
 
 # The recipe contains only Cargo manifests and the lockfile. Source changes may
@@ -34,6 +37,7 @@ FROM rust-toolchain AS cargo-planner
 
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
+COPY plugins ./plugins
 COPY apps/courier ./apps/courier
 
 RUN cargo +nightly-2026-07-30 chef prepare --recipe-path recipe.json
@@ -66,8 +70,9 @@ RUN npm run build:all
 # Rust sources invalidate only the final Clippy stage.
 FROM cargo-dependencies AS clippy
 
-COPY Cargo.toml Cargo.lock clippy.toml ./
+COPY Cargo.toml Cargo.lock clippy.toml justfile rust-toolchain.toml ./
 COPY crates ./crates
+COPY plugins ./plugins
 COPY apps/courier ./apps/courier
 COPY scripts ./scripts
 
@@ -81,5 +86,6 @@ ENV CHELIX_VERSION=${CHELIX_VERSION}
 
 VOLUME ["/cargo-target"]
 
-RUN CARGO_TARGET_DIR=/cargo-target \
+ENV CARGO_TARGET_DIR=/cargo-target
+RUN just lint-plugins && \
     cargo +nightly-2026-07-30 clippy --release --workspace --all-targets --all-features

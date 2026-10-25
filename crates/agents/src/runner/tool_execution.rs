@@ -38,7 +38,8 @@ pub(crate) struct ToolExecutionOutcome {
 pub(crate) struct ToolInvocationExecutor<'a> {
     pub tools: &'a ToolRegistry,
     pub tool_result_store: &'a ToolResultStore,
-    pub max_tool_result_bytes: usize,
+    pub agent_max_tool_result_bytes: Option<usize>,
+    pub call_bus: &'a chelix_call_bus::CallBus,
     pub tool_context: Option<&'a serde_json::Value>,
     pub hook_registry: Option<&'a Arc<HookRegistry>>,
     pub session_key: &'a str,
@@ -695,9 +696,11 @@ impl ToolInvocationExecutor<'_> {
         let persistence = tool
             .map(|tool| tool.result_persistence(arguments))
             .unwrap_or_default();
+        let configured = tool_result_byte_budget(self.call_bus).await?;
         let max_bytes = tool
             .and_then(|tool| tool.in_context_result_bytes(arguments))
-            .unwrap_or(self.max_tool_result_bytes);
+            .or(self.agent_max_tool_result_bytes)
+            .unwrap_or(configured);
         persist_and_truncate(
             self.tool_result_store,
             self.session_key,
@@ -736,6 +739,33 @@ impl ToolInvocationExecutor<'_> {
         runner_event.raw_result = raw_result;
         runner_event.context_budget = Some(self.context_budget.clone());
         deliver_tool_lifecycle(self.tools, self.on_lifecycle, runner_event).await
+    }
+}
+
+async fn tool_result_byte_budget(
+    call_bus: &chelix_call_bus::CallBus,
+) -> Result<usize, AgentRunError> {
+    let result = call_bus
+        .call_as::<crate::config_contract::ConfigGetParams, crate::config_contract::ConfigGetResult>(
+            crate::config_contract::CONFIG_GET,
+            &crate::config_contract::ConfigGetParams {
+                path: "tools.max_tool_result_bytes".to_owned(),
+            },
+        )
+        .await
+        .map_err(|error| {
+            AgentRunError::Other(anyhow::anyhow!(
+                "config.get path tools.max_tool_result_bytes: {}",
+                error.message
+            ))
+        })?;
+    match result.value {
+        None => Ok(chelix_config::schema::default_max_tool_result_bytes()),
+        Some(value) => serde_json::from_value(value).map_err(|error| {
+            AgentRunError::Other(anyhow::anyhow!(
+                "config.get path tools.max_tool_result_bytes: {error}"
+            ))
+        }),
     }
 }
 

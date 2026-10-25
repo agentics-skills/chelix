@@ -78,6 +78,7 @@ pub(super) async fn run_agent_loop(
         None,
         None,
         &CancellationToken::new(),
+        chelix_call_bus::testing::shared_config_bus().as_ref(),
         test_agent_loop_limits(),
     )
     .await
@@ -109,6 +110,7 @@ pub(super) async fn run_agent_loop_with_tool_lifecycle(
         None,
         None,
         &CancellationToken::new(),
+        chelix_call_bus::testing::shared_config_bus().as_ref(),
         test_agent_loop_limits(),
     )
     .await
@@ -152,6 +154,7 @@ pub(super) async fn run_agent_loop_with_context(
         sender_name,
         None,
         &CancellationToken::new(),
+        chelix_call_bus::testing::shared_config_bus().as_ref(),
         test_agent_loop_limits(),
     )
     .await
@@ -186,6 +189,7 @@ pub(super) async fn run_agent_loop_with_context_and_tool_lifecycle(
         sender_name,
         None,
         &CancellationToken::new(),
+        chelix_call_bus::testing::shared_config_bus().as_ref(),
         test_agent_loop_limits(),
     )
     .await
@@ -357,6 +361,7 @@ pub(super) async fn run_agent_loop_streaming_with_lifecycle_and_limits(
         sender_name,
         steer_inbox,
         &cancellation_token,
+        chelix_call_bus::testing::shared_config_bus().as_ref(),
         limits,
     )
     .await
@@ -393,6 +398,7 @@ pub(super) async fn run_agent_loop_streaming_with_limits(
         sender_name,
         steer_inbox,
         &cancellation_token,
+        chelix_call_bus::testing::shared_config_bus().as_ref(),
         limits,
     )
     .await

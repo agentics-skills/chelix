@@ -21,6 +21,7 @@ RUN apt-get update -qq && \
         ca-certificates \
         cmake \
         git \
+        jq \
         pkg-config && \
     rm -rf /var/lib/apt/lists/*
 
@@ -34,7 +35,8 @@ FROM rust-system AS rust-toolchain
 
 COPY rust-toolchain.toml ./
 RUN NIGHTLY="$(sed -nE 's/^channel[[:space:]]*=[[:space:]]*"([^"]+)"/\1/p' rust-toolchain.toml)" \
-    && rustup install "$NIGHTLY" && rustup default "$NIGHTLY"
+    && rustup install "$NIGHTLY" && rustup default "$NIGHTLY" \
+    && rustup target add wasm32-wasip2 --toolchain "$NIGHTLY"
 RUN cargo +nightly-2026-07-30 install cargo-chef --version 0.1.77 --locked
 
 # The recipe contains only Cargo manifests and the lockfile. Source changes may
@@ -43,6 +45,7 @@ FROM rust-toolchain AS cargo-planner
 
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
+COPY plugins ./plugins
 COPY apps/courier ./apps/courier
 
 RUN cargo +nightly-2026-07-30 chef prepare --recipe-path recipe.json
@@ -78,6 +81,7 @@ FROM cargo-dependencies AS rust-builder
 
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
+COPY plugins ./plugins
 COPY apps/courier ./apps/courier
 COPY scripts ./scripts
 
@@ -137,6 +141,7 @@ FROM runtime-base AS runtime
 # Copy the core binary and its managed sidecars from builder
 COPY --from=rust-builder /build/target/release/chelix /usr/local/bin/chelix
 COPY --from=rust-builder /build/target/release/chelix-tools-service /usr/local/bin/chelix-tools-service
+COPY --from=rust-builder /build/target/release/plugins /usr/local/bin/plugins
 
 # Create config and data directories
 RUN mkdir -p /home/chelix/.config/chelix /home/chelix/.chelix /home/chelix/.npm && \
