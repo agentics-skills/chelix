@@ -1,0 +1,28 @@
+[package]
+edition.workspace = true
+name              = "chelix-plugin-config"
+version.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+chelix-call-bus = { workspace = true, features = ["guest"] }
+futures         = { workspace = true }
+schemars        = { workspace = true }
+serde           = { workspace = true }
+serde_json      = { workspace = true }
+toml            = { workspace = true }
+toml_edit       = { workspace = true }
+
+[target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
+chelix-call-bus = { workspace = true, features = ["host", "testing"] }
+tokio           = { workspace = true }
+
+[features]
+default = []
+metrics = ["chelix-call-bus/metrics"]
+tracing = ["chelix-call-bus/tracing"]
+
+[lints]
+workspace = true

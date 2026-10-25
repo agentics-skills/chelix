@@ -826,3 +826,28 @@ fn load_guidelines_md_for_agent_falls_back_to_root() {
 
     clear_data_dir();
 }
+
+#[test]
+fn update_config_preserves_plugins_disabled_and_comment() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("chelix.toml");
+    let mut config = ChelixConfig::default();
+    config.server.port = 18789;
+    config.tools.execute_command.terminal_size = Some(crate::schema::TerminalSizeConfig {
+        cols: 115,
+        rows: 58,
+    });
+    config.sandbox.archived_session_retention_days = Some(7);
+    let mut raw = toml::to_string_pretty(&config).expect("serialize");
+    raw.push_str("\n[plugins]\n# keep\ndisabled = [\"x\"]\n");
+    std::fs::write(&path, &raw).expect("write");
+    set_config_dir(dir.path().to_path_buf());
+    update_config(|config| {
+        config.server.port = 18790;
+    })
+    .expect("update");
+    let saved = std::fs::read_to_string(&path).expect("read");
+    assert!(saved.contains("disabled = [\"x\"]"), "{saved}");
+    assert!(saved.contains("# keep"), "{saved}");
+    clear_config_dir();
+}

@@ -919,6 +919,7 @@ pub async fn start_gateway(
     // - SIGTERM / SIGHUP (Docker/systemd): graceful exit
     // - SIGINT  (ctrl-c): immediate exit
     {
+        let call_bus = std::sync::Arc::clone(&state.call_bus);
         tokio::spawn(async move {
             #[cfg(unix)]
             let signal_name: &str = {
@@ -956,6 +957,7 @@ pub async fn start_gateway(
             }
 
             info!(signal = signal_name, "starting graceful shutdown");
+            call_bus.close().await;
 
             #[cfg(feature = "mdns")]
             if let Some(ref daemon) = _mdns_daemon {

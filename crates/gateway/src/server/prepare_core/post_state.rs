@@ -42,6 +42,7 @@ pub(super) struct PostStateInputs {
     pub bind: String,
     pub port: u16,
     pub config: chelix_config::ChelixConfig,
+    pub call_bus: Arc<chelix_call_bus::CallBus>,
     pub log_buffer: Option<crate::logs::LogBuffer>,
     pub data_dir: PathBuf,
     pub resolved_auth: auth::ResolvedAuth,
@@ -206,6 +207,7 @@ pub(super) async fn complete_startup(
         bind,
         port,
         config,
+        call_bus,
         log_buffer,
         data_dir,
         resolved_auth,
@@ -320,6 +322,7 @@ pub(super) async fn complete_startup(
         config.server.ws_request_logs,
         deploy_platform.clone(),
         Some(session_event_bus),
+        call_bus.clone(),
         #[cfg(feature = "metrics")]
         metrics_handle,
         #[cfg(feature = "metrics")]
@@ -763,6 +766,7 @@ pub(super) async fn complete_startup(
             Arc::clone(&agents_config),
             chelix_config::ToolsConfigSource::Filesystem,
             Arc::clone(&skill_files),
+            Arc::clone(&call_bus),
         )
         .with_session_state_store(Arc::clone(&session_state_store))
         .with_tools(Arc::clone(&shared_tool_registry))

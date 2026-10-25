@@ -19,6 +19,7 @@ fn state() -> Arc<GatewayState> {
             password: None,
         },
         GatewayServices::noop(),
+        chelix_call_bus::testing::shared_config_bus(),
     )
 }
 

@@ -515,7 +515,7 @@ mod vault_unseal_tests {
                 .unwrap(),
         );
         let gateway_state =
-            GatewayState::new(chelix_gateway::auth::resolve_auth(None, None), services);
+            GatewayState::new(chelix_gateway::auth::resolve_auth(None, None), services, chelix_call_bus::testing::shared_config_bus());
         AuthState {
             credential_store: cred_store,
             webauthn_registry: None,

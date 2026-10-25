@@ -5,6 +5,7 @@ default-members = [
   "crates/auth",
   "crates/auto-reply",
   "crates/benchmarks",
+  "crates/call-bus",
   "crates/channels",
   "crates/chat",
   "crates/cli",
@@ -55,8 +56,12 @@ members = [
   "crates/auth",
   "crates/auto-reply",
   "crates/benchmarks",
+  "crates/call-bus",
+  "crates/call-bus/tests/guests/*",
   "crates/channels",
   "crates/chat",
+  "plugins/*",
+  "plugins/*/tests/guests/*",
   "crates/cli",
   "crates/code-index",
   "crates/common",
@@ -173,7 +178,7 @@ jsonschema        = { default-features = false, version = "0.49" }
 mockito           = "1.7"
 serde_yaml        = "0.9"
 tokio-tungstenite = "0.26"
-toml              = "0.8"
+toml              = { version = "0.8", features = ["preserve_order"] }
 toml_edit         = "0.22"
 # Not called directly: pulled in transitively (native-tls, ece/web-push,
 # webauthn-attestation-ca) and declared here only to unify the `vendored`
@@ -259,10 +264,17 @@ tempfile              = "3"
 walkdir               = "2"
 which                 = "8"
 zeroize               = { features = ["derive"], version = "1" }
+schemars              = "1.2.3"
+semver                = "1.0.28"
+wasmtime              = { features = ["async", "component-model", "component-model-async"], version = "50.0.0" }
+wasmtime-wasi         = "50.0.0"
+wasmtime-wasi-io      = "50.0.0"
+wit-bindgen           = { default-features = false, features = ["macros", "realloc", "async", "std", "async-spawn"], version = "0.63.0" }
 
 # Workspace crates
 chelix-agents           = { path = "crates/agents" }
 chelix-auth             = { path = "crates/auth" }
+chelix-call-bus         = { default-features = false, path = "crates/call-bus" }
 chelix-channels         = { path = "crates/channels" }
 chelix-chat             = { path = "crates/chat" }
 chelix-code-index       = { path = "crates/code-index" }

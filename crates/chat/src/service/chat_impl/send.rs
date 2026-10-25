@@ -1001,6 +1001,7 @@ impl LiveChatService {
                         persona,
                         compaction_reminder,
                         runtime_limits,
+                        &self.call_bus,
                         &cancellation_token,
                         &state,
                         &run_id_clone,

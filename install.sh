@@ -286,6 +286,9 @@ install_binary() {
     if [ ! -f "$tmpdir/$TOOLS_SERVICE_NAME" ]; then
         error "Release archive is missing required $TOOLS_SERVICE_NAME binary"
     fi
+    if [ ! -d "$tmpdir/plugins" ]; then
+        error "Release archive is missing required plugins directory"
+    fi
     linux_tools_service=""
     if [ "$os" = "macos" ]; then
         linux_tools_service="$TOOLS_SERVICE_NAME-linux-$arch"
@@ -305,11 +308,14 @@ install_binary() {
         chmod +x "$INSTALL_DIR/$linux_tools_service"
     fi
 
+    rm -rf "$INSTALL_DIR/plugins"
+    mv "$tmpdir/plugins" "$INSTALL_DIR/plugins"
+
     if [ -d "$tmpdir/share/chelix" ]; then
         install_shared_assets "$tmpdir/share/chelix"
     fi
 
-    success "Chelix installed to $INSTALL_DIR/$BINARY_NAME"
+    success "Chelix installed to $INSTALL_DIR/$BINARY_NAME and $INSTALL_DIR/plugins"
     add_to_path_instructions
 }
 

@@ -454,7 +454,11 @@ mod tests {
             .with_model(model_service)
             .with_agents_config(agents_config)
             .with_session_metadata(Arc::clone(&metadata));
-        let state = GatewayState::new(crate::auth::resolve_auth(None, None), services);
+        let state = GatewayState::new(
+            crate::auth::resolve_auth(None, None),
+            services,
+            chelix_call_bus::testing::shared_config_bus(),
+        );
         Ok((state, metadata, dir))
     }
 

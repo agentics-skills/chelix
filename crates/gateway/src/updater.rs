@@ -243,11 +243,18 @@ async fn do_binary_update(
 
     // Extract binary from tarball
     let extracted = extract_binary_from_tarball(&tarball_path, tmp.path())?;
+    let plugins = tmp.path().join("plugins");
+    if !plugins.is_dir() {
+        return Err(UpdateError::Extraction(
+            "plugins directory not found in tarball".into(),
+        ));
+    }
 
     // Replace current binary
     let current_exe = std::env::current_exe()
         .map_err(|e| UpdateError::Replacement(format!("cannot determine current exe: {e}")))?;
     replace_binary(&extracted, &current_exe)?;
+    replace_plugins(&plugins, &current_exe)?;
 
     if method == InstallMethod::Docker {
         Ok(UpdateOutcome::DockerUpdated {
@@ -464,6 +471,59 @@ fn replace_binary(new_binary: &Path, current_exe: &Path) -> Result<(), UpdateErr
     // Clean up old binary (best-effort)
     let _ = std::fs::remove_file(&old_path);
 
+    Ok(())
+}
+
+fn replace_plugins(new_plugins: &Path, current_exe: &Path) -> Result<(), UpdateError> {
+    let parent = current_exe
+        .parent()
+        .ok_or_else(|| UpdateError::Replacement("no parent directory".into()))?;
+    let dest = parent.join("plugins");
+    let staging = parent.join("plugins.new");
+    let backup = parent.join(".plugins.old");
+    let _ = std::fs::remove_dir_all(&staging);
+    copy_dir(new_plugins, &staging)?;
+    if backup.exists() {
+        std::fs::remove_dir_all(&backup)
+            .map_err(|error| UpdateError::Replacement(format!("remove old plugins backup: {error}")))?;
+    }
+    if dest.exists() {
+        std::fs::rename(&dest, &backup).map_err(|error| {
+            UpdateError::Replacement(format!("backup installed plugins: {error}"))
+        })?;
+    }
+    if let Err(error) = std::fs::rename(&staging, &dest) {
+        if backup.exists() {
+            let _ = std::fs::rename(&backup, &dest);
+        }
+        return Err(UpdateError::Replacement(format!(
+            "install plugins: {error}"
+        )));
+    }
+    let _ = std::fs::remove_dir_all(&backup);
+    Ok(())
+}
+
+fn copy_dir(from: &Path, to: &Path) -> Result<(), UpdateError> {
+    std::fs::create_dir_all(to)
+        .map_err(|error| UpdateError::Replacement(format!("create {}: {error}", to.display())))?;
+    for entry in std::fs::read_dir(from)
+        .map_err(|error| UpdateError::Replacement(format!("read {}: {error}", from.display())))?
+    {
+        let entry = entry.map_err(|error| UpdateError::Replacement(error.to_string()))?;
+        let target = to.join(entry.file_name());
+        if entry
+            .file_type()
+            .map_err(|error| UpdateError::Replacement(error.to_string()))?
+            .is_dir()
+        {
+            copy_dir(&entry.path(), &target)?;
+        } else {
+            std::fs::copy(entry.path(), &target).map_err(|error| {
+                UpdateError::Replacement(format!("copy {}: {error}", entry.path().display()))
+            })?;
+        }
+    }
     Ok(())
 }
 

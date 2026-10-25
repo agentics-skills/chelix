@@ -95,7 +95,7 @@ fn default_agent_auto_continue_min_tool_calls() -> usize {
     3
 }
 
-fn default_max_tool_result_bytes() -> usize {
+pub fn default_max_tool_result_bytes() -> usize {
     50_000
 }
 

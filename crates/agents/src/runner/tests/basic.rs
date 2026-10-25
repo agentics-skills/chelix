@@ -717,6 +717,7 @@ async fn streaming_tool_arguments_are_cancelled_without_waiting_for_stream_compl
         None,
         None,
         &cancellation_token,
+        chelix_call_bus::testing::shared_config_bus().as_ref(),
         test_agent_loop_limits(),
     );
     let cancel = async {
@@ -879,6 +880,7 @@ async fn executing_tool_is_cancelled_by_agent_run_token() {
         None,
         None,
         &cancellation_token,
+        chelix_call_bus::testing::shared_config_bus().as_ref(),
         test_agent_loop_limits(),
     );
     let cancel = async {
@@ -1034,6 +1036,7 @@ async fn hanging_before_llm_hook_is_cancelled_by_agent_run_token() {
         None,
         None,
         &cancellation_token,
+        chelix_call_bus::testing::shared_config_bus().as_ref(),
         test_agent_loop_limits(),
     );
     let cancel = async {

@@ -658,6 +658,7 @@ pub(crate) async fn run_with_tools(
     persona: PromptPersona,
     mut compaction_reminder: crate::compaction_reminder::CompactionReminder,
     runtime_limits: AgentRuntimeLimits,
+    call_bus: &chelix_call_bus::CallBus,
     cancellation_token: &CancellationToken,
     state: &Arc<dyn ChatRuntime>,
     run_id: &str,
@@ -1202,9 +1203,14 @@ pub(crate) async fn run_with_tools(
             sender_name.clone(),
             Some(steer_inbox.clone()),
             cancellation_token,
+            call_bus,
             AgentLoopLimits {
                 max_tools_threshold: runtime_limits.max_tools_threshold,
-                max_tool_result_bytes: Some(runtime_limits.max_tool_result_bytes),
+                max_tool_result_bytes: matches!(
+                    runtime_limits.max_tool_result_bytes_source,
+                    chelix_config::AgentRuntimeLimitSource::Agent
+                )
+                .then_some(runtime_limits.max_tool_result_bytes),
                 automatic_checkpointing: true,
                 resume_from_history,
                 resume_after_checkpoint: resume_from_history,

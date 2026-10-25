@@ -61,7 +61,7 @@ codesign-debug:
     done
 
 # Build the project
-build: build-web-assets
+build: build-web-assets build-plugins
     cargo build
     just codesign-debug
 
@@ -69,8 +69,23 @@ build: build-web-assets
 build-release:
     ./scripts/cargo-build-chelix.sh --release
 
+# Build WASM plugins next to the chelix binary for this profile.
+build-plugins:
+    ./scripts/build-plugins.sh
+
+# Lint plugin crates for wasm32-wasip2.
+lint-plugins:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    shopt -s nullglob
+    manifests=(plugins/*/Cargo.toml plugins/*/tests/guests/*/Cargo.toml crates/call-bus/tests/guests/*/Cargo.toml)
+    for manifest in "${manifests[@]}"; do
+        name="$(basename "$(dirname "$manifest")")"
+        cargo +nightly-2026-07-30 clippy --release --target wasm32-wasip2 -p "chelix-plugin-$name" --all-targets
+    done
+
 # Run local dev server with workspace-local config/data dirs.
-dev-server: build-web-assets
+dev-server: build-web-assets build-plugins
     cargo build --bin chelix
     just codesign-debug
     CHELIX_CONFIG_DIR="{{justfile_directory()}}/.chelix/config" CHELIX_DATA_DIR=.chelix/ cargo run --bin chelix
@@ -81,7 +96,7 @@ ci: format-check build-web-assets lint i18n-check build test
 # Compile once, then run Rust tests.
 # Uses the same nightly toolchain as clippy/local-validate so the build cache
 # is shared — no double-compilation.
-build-test: build-web-assets
+build-test: build-web-assets build-plugins
     #!/usr/bin/env bash
     set -euo pipefail
     echo "==> Building all workspace targets (bins + tests)..."
@@ -136,7 +151,7 @@ ship commit_message='' pr_title='' pr_body='':
 # On macOS: build and nextest use the default features.
 # On Linux: nextest uses --all-features.
 # Builds first so codesign can run before test execution (prevents Little Snitch prompts).
-test: build-web-assets
+test: build-web-assets build-plugins
     #!/usr/bin/env bash
     set -euo pipefail
     if [ "$(uname -s)" = "Darwin" ]; then

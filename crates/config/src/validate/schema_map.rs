@@ -406,6 +406,10 @@ pub(crate) fn build_schema_map() -> KnownKeys {
                 ("auto_prune_cron_containers", Leaf),
             ])),
         ),
+        (
+            "plugins",
+            Struct(HashMap::from([("disabled", Leaf)])),
+        ),
         ("env", Map(Box::new(Leaf))),
         ("upstream_proxy", Leaf),
         (

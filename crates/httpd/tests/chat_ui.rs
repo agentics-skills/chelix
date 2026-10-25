@@ -110,7 +110,7 @@ async fn start_test_server() -> TestServer {
     let services = GatewayServices::noop()
         .with_agents_config(Arc::new(tokio::sync::RwLock::new(test_agents())))
         .with_onboarding(Arc::new(TestOnboardingService));
-    let state = GatewayState::new(resolved_auth, services);
+    let state = GatewayState::new(resolved_auth, services, chelix_call_bus::testing::shared_config_bus());
     let methods = Arc::new(MethodRegistry::new());
     #[cfg(feature = "push-notifications")]
     let (router, app_state) = build_gateway_base(state, methods, None, None);
@@ -324,7 +324,7 @@ async fn gateway_startup_with_llm_wiring_does_not_block() {
         )));
     }
 
-    let state = GatewayState::new(resolved_auth, services);
+    let state = GatewayState::new(resolved_auth, services, chelix_call_bus::testing::shared_config_bus());
 
     // This is the call that used to panic with blocking_write inside async.
     let tmp1 = tempfile::tempdir().unwrap();
@@ -359,6 +359,7 @@ async fn gateway_startup_with_llm_wiring_does_not_block() {
             ),
             chelix_skills::skill_file::SkillFiles::new()
                 .unwrap_or_else(|error| panic!("skill files: {error}")),
+            chelix_call_bus::testing::shared_config_bus(),
         )));
     }
 
@@ -366,7 +367,7 @@ async fn gateway_startup_with_llm_wiring_does_not_block() {
     // Force it with an empty registry to exercise set_chat unconditionally.
     let resolved_auth2 = auth::resolve_auth(None, None);
     let registry2 = Arc::new(tokio::sync::RwLock::new(ProviderRegistry::empty()));
-    let state2 = GatewayState::new(resolved_auth2, GatewayServices::noop());
+    let state2 = GatewayState::new(resolved_auth2, GatewayServices::noop(), chelix_call_bus::testing::shared_config_bus());
     let tmp2 = tempfile::tempdir().unwrap();
     let session_store2 = Arc::new(chelix_sessions::store::SessionStore::new(
         tmp2.path().to_path_buf(),
@@ -396,6 +397,7 @@ async fn gateway_startup_with_llm_wiring_does_not_block() {
         chelix_config::ToolsConfigSource::snapshot(chelix_config::schema::ToolsConfig::default()),
         chelix_skills::skill_file::SkillFiles::new()
             .unwrap_or_else(|error| panic!("skill files: {error}")),
+        chelix_call_bus::testing::shared_config_bus(),
     )));
 
     // Verify chat override is active — chat.send should use the LiveChatService,

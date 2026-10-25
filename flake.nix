@@ -24,7 +24,9 @@
         };
         nightly = "2026-07-30";
 
-        rustToolchain = pkgs.rust-bin.nightly.${nightly}.default;
+        rustToolchain = pkgs.rust-bin.nightly.${nightly}.default.override {
+          targets = ["wasm32-wasip2"];
+        };
 
         rustPlatform = pkgs.makeRustPlatform {
           cargo = rustToolchain;
@@ -49,9 +51,15 @@
           };
           nativeBuildInputs = with pkgs; [
             cmake
+            jq
             perl
             pkg-config
           ];
+          postInstall = ''
+            bash scripts/build-plugins.sh --release
+            mkdir -p "$out/bin/plugins"
+            cp -R target/release/plugins/. "$out/bin/plugins/"
+          '';
           cargoBuildFlags = ["--bin" "chelix"];
           CHELIX_VERSION = toString (self.shortRev or self.dirtyShortRev or self.lastModified or "nix");
 

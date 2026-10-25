@@ -9,6 +9,7 @@ anyhow                = { workspace = true }
 async-trait           = { workspace = true }
 base64                = { workspace = true }
 chelix-agents         = { workspace = true }
+chelix-call-bus       = { features = ["host", "tracing"], workspace = true }
 chelix-channels       = { workspace = true }
 chelix-common         = { workspace = true }
 chelix-config         = { workspace = true }
@@ -35,7 +36,7 @@ uuid                  = { workspace = true }
 
 [features]
 bundled-skills     = ["chelix-skills/bundled-skills"]
-metrics            = ["chelix-metrics/sqlite", "dep:chelix-metrics"]
+metrics            = ["chelix-call-bus/metrics", "chelix-metrics/sqlite", "dep:chelix-metrics"]
 push-notifications = ["dep:chrono"]
 telegram           = ["dep:chelix-telegram"]
 web-ui             = ["dep:chrono"]
@@ -43,6 +44,7 @@ web-ui             = ["dep:chrono"]
 default = []
 
 [dev-dependencies]
+chelix-call-bus = { workspace = true, features = ["host", "testing"] }
 chelix-channels = { workspace = true }
 sqlx            = { workspace = true }
 tempfile        = { workspace = true }

@@ -572,6 +572,7 @@ mod tests {
                 password: None,
             },
             services,
+            chelix_call_bus::testing::shared_config_bus(),
         );
         state.set_chat(Arc::new(AbortFails));
         let permit = mutations

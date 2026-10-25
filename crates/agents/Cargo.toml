@@ -5,11 +5,12 @@ version.workspace = true
 
 [features]
 default = ["metrics"]
-metrics = ["dep:chelix-metrics"]
+metrics = ["chelix-call-bus/metrics", "dep:chelix-metrics"]
 
 [dependencies]
 anyhow          = { workspace = true }
 async-trait     = { workspace = true }
+chelix-call-bus = { features = ["host", "tracing"], workspace = true }
 chelix-common   = { workspace = true }
 chelix-config   = { workspace = true }
 chelix-sessions = { workspace = true }
@@ -31,6 +32,7 @@ uuid            = { workspace = true }
 chelix-metrics = { optional = true, workspace = true }
 
 [dev-dependencies]
+chelix-call-bus = { features = ["host", "testing"], workspace = true }
 tempfile = { workspace = true }
 
 [lints]

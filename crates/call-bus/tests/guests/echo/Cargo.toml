@@ -1,0 +1,16 @@
+[package]
+edition.workspace = true
+name              = "chelix-plugin-echo"
+version.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+chelix-call-bus = { workspace = true, features = ["guest"] }
+schemars        = { workspace = true }
+serde           = { workspace = true }
+serde_json      = { workspace = true }
+
+[lints]
+workspace = true

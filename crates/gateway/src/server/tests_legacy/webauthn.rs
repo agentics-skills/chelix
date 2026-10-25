@@ -37,6 +37,7 @@ async fn sync_runtime_webauthn_host_registers_new_origin() {
         false,
         None,
         None,
+        chelix_call_bus::testing::shared_config_bus(),
         #[cfg(feature = "metrics")]
         None,
         #[cfg(feature = "metrics")]
@@ -74,6 +75,7 @@ async fn sync_runtime_webauthn_host_rejects_invalid_origin() {
             password: None,
         },
         crate::services::GatewayServices::noop(),
+        chelix_call_bus::testing::shared_config_bus(),
     );
     let registry = Arc::new(tokio::sync::RwLock::new(
         crate::auth_webauthn::WebAuthnRegistry::new(),
@@ -101,6 +103,7 @@ async fn sync_runtime_webauthn_host_skips_insecure_http_origin() {
             password: None,
         },
         crate::services::GatewayServices::noop(),
+        chelix_call_bus::testing::shared_config_bus(),
     );
     let registry = Arc::new(tokio::sync::RwLock::new(
         crate::auth_webauthn::WebAuthnRegistry::new(),

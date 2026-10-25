@@ -388,6 +388,8 @@ pub struct GatewayState {
     pub hostname: String,
     /// Loaded configuration snapshot for read-mostly request helpers.
     pub config: chelix_config::schema::ChelixConfig,
+    /// Plugin call bus. Created before the rest of gateway startup.
+    pub call_bus: Arc<chelix_call_bus::CallBus>,
     /// Auth configuration.
     pub auth: ResolvedAuth,
     /// Domain services.
@@ -472,7 +474,11 @@ pub struct GatewayState {
 }
 
 impl GatewayState {
-    pub fn new(auth: ResolvedAuth, services: GatewayServices) -> Arc<Self> {
+    pub fn new(
+        auth: ResolvedAuth,
+        services: GatewayServices,
+        call_bus: Arc<chelix_call_bus::CallBus>,
+    ) -> Arc<Self> {
         let mut config = chelix_config::ChelixConfig::default();
         config.sandbox.mode = chelix_config::schema::SandboxMode::Off;
         Self::with_options(
@@ -493,6 +499,7 @@ impl GatewayState {
             false,
             None,
             None,
+            call_bus,
             #[cfg(feature = "metrics")]
             None,
             #[cfg(feature = "metrics")]
@@ -519,6 +526,7 @@ impl GatewayState {
         ws_request_logs: bool,
         deploy_platform: Option<String>,
         session_event_bus: Option<SessionEventBus>,
+        call_bus: Arc<chelix_call_bus::CallBus>,
         #[cfg(feature = "metrics")] metrics_handle: Option<MetricsHandle>,
         #[cfg(feature = "metrics")] metrics_store: Option<Arc<dyn MetricsStore>>,
         #[cfg(feature = "vault")] vault: Option<Arc<chelix_vault::Vault>>,
@@ -533,6 +541,7 @@ impl GatewayState {
             version: chelix_config::VERSION.to_string(),
             hostname,
             config,
+            call_bus,
             auth,
             services,
             credential_store,
@@ -992,6 +1001,7 @@ mod tests {
                 password: None,
             },
             GatewayServices::noop(),
+            chelix_call_bus::testing::shared_config_bus(),
         )
     }
 
