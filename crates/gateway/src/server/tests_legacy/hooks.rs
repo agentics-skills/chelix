@@ -11,7 +11,10 @@ async fn discover_and_build_hooks(
     Option<Arc<chelix_common::hooks::HookRegistry>>,
     Vec<crate::state::DiscoveredHookInfo>,
 ) {
-    discover_hooks(disabled).await.expect("discover hooks")
+    let config_service = crate::config_document::open_test_service().await;
+    discover_hooks(&config_service, disabled)
+        .await
+        .expect("discover hooks")
 }
 
 fn write_config_hook(config_dir: &std::path::Path, command: &str, env: Option<(&str, &str)>) {
@@ -60,17 +63,15 @@ timeout = 7
 
 #[tokio::test]
 async fn discover_hooks_registers_builtin_handlers() {
-    let _guard = LocalModelConfigTestGuard::new();
-    let config_dir = tempfile::tempdir().unwrap();
+    let guard = LocalModelConfigTestGuard::new().await;
     let project_dir = tempfile::tempdir().unwrap();
     let old_cwd = std::env::current_dir().unwrap();
     std::env::set_current_dir(project_dir.path()).unwrap();
     std::fs::write(
-        config_dir.path().join("chelix.toml"),
+        guard.config_dir().join("chelix.toml"),
         "[tools.execute_command]\nterminal_size = \"115x58\"\n\n[sandbox]\narchived_session_retention_days = 3\n",
     )
     .unwrap();
-    chelix_config::set_config_dir(config_dir.path().to_path_buf());
     let (registry, info) = discover_and_build_hooks(&HashSet::new()).await;
     let registry = registry.expect("expected hook registry to be created");
     let handler_names = registry.handler_names();
@@ -82,21 +83,16 @@ async fn discover_hooks_registers_builtin_handlers() {
     );
 
     std::env::set_current_dir(old_cwd).unwrap();
-    chelix_config::clear_config_dir();
 }
 
 #[tokio::test]
 async fn discover_hooks_registers_config_shell_hooks() {
-    let _guard = LocalModelConfigTestGuard::new();
-    let data_dir = tempfile::tempdir().unwrap();
-    let config_dir = tempfile::tempdir().unwrap();
+    let guard = LocalModelConfigTestGuard::new().await;
     write_config_hook(
-        config_dir.path(),
+        guard.config_dir(),
         "printf ''",
         Some(("CHELIX_TEST_HOOK", "1")),
     );
-    chelix_config::set_data_dir(data_dir.path().to_path_buf());
-    chelix_config::set_config_dir(config_dir.path().to_path_buf());
 
     let (registry, info) = discover_and_build_hooks(&HashSet::new()).await;
     let registry = registry.expect("expected hook registry to be created");
@@ -113,19 +109,12 @@ async fn discover_hooks_registers_config_shell_hooks() {
     assert_eq!(hook_info.timeout, 7);
     assert!(hook_info.enabled);
     assert!(hook_info.eligible);
-
-    chelix_config::clear_config_dir();
-    chelix_config::clear_data_dir();
 }
 
 #[tokio::test]
 async fn discover_hooks_lists_disabled_config_hooks_without_registering() {
-    let _guard = LocalModelConfigTestGuard::new();
-    let data_dir = tempfile::tempdir().unwrap();
-    let config_dir = tempfile::tempdir().unwrap();
-    write_config_hook(config_dir.path(), "printf ''", None);
-    chelix_config::set_data_dir(data_dir.path().to_path_buf());
-    chelix_config::set_config_dir(config_dir.path().to_path_buf());
+    let guard = LocalModelConfigTestGuard::new().await;
+    write_config_hook(guard.config_dir(), "printf ''", None);
 
     let disabled = HashSet::from(["config-test-hook".to_string()]);
 
@@ -141,18 +130,13 @@ async fn discover_hooks_lists_disabled_config_hooks_without_registering() {
     assert_eq!(hook_info.source, "config");
     assert!(!hook_info.enabled);
     assert!(hook_info.eligible);
-
-    chelix_config::clear_config_dir();
-    chelix_config::clear_data_dir();
 }
 
 #[tokio::test]
 async fn config_hook_info_lists_only_parsed_events() {
-    let _guard = LocalModelConfigTestGuard::new();
-    let data_dir = tempfile::tempdir().unwrap();
-    let config_dir = tempfile::tempdir().unwrap();
+    let guard = LocalModelConfigTestGuard::new().await;
     std::fs::write(
-        config_dir.path().join("chelix.toml"),
+        guard.config_dir().join("chelix.toml"),
         r#"[hooks]
 
 [[hooks.hooks]]
@@ -169,8 +153,6 @@ archived_session_retention_days = 3
 "#,
     )
     .unwrap();
-    chelix_config::set_data_dir(data_dir.path().to_path_buf());
-    chelix_config::set_config_dir(config_dir.path().to_path_buf());
 
     let (registry, info) = discover_and_build_hooks(&HashSet::new()).await;
     let registry = registry.expect("expected hook registry to be created");
@@ -184,21 +166,16 @@ archived_session_retention_days = 3
     assert_eq!(hook_info.events, vec!["BeforeLLMCall"]);
     assert!(hook_info.enabled);
     assert!(hook_info.eligible);
-
-    chelix_config::clear_config_dir();
-    chelix_config::clear_data_dir();
 }
 
 #[tokio::test]
 async fn duplicate_config_hook_names_keep_first_entry() {
-    let _guard = LocalModelConfigTestGuard::new();
-    let data_dir = tempfile::tempdir().unwrap();
-    let config_dir = tempfile::tempdir().unwrap();
-    let output_path = data_dir.path().join("duplicate-config-output.txt");
+    let guard = LocalModelConfigTestGuard::new().await;
+    let output_path = guard.data_dir().join("duplicate-config-output.txt");
     let first_command = format!("printf first > {:?}", output_path);
     let second_command = format!("printf second > {:?}", output_path);
     std::fs::write(
-        config_dir.path().join("chelix.toml"),
+        guard.config_dir().join("chelix.toml"),
         format!(
             r#"[hooks]
 
@@ -223,8 +200,6 @@ archived_session_retention_days = 3
         ),
     )
     .unwrap();
-    chelix_config::set_data_dir(data_dir.path().to_path_buf());
-    chelix_config::set_config_dir(config_dir.path().to_path_buf());
 
     let (registry, info) = discover_and_build_hooks(&HashSet::new()).await;
     let registry = registry.expect("expected hook registry to be created");
@@ -250,29 +225,22 @@ archived_session_retention_days = 3
 
     let captured = std::fs::read_to_string(&output_path).unwrap();
     assert_eq!(captured, "first");
-
-    chelix_config::clear_config_dir();
-    chelix_config::clear_data_dir();
 }
 
 #[tokio::test]
 async fn filesystem_hook_takes_precedence_over_same_named_config_hook() {
-    let _guard = LocalModelConfigTestGuard::new();
-    let data_dir = tempfile::tempdir().unwrap();
-    let config_dir = tempfile::tempdir().unwrap();
-    let output_path = data_dir.path().join("collision-output.txt");
+    let guard = LocalModelConfigTestGuard::new().await;
+    let output_path = guard.data_dir().join("collision-output.txt");
     write_filesystem_hook(
-        data_dir.path(),
+        guard.data_dir(),
         "config-test-hook",
         &format!("printf fs > {:?}", output_path),
     );
     write_config_hook(
-        config_dir.path(),
+        guard.config_dir(),
         &format!("printf config > {:?}", output_path),
         None,
     );
-    chelix_config::set_data_dir(data_dir.path().to_path_buf());
-    chelix_config::set_config_dir(config_dir.path().to_path_buf());
 
     let (registry, info) = discover_and_build_hooks(&HashSet::new()).await;
     let registry = registry.expect("expected hook registry to be created");
@@ -301,27 +269,20 @@ async fn filesystem_hook_takes_precedence_over_same_named_config_hook() {
 
     let captured = std::fs::read_to_string(&output_path).unwrap();
     assert_eq!(captured, "fs");
-
-    chelix_config::clear_config_dir();
-    chelix_config::clear_data_dir();
 }
 
 #[tokio::test]
 async fn config_shell_hook_runs_when_event_dispatches() {
-    let _guard = LocalModelConfigTestGuard::new();
-    let data_dir = tempfile::tempdir().unwrap();
-    let config_dir = tempfile::tempdir().unwrap();
-    let output_path = data_dir.path().join("hook-payload.json");
+    let guard = LocalModelConfigTestGuard::new().await;
+    let output_path = guard.data_dir().join("hook-payload.json");
     write_config_hook(
-        config_dir.path(),
+        guard.config_dir(),
         "cat > \"$CHELIX_TEST_HOOK_OUTPUT\"",
         Some((
             "CHELIX_TEST_HOOK_OUTPUT",
             output_path.to_string_lossy().as_ref(),
         )),
     );
-    chelix_config::set_data_dir(data_dir.path().to_path_buf());
-    chelix_config::set_config_dir(config_dir.path().to_path_buf());
 
     let (registry, _info) = discover_and_build_hooks(&HashSet::new()).await;
     let registry = registry.expect("expected hook registry to be created");
@@ -342,7 +303,4 @@ async fn config_shell_hook_runs_when_event_dispatches() {
     let captured = std::fs::read_to_string(&output_path).unwrap();
     assert!(captured.contains("BeforeLLMCall"));
     assert!(captured.contains("config-hook-test"));
-
-    chelix_config::clear_config_dir();
-    chelix_config::clear_data_dir();
 }

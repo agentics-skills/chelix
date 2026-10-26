@@ -3,7 +3,8 @@
 use {
     crate::{
         config::GoogleTtsConfig,
-        tts::{AudioFormat, AudioOutput, SynthesizeRequest, TtsProvider, Voice, contains_ssml},
+        contains_ssml,
+        tts::{AudioFormat, AudioOutput, SynthesizeRequest, TtsProvider, Voice},
     },
     anyhow::{Result, anyhow},
     async_trait::async_trait,

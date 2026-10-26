@@ -338,9 +338,11 @@ pub(super) fn register(reg: &mut MethodRegistry) {
     {
         reg.register(
                 "voice.config.get",
-                Box::new(|_ctx| {
+                Box::new(|ctx| {
                     Box::pin(async move {
-                        let config = chelix_config::discover_and_load()
+                        let configuration = ctx.state.services.configuration().clone();
+                        let config = crate::config_document::read_config(&configuration)
+                            .await
                             .map_err(ServiceError::message)?;
                         Ok(serde_json::json!({
                             "tts": {
@@ -366,10 +368,12 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         // Comprehensive provider listing with availability detection
         reg.register(
             "voice.providers.all",
-            Box::new(|_ctx| {
+            Box::new(|ctx| {
                 Box::pin(async move {
-                    let config =
-                        chelix_config::discover_and_load().map_err(ServiceError::message)?;
+                    let configuration = ctx.state.services.configuration().clone();
+                    let config = crate::config_document::read_config(&configuration)
+                        .await
+                        .map_err(ServiceError::message)?;
                     let providers = voice::detect_voice_providers(&config).await;
                     Ok(serde_json::json!(providers))
                 })
@@ -377,10 +381,12 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         );
         reg.register(
             "voice.elevenlabs.catalog",
-            Box::new(|_ctx| {
+            Box::new(|ctx| {
                 Box::pin(async move {
-                    let config =
-                        chelix_config::discover_and_load().map_err(ServiceError::message)?;
+                    let configuration = ctx.state.services.configuration().clone();
+                    let config = crate::config_document::read_config(&configuration)
+                        .await
+                        .map_err(ServiceError::message)?;
                     Ok(voice::fetch_elevenlabs_catalog(&config).await)
                 })
             }),
@@ -410,14 +416,15 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         .and_then(|v| v.as_str())
                         .unwrap_or("stt");
 
-                    voice::toggle_voice_provider(provider, enabled, provider_type).map_err(
-                        |e| {
+                    let configuration = ctx.state.services.configuration().clone();
+                    voice::toggle_voice_provider(&configuration, provider, enabled, provider_type)
+                        .await
+                        .map_err(|e| {
                             ErrorShape::new(
                                 error_codes::UNAVAILABLE,
-                                format!("failed to toggle provider: {}", e),
+                                format!("failed to toggle provider: {e}"),
                             )
-                        },
-                    )?;
+                        })?;
 
                     // Broadcast change
                     broadcast(
@@ -601,47 +608,56 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                             ErrorShape::new(error_codes::INVALID_REQUEST, "missing api_key")
                         })?;
 
-                    chelix_config::update_config(|cfg| {
-                        match provider {
-                            "elevenlabs" | "elevenlabs-stt" => {
-                                cfg.voice.tts.provider =
-                                    Some(chelix_config::VoiceTtsProvider::ElevenLabs);
-                                cfg.voice.tts.enabled = true;
-                                cfg.voice.stt.provider =
-                                    Some(chelix_config::VoiceSttProvider::ElevenLabs);
-                                cfg.voice.stt.enabled = true;
-                            },
-                            "openai" | "openai-tts" => {
-                                cfg.voice.tts.provider =
-                                    Some(chelix_config::VoiceTtsProvider::OpenAi);
-                                cfg.voice.tts.enabled = true;
-                            },
-                            "google-tts" | "google" => {
-                                cfg.voice.tts.provider =
-                                    Some(chelix_config::VoiceTtsProvider::Google);
-                                cfg.voice.tts.enabled = true;
-                                cfg.voice.stt.provider =
-                                    Some(chelix_config::VoiceSttProvider::Google);
-                                cfg.voice.stt.enabled = true;
-                            },
-                            "whisper" => {
-                                cfg.voice.stt.provider =
-                                    Some(chelix_config::VoiceSttProvider::Whisper);
-                                cfg.voice.stt.enabled = true;
-                            },
-                            "deepgram" => {
-                                cfg.voice.stt.provider =
-                                    Some(chelix_config::VoiceSttProvider::Deepgram);
-                                cfg.voice.stt.enabled = true;
-                            },
-                            _ => {},
-                        }
+                    let configuration = ctx.state.services.configuration().clone();
+                    let provider_name = provider.to_string();
+                    let params = ctx.params.clone();
+                    configuration
+                        .update(move |cfg| {
+                            match provider_name.as_str() {
+                                "elevenlabs" | "elevenlabs-stt" => {
+                                    cfg.voice.tts.provider =
+                                        Some(chelix_config::VoiceTtsProvider::ElevenLabs);
+                                    cfg.voice.tts.enabled = true;
+                                    cfg.voice.stt.provider =
+                                        Some(chelix_config::VoiceSttProvider::ElevenLabs);
+                                    cfg.voice.stt.enabled = true;
+                                },
+                                "openai" | "openai-tts" => {
+                                    cfg.voice.tts.provider =
+                                        Some(chelix_config::VoiceTtsProvider::OpenAi);
+                                    cfg.voice.tts.enabled = true;
+                                },
+                                "google-tts" | "google" => {
+                                    cfg.voice.tts.provider =
+                                        Some(chelix_config::VoiceTtsProvider::Google);
+                                    cfg.voice.tts.enabled = true;
+                                    cfg.voice.stt.provider =
+                                        Some(chelix_config::VoiceSttProvider::Google);
+                                    cfg.voice.stt.enabled = true;
+                                },
+                                "whisper" => {
+                                    cfg.voice.stt.provider =
+                                        Some(chelix_config::VoiceSttProvider::Whisper);
+                                    cfg.voice.stt.enabled = true;
+                                },
+                                "deepgram" => {
+                                    cfg.voice.stt.provider =
+                                        Some(chelix_config::VoiceSttProvider::Deepgram);
+                                    cfg.voice.stt.enabled = true;
+                                },
+                                _ => {},
+                            }
 
-                        voice::apply_voice_provider_settings(cfg, provider, &ctx.params);
-                    })
-                    .map_err(|e| {
-                        ErrorShape::new(error_codes::UNAVAILABLE, format!("failed to save: {}", e))
-                    })?;
+                            voice::apply_voice_provider_settings(cfg, &provider_name, &params);
+                            Ok(())
+                        })
+                        .await
+                        .map_err(|e| {
+                            ErrorShape::new(
+                                error_codes::UNAVAILABLE,
+                                format!("failed to save: {e}"),
+                            )
+                        })?;
                     let key_updates: &[(&[&str], Option<&str>)] = match provider {
                         "elevenlabs" | "elevenlabs-stt" => &[
                             (&["voice", "tts", "elevenlabs", "api_key"], Some(api_key)),
@@ -658,7 +674,12 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         "deepgram" => &[(&["voice", "stt", "deepgram", "api_key"], Some(api_key))],
                         _ => &[],
                     };
-                    chelix_config::set_config_strings(key_updates).map_err(|error| {
+                    crate::voice::patch_voice_config_strings(
+                        &configuration,
+                        crate::config_document::owned_string_paths(key_updates),
+                    )
+                    .await
+                    .map_err(|error| {
                         ErrorShape::new(
                             error_codes::UNAVAILABLE,
                             format!("failed to save key: {error}"),
@@ -690,15 +711,21 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                             ErrorShape::new(error_codes::INVALID_REQUEST, "missing provider")
                         })?;
 
-                    chelix_config::update_config(|cfg| {
-                        voice::apply_voice_provider_settings(cfg, provider, &ctx.params);
-                    })
-                    .map_err(|e| {
-                        ErrorShape::new(
-                            error_codes::UNAVAILABLE,
-                            format!("failed to save settings: {}", e),
-                        )
-                    })?;
+                    let configuration = ctx.state.services.configuration().clone();
+                    let provider_name = provider.to_string();
+                    let params = ctx.params.clone();
+                    configuration
+                        .update(move |cfg| {
+                            voice::apply_voice_provider_settings(cfg, &provider_name, &params);
+                            Ok(())
+                        })
+                        .await
+                        .map_err(|e| {
+                            ErrorShape::new(
+                                error_codes::UNAVAILABLE,
+                                format!("failed to save settings: {e}"),
+                            )
+                        })?;
 
                     broadcast(
                         &ctx.state,
@@ -740,7 +767,13 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         ],
                         _ => &[],
                     };
-                    chelix_config::set_config_strings(key_updates).map_err(|error| {
+                    let configuration = ctx.state.services.configuration().clone();
+                    crate::voice::patch_voice_config_strings(
+                        &configuration,
+                        crate::config_document::owned_string_paths(key_updates),
+                    )
+                    .await
+                    .map_err(|error| {
                         ErrorShape::new(
                             error_codes::UNAVAILABLE,
                             format!("failed to save: {error}"),
@@ -825,10 +858,12 @@ pub(super) fn register(reg: &mut MethodRegistry) {
 
     reg.register(
         "memory.config.get",
-        Box::new(|_ctx| {
+        Box::new(|ctx| {
             Box::pin(async move {
-                // Read memory config from the config file
-                let config = chelix_config::discover_and_load().map_err(ServiceError::message)?;
+                let configuration = ctx.state.services.configuration().clone();
+                let config = crate::config_document::read_config(&configuration)
+                    .await
+                    .map_err(ServiceError::message)?;
                 let memory = &config.memory;
                 let chat = &config.chat;
                 Ok(serde_json::json!({
@@ -886,10 +921,12 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         format!("invalid memory.config.update params: {error}"),
                     )
                 })?;
-                let current_config =
-                    chelix_config::discover_and_load().map_err(ServiceError::message)?;
-                let current_memory = current_config.memory;
-                let current_chat = current_config.chat;
+                let configuration = ctx.state.services.configuration().clone();
+                let current_config = crate::config_document::read_config(&configuration)
+                    .await
+                    .map_err(ServiceError::message)?;
+                let current_memory = &current_config.memory;
+                let current_chat = &current_config.chat;
                 let style = params
                     .style
                     .as_deref()
@@ -947,7 +984,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     },
                 );
                 let prompt_memory_mode_value = parse_prompt_memory_mode(prompt_memory_mode)?;
-                let mut effective_disable_rag = current_memory.disable_rag;
                 let enable_prefetch = params
                     .enable_prefetch
                     .unwrap_or(current_memory.enable_prefetch);
@@ -990,26 +1026,28 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                 let response_url = next_memory.url.clone();
                 let response_dimensions = next_memory.dimensions;
                 let api_key_configured = next_memory.api_key.is_some();
-                chelix_config::update_config(|cfg| {
-                    cfg.memory.style = style_value;
-                    cfg.memory.agent_write_mode = agent_write_mode_value;
-                    cfg.memory.user_profile_write_mode = user_profile_write_mode_value;
-                    cfg.memory.url = next_memory.url.clone();
-                    cfg.memory.api_key = next_memory.api_key.clone();
-                    cfg.memory.dimensions = next_memory.dimensions;
-                    cfg.memory.citations = citations_value;
-                    cfg.memory.llm_reranking = llm_reranking;
-                    cfg.memory.search_merge_strategy = search_merge_strategy_value;
-                    if let Some(value) = disable_rag {
-                        cfg.memory.disable_rag = value;
-                    }
-                    cfg.memory.enable_prefetch = enable_prefetch;
-                    cfg.memory.prefetch_limit = prefetch_limit;
-                    cfg.skills.enable_self_improvement = enable_self_improvement;
-                    cfg.chat.prompt_memory_mode = prompt_memory_mode_value;
-                    effective_disable_rag = cfg.memory.disable_rag;
-                })
-                .map_err(ServiceError::message)?;
+                let effective_disable_rag = configuration
+                    .update(move |cfg| {
+                        cfg.memory.style = style_value;
+                        cfg.memory.agent_write_mode = agent_write_mode_value;
+                        cfg.memory.user_profile_write_mode = user_profile_write_mode_value;
+                        cfg.memory.url = next_memory.url;
+                        cfg.memory.api_key = next_memory.api_key;
+                        cfg.memory.dimensions = next_memory.dimensions;
+                        cfg.memory.citations = citations_value;
+                        cfg.memory.llm_reranking = llm_reranking;
+                        cfg.memory.search_merge_strategy = search_merge_strategy_value;
+                        if let Some(value) = disable_rag {
+                            cfg.memory.disable_rag = value;
+                        }
+                        cfg.memory.enable_prefetch = enable_prefetch;
+                        cfg.memory.prefetch_limit = prefetch_limit;
+                        cfg.skills.enable_self_improvement = enable_self_improvement;
+                        cfg.chat.prompt_memory_mode = prompt_memory_mode_value;
+                        Ok(cfg.memory.disable_rag)
+                    })
+                    .await
+                    .map_err(ServiceError::message)?;
 
                 Ok(serde_json::json!({
                     "style": style,

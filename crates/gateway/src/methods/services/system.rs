@@ -382,9 +382,12 @@ pub(super) fn register(reg: &mut MethodRegistry) {
     );
     reg.register(
         "mcp.config.get",
-        Box::new(|_ctx| {
+        Box::new(|ctx| {
             Box::pin(async move {
-                let config = chelix_config::discover_and_load().map_err(ServiceError::message)?;
+                let configuration = ctx.state.services.configuration().clone();
+                let config = crate::config_document::read_config(&configuration)
+                    .await
+                    .map_err(ServiceError::message)?;
                 Ok(serde_json::json!({
                     "request_timeout_secs": config.mcp.request_timeout_secs,
                 }))
@@ -417,9 +420,9 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                 }
 
                 // Update in-memory first (infallible atomic store), then persist
-                // to disk.  This ordering means a crash between the two steps
-                // leaves the runtime correct and only the file stale — the next
-                // restart reads the file anyway.
+                // through the config service. A crash between the two steps
+                // leaves the runtime correct and only the stored file stale — the next
+                // restart reads that file through the service.
                 ctx.state
                     .services
                     .mcp
@@ -427,9 +430,14 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     .await
                     .map_err(ErrorShape::from)?;
 
-                if let Err(e) = chelix_config::update_config(|cfg| {
-                    cfg.mcp.request_timeout_secs = request_timeout_secs;
-                }) {
+                let configuration = ctx.state.services.configuration();
+                if let Err(e) = configuration
+                    .update(move |cfg| {
+                        cfg.mcp.request_timeout_secs = request_timeout_secs;
+                        Ok(())
+                    })
+                    .await
+                {
                     tracing::warn!(error = %e, "failed to persist MCP config");
                     return Err(ServiceError::message(format!(
                         "failed to persist MCP config: {e}"

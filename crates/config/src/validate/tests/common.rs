@@ -6,7 +6,7 @@ fn unknown_top_level_key_with_suggestion() {
     let unknown = result
         .diagnostics
         .iter()
-        .find(|d| d.category == "unknown-field" && d.path == "sever");
+        .find(|d| d.category == DiagnosticCategory::UnknownField && d.path == "sever");
     assert!(
         unknown.is_some(),
         "expected unknown-field diagnostic for 'sever'"
@@ -30,7 +30,7 @@ bnd = "0.0.0.0"
     let unknown = result
         .diagnostics
         .iter()
-        .find(|d| d.category == "unknown-field" && d.path == "server.bnd");
+        .find(|d| d.category == DiagnosticCategory::UnknownField && d.path == "server.bnd");
     assert!(
         unknown.is_some(),
         "expected unknown-field for 'server.bnd', got: {:?}",
@@ -48,7 +48,8 @@ allowed_models = ["legacy-model"]
 "#,
     );
     let diagnostic = result.diagnostics.iter().find(|diagnostic| {
-        diagnostic.category == "unknown-field" && diagnostic.path == "chat.allowed_models"
+        diagnostic.category == DiagnosticCategory::UnknownField
+            && diagnostic.path == "chat.allowed_models"
     });
     assert!(
         diagnostic.is_some_and(|diagnostic| diagnostic.severity == Severity::Error),
@@ -226,10 +227,9 @@ fn server_terminal_enabled_is_known_field() {
 terminal_enabled = false
 "#;
     let result = validate_toml_str(toml);
-    let unknown = result
-        .diagnostics
-        .iter()
-        .find(|d| d.category == "unknown-field" && d.path.contains("terminal_enabled"));
+    let unknown = result.diagnostics.iter().find(|d| {
+        d.category == DiagnosticCategory::UnknownField && d.path.contains("terminal_enabled")
+    });
     assert!(
         unknown.is_none(),
         "terminal_enabled should be a known field, got: {unknown:?}"
@@ -243,10 +243,9 @@ fn server_external_url_is_known_field() {
 external_url = "https://chelix.example.com"
 "#;
     let result = validate_toml_str(toml);
-    let unknown = result
-        .diagnostics
-        .iter()
-        .find(|d| d.category == "unknown-field" && d.path.contains("external_url"));
+    let unknown = result.diagnostics.iter().find(|d| {
+        d.category == DiagnosticCategory::UnknownField && d.path.contains("external_url")
+    });
     assert!(
         unknown.is_none(),
         "external_url should be a known field, got: {unknown:?}"

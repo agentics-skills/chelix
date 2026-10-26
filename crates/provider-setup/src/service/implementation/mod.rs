@@ -5,6 +5,7 @@
 mod support;
 
 mod available;
+mod config_error;
 mod credentials;
 mod openai_compatible;
 mod provider_models;

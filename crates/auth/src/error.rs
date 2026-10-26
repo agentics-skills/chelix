@@ -15,6 +15,10 @@ pub enum Error {
     #[error(transparent)]
     Config(#[from] chelix_config::Error),
 
+    /// Configuration service failure.
+    #[error(transparent)]
+    Service(#[from] chelix_config_service::Error),
+
     /// JSON serialization / deserialization error.
     #[error(transparent)]
     Json(#[from] serde_json::Error),

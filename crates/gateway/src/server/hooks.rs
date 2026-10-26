@@ -72,6 +72,7 @@ fn builtin_hook_metadata() -> Vec<(
 /// Discover hooks from the filesystem, check eligibility, and build a
 /// [`HookRegistry`] plus a `Vec<DiscoveredHookInfo>` for the web UI.
 pub(crate) async fn discover_and_build_hooks(
+    config_service: &chelix_config_service::ConfigService,
     disabled: &HashSet<String>,
 ) -> anyhow::Result<(
     Option<Arc<chelix_common::hooks::HookRegistry>>,
@@ -84,7 +85,7 @@ pub(crate) async fn discover_and_build_hooks(
         shell_hook::ShellHookHandler,
     };
 
-    let config = chelix_config::discover_and_load()?;
+    let config = crate::config_document::read_config(config_service).await?;
     let discoverer = FsHookDiscoverer::new(FsHookDiscoverer::default_paths());
     let discovered = discoverer.discover().await.unwrap_or_default();
 
@@ -157,10 +158,7 @@ pub(crate) async fn discover_and_build_hooks(
         .map(|(parsed, _source)| parsed.metadata.name.as_str())
         .collect::<HashSet<_>>();
     let mut config_hook_count = 0;
-    let config_path = chelix_config::config_dir()?
-        .join("chelix.toml")
-        .display()
-        .to_string();
+    let config_path = config_service.location().display().to_string();
     let mut config_hook_names = HashSet::new();
 
     if let Some(hooks_config) = config.hooks.as_ref() {
@@ -287,27 +285,13 @@ pub(crate) async fn discover_and_build_hooks(
 mod skill_seed_tests {
     use super::*;
 
-    struct DataDirGuard {
-        _lock: std::sync::MutexGuard<'static, ()>,
-    }
-
-    impl Drop for DataDirGuard {
-        fn drop(&mut self) {
-            chelix_config::clear_data_dir();
-        }
-    }
-
     #[tokio::test]
     async fn template_seed_publishes_empty_lists_and_preserves_existing_file() -> anyhow::Result<()>
     {
-        let dir = tempfile::tempdir()?;
-        let _guard = DataDirGuard {
-            _lock: crate::config_override_test_lock(),
-        };
-        chelix_config::set_data_dir(dir.path().to_path_buf());
+        let guard = crate::test_config::ConfigDirGuard::new().await;
         let files = chelix_skills::skill_file::SkillFiles::new().map_err(anyhow::Error::msg)?;
         seed_example_skill(&files).await?;
-        let path = dir.path().join("skills/template-skill/SKILL.md");
+        let path = guard.data_dir().join("skills/template-skill/SKILL.md");
         let seeded = std::fs::read_to_string(&path)?;
         assert!(seeded.contains("denied_agents:\n"));
         assert!(seeded.contains("allowed_agents:\n"));

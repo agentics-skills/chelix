@@ -5,10 +5,8 @@ use std::collections::HashSet;
 use {secrecy::Secret, serde_json::Value};
 
 use {
-    chelix_config::{
-        OpenAiCompatibleProviderTomlUpdate, delete_openai_compatible_provider_toml,
-        schema::{ProviderEntry, ProviderStreamTransport, ProvidersConfig, ToolMode, WireApi},
-        upsert_openai_compatible_provider_toml,
+    chelix_config::schema::{
+        ProviderEntry, ProviderStreamTransport, ProvidersConfig, ToolMode, WireApi,
     },
     chelix_providers::model_id::namespaced_model_id,
     chelix_service_traits::{ServiceError, ServiceResult},
@@ -16,10 +14,19 @@ use {
 
 use {
     super::{
-        LiveProviderSetupService, provider_models::blocked_agents,
-        service::ProviderConfigPersistence, support::ProviderSetupTiming,
+        LiveProviderSetupService,
+        config_error::writer_error,
+        provider_models::{agent_candidate_validator, blocked_agents},
+        service::ProviderConfigPersistence,
+        support::ProviderSetupTiming,
     },
-    crate::provider_base_url::provider_base_url_error_with,
+    crate::{
+        config_document::{
+            OpenAiCompatibleProviderTomlUpdate, delete_openai_compatible_provider_toml,
+            upsert_openai_compatible_provider_toml,
+        },
+        provider_base_url::provider_base_url_error_with,
+    },
 };
 
 struct OpenAiCompatibleUpsert {
@@ -38,11 +45,15 @@ impl LiveProviderSetupService {
     pub(super) async fn upsert_openai_compatible_inner(&self, params: Value) -> ServiceResult {
         let _timing = ProviderSetupTiming::start("providers.upsert_openai_compatible", None);
         let update = parse_upsert(&params)?;
-        let agents = self.agent_entries().await;
+        let memory_agents = if let ProviderConfigPersistence::MemoryOnly = &self.config_persistence
+        {
+            self.agent_entries().await
+        } else {
+            Vec::new()
+        };
         let mut registry = self.registry.write().await;
         let mut snapshot = self.config_snapshot();
         ensure_target_free(&snapshot, &update)?;
-        let filesystem = self.config_persistence == ProviderConfigPersistence::Filesystem;
         let sync_memory_offered = !snapshot.offered.is_empty();
         let write_base_url = match update.previous_name.as_deref() {
             Some(previous) => {
@@ -55,67 +66,107 @@ impl LiveProviderSetupService {
             },
             None => true,
         };
-        let model_change = model_id_change(&snapshot, &update);
+        let memory_change = model_id_change(&snapshot, &update);
         apply_upsert_memory(&mut snapshot, &update, sync_memory_offered)?;
-        let candidate = self.build_registry(&snapshot)?;
-        let blocked = blocked_agents(&candidate, &agents);
-        if !blocked.is_empty() {
-            return Err(ServiceError::message(format!(
-                "provider change breaks configured agents: {}",
-                blocked.join(", ")
-            )));
-        }
-        if self.config_persistence == ProviderConfigPersistence::Filesystem {
-            upsert_openai_compatible_provider_toml(&OpenAiCompatibleProviderTomlUpdate {
-                name: update.name.clone(),
-                previous_name: update.previous_name.clone(),
-                base_url: update.base_url.clone(),
-                api_key: update.api_key.clone(),
-                wire_api: update.wire_api_toml.clone(),
-                tool_mode: update.tool_mode_toml.clone(),
-                enabled: update.enabled,
-                sync_offered: filesystem && sync_memory_offered,
-                write_base_url,
-            })
-            .map_err(ServiceError::message)?;
-        }
+        let renamed = match &self.config_persistence {
+            ProviderConfigPersistence::MemoryOnly => {
+                let candidate = self.build_registry(&snapshot)?;
+                let blocked = blocked_agents(&candidate, &memory_agents);
+                if !blocked.is_empty() {
+                    return Err(ServiceError::message(format!(
+                        "provider change breaks configured agents: {}",
+                        blocked.join(", ")
+                    )));
+                }
+                memory_change.renamed
+            },
+            ProviderConfigPersistence::Service(service) => {
+                let service = service.clone();
+                let toml_update = OpenAiCompatibleProviderTomlUpdate {
+                    name: update.name.clone(),
+                    previous_name: update.previous_name.clone(),
+                    base_url: update.base_url.clone(),
+                    api_key: update.api_key.clone(),
+                    wire_api: update.wire_api_toml.clone(),
+                    tool_mode: update.tool_mode_toml.clone(),
+                    enabled: update.enabled,
+                    sync_offered: sync_memory_offered,
+                    write_base_url,
+                };
+                let validator = agent_candidate_validator("provider");
+                service
+                    .edit_document_checked(
+                        move |document| {
+                            upsert_openai_compatible_provider_toml(document, &toml_update)
+                        },
+                        validator,
+                    )
+                    .await
+                    .map_err(writer_error)?
+                    .renamed_model_ids
+            },
+        };
         *self
             .config
             .lock()
             .unwrap_or_else(|error| error.into_inner()) = snapshot.clone();
-        rewrite_priority(self, &model_change).await;
+        rewrite_priority(self, &ModelIdChange {
+            renamed: renamed.clone(),
+        })
+        .await;
         *registry = self.build_registry(&snapshot)?;
         Ok(serde_json::json!({
             "ok": true,
             "providerName": update.name,
             "displayName": update.name,
-            "renamedModelIds": model_change.renamed.iter().map(|(from, to)| serde_json::json!({"from": from, "to": to})).collect::<Vec<_>>(),
+            "renamedModelIds": renamed.iter().map(|(from, to)| serde_json::json!({"from": from, "to": to})).collect::<Vec<_>>(),
         }))
     }
 
     pub(super) async fn delete_openai_compatible_inner(&self, params: Value) -> ServiceResult {
         let _timing = ProviderSetupTiming::start("providers.delete_openai_compatible", None);
         let name = existing_section_name(required_str(&params, "name")?)?;
-        let agents = self.agent_entries().await;
+        let memory_agents = if let ProviderConfigPersistence::MemoryOnly = &self.config_persistence
+        {
+            self.agent_entries().await
+        } else {
+            Vec::new()
+        };
         let mut registry = self.registry.write().await;
         let mut snapshot = self.config_snapshot();
-        let removed = removed_ids(&snapshot, &name);
+        let memory_removed = removed_ids(&snapshot, &name);
         if snapshot.providers.remove(&name).is_none() {
             return Err(ServiceError::message(format!(
                 "provider '{name}' is not configured"
             )));
         }
-        let candidate = self.build_registry(&snapshot)?;
-        let blocked = blocked_agents(&candidate, &agents);
-        if !blocked.is_empty() {
-            return Err(ServiceError::message(format!(
-                "provider change breaks configured agents: {}",
-                blocked.join(", ")
-            )));
-        }
-        if self.config_persistence == ProviderConfigPersistence::Filesystem {
-            delete_openai_compatible_provider_toml(&name).map_err(ServiceError::message)?;
-        }
+        let removed = match &self.config_persistence {
+            ProviderConfigPersistence::MemoryOnly => {
+                let candidate = self.build_registry(&snapshot)?;
+                let blocked = blocked_agents(&candidate, &memory_agents);
+                if !blocked.is_empty() {
+                    return Err(ServiceError::message(format!(
+                        "provider change breaks configured agents: {}",
+                        blocked.join(", ")
+                    )));
+                }
+                memory_removed
+            },
+            ProviderConfigPersistence::Service(service) => {
+                let service = service.clone();
+                let provider_name = name.clone();
+                let validator = agent_candidate_validator("provider");
+                service
+                    .edit_document_checked(
+                        move |document| {
+                            delete_openai_compatible_provider_toml(document, &provider_name)
+                        },
+                        validator,
+                    )
+                    .await
+                    .map_err(writer_error)?
+            },
+        };
         *self
             .config
             .lock()

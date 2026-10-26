@@ -21,17 +21,69 @@ pub use {
 mod integration_tests {
     use {super::*, std::io::Cursor};
 
+    fn valid_config_toml(port: u16) -> String {
+        format!(
+            "[server]\nport = {port}\n\n[tools.execute_command]\nterminal_size = \"115x58\"\n\n[sandbox]\narchived_session_retention_days = 3\n"
+        )
+    }
+
+    fn write_valid_config(dir: &std::path::Path, port: u16) {
+        std::fs::write(dir.join("chelix.toml"), valid_config_toml(port)).unwrap();
+    }
+
+    struct ConfigDirGuard {
+        lock: std::sync::MutexGuard<'static, Vec<tempfile::TempDir>>,
+    }
+
+    impl ConfigDirGuard {
+        fn install(dir: tempfile::TempDir) -> Self {
+            static LOCK: std::sync::Mutex<Vec<tempfile::TempDir>> =
+                std::sync::Mutex::new(Vec::new());
+            let mut lock = LOCK.lock().unwrap_or_else(|error| error.into_inner());
+            lock.push(dir);
+            let guard = Self { lock };
+            chelix_config::set_config_dir(guard.path().to_path_buf());
+            guard
+        }
+
+        fn path(&self) -> &std::path::Path {
+            self.lock
+                .last()
+                .unwrap_or_else(|| panic!("config override directory is not installed"))
+                .path()
+        }
+
+        fn retarget(&mut self, dir: tempfile::TempDir) {
+            self.lock.push(dir);
+            chelix_config::set_config_dir(self.path().to_path_buf());
+        }
+    }
+
+    impl Drop for ConfigDirGuard {
+        fn drop(&mut self) {
+            chelix_config::clear_config_dir();
+            self.lock.clear();
+        }
+    }
+
+    async fn open_config_service() -> chelix_config_service::ConfigService {
+        match chelix_config_service::ConfigService::open(
+            chelix_config_service::ConfigValidation::default(),
+            chelix_config_service::ConfigInitialization::default(),
+        )
+        .await
+        {
+            Ok(service) => service,
+            Err(error) => panic!("config service should open: {error}"),
+        }
+    }
+
     #[tokio::test]
     async fn round_trip_export_import() {
-        let src_config = tempfile::tempdir().unwrap();
+        let mut config_guard = ConfigDirGuard::install(tempfile::tempdir().unwrap());
+        let src_config = config_guard.path().to_path_buf();
         let src_data = tempfile::tempdir().unwrap();
-
-        // Create some config files.
-        std::fs::write(
-            src_config.path().join("chelix.toml"),
-            "[server]\nport = 8080\n",
-        )
-        .unwrap();
+        write_valid_config(&src_config, 8080);
         // Create workspace files.
         std::fs::write(src_data.path().join("SOUL.md"), "# Soul\nBe helpful.").unwrap();
         std::fs::write(src_data.path().join("IDENTITY.md"), "name: Chelix").unwrap();
@@ -50,9 +102,17 @@ mod integration_tests {
             include_media: false,
         };
         let mut archive_buf = Vec::new();
-        let manifest = export_archive(src_config.path(), src_data.path(), &opts, &mut archive_buf)
-            .await
-            .unwrap();
+        let service = open_config_service().await;
+        let manifest = export_archive(
+            &service,
+            src_config.as_path(),
+            src_data.path(),
+            &opts,
+            &mut archive_buf,
+        )
+        .await
+        .unwrap();
+        drop(service);
 
         assert_eq!(manifest.format_version, 2);
         assert!(
@@ -74,32 +134,36 @@ mod integration_tests {
         assert_eq!(inspected.format_version, manifest.format_version);
 
         // Import into a fresh destination.
-        let dst_config = tempfile::tempdir().unwrap();
         let dst_data = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(dst_data.path().join("sessions")).unwrap();
+        config_guard.retarget(tempfile::tempdir().unwrap());
+        let dst_config = config_guard.path().to_path_buf();
+        write_valid_config(&dst_config, 9090);
+        let service = open_config_service().await;
 
         let import_opts = ImportOptions {
-            conflict: ConflictStrategy::Skip,
+            conflict: ConflictStrategy::Overwrite,
             dry_run: false,
         };
         let result = import_archive(
-            dst_config.path(),
+            &service,
+            dst_config.as_path(),
             dst_data.path(),
             &import_opts,
-            Cursor::new(&archive_buf),
+            Cursor::new(archive_buf.clone()),
         )
         .await
         .unwrap()
         .result;
 
         // Verify files were created.
-        assert!(dst_config.path().join("chelix.toml").exists());
+        assert!(dst_config.as_path().join("chelix.toml").exists());
         assert!(dst_data.path().join("SOUL.md").exists());
         assert!(dst_data.path().join("IDENTITY.md").exists());
         assert!(!dst_data.path().join("sessions/t_1.jsonl").exists());
 
         // Verify content.
-        let toml = std::fs::read_to_string(dst_config.path().join("chelix.toml")).unwrap();
+        let toml = std::fs::read_to_string(dst_config.as_path().join("chelix.toml")).unwrap();
         assert!(toml.contains("port = 8080"));
 
         let soul = std::fs::read_to_string(dst_data.path().join("SOUL.md")).unwrap();
@@ -118,130 +182,154 @@ mod integration_tests {
 
     #[tokio::test]
     async fn import_skip_existing() {
-        let src_config = tempfile::tempdir().unwrap();
+        let mut config_guard = ConfigDirGuard::install(tempfile::tempdir().unwrap());
+        let src_config = config_guard.path().to_path_buf();
         let src_data = tempfile::tempdir().unwrap();
 
-        std::fs::write(src_config.path().join("chelix.toml"), "original").unwrap();
+        write_valid_config(&src_config, 8080);
         std::fs::write(src_data.path().join("SOUL.md"), "original soul").unwrap();
 
         // Export.
         let mut buf = Vec::new();
+        let service = open_config_service().await;
         export_archive(
-            src_config.path(),
+            &service,
+            src_config.as_path(),
             src_data.path(),
             &ExportOptions::default(),
             &mut buf,
         )
         .await
         .unwrap();
+        drop(service);
 
         // Create destination with pre-existing files.
-        let dst_config = tempfile::tempdir().unwrap();
         let dst_data = tempfile::tempdir().unwrap();
-        std::fs::write(dst_config.path().join("chelix.toml"), "modified").unwrap();
+        config_guard.retarget(tempfile::tempdir().unwrap());
+        let dst_config = config_guard.path().to_path_buf();
+        write_valid_config(&dst_config, 9090);
         std::fs::write(dst_data.path().join("SOUL.md"), "modified soul").unwrap();
+        let service = open_config_service().await;
 
         // Import with Skip strategy.
         let result = import_archive(
-            dst_config.path(),
+            &service,
+            dst_config.as_path(),
             dst_data.path(),
             &ImportOptions {
                 conflict: ConflictStrategy::Skip,
                 dry_run: false,
             },
-            Cursor::new(&buf),
+            Cursor::new(buf.clone()),
         )
         .await
         .unwrap()
         .result;
 
         // Existing files should NOT be overwritten.
-        let toml = std::fs::read_to_string(dst_config.path().join("chelix.toml")).unwrap();
-        assert_eq!(toml, "modified");
+        let toml = std::fs::read_to_string(dst_config.as_path().join("chelix.toml")).unwrap();
+        assert_eq!(toml, valid_config_toml(9090));
         assert!(!result.skipped.is_empty());
     }
 
     #[tokio::test]
     async fn import_overwrite_existing() {
-        let src_config = tempfile::tempdir().unwrap();
+        let mut config_guard = ConfigDirGuard::install(tempfile::tempdir().unwrap());
+        let src_config = config_guard.path().to_path_buf();
         let src_data = tempfile::tempdir().unwrap();
 
-        std::fs::write(src_config.path().join("chelix.toml"), "from-export").unwrap();
+        write_valid_config(&src_config, 8080);
 
         let mut buf = Vec::new();
+        let service = open_config_service().await;
         export_archive(
-            src_config.path(),
+            &service,
+            src_config.as_path(),
             src_data.path(),
             &ExportOptions::default(),
             &mut buf,
         )
         .await
         .unwrap();
+        drop(service);
 
-        let dst_config = tempfile::tempdir().unwrap();
         let dst_data = tempfile::tempdir().unwrap();
-        std::fs::write(dst_config.path().join("chelix.toml"), "local-version").unwrap();
+        config_guard.retarget(tempfile::tempdir().unwrap());
+        let dst_config = config_guard.path().to_path_buf();
+        write_valid_config(&dst_config, 9090);
+        let service = open_config_service().await;
 
         let result = import_archive(
-            dst_config.path(),
+            &service,
+            dst_config.as_path(),
             dst_data.path(),
             &ImportOptions {
                 conflict: ConflictStrategy::Overwrite,
                 dry_run: false,
             },
-            Cursor::new(&buf),
+            Cursor::new(buf.clone()),
         )
         .await
         .unwrap()
         .result;
 
         // File should be overwritten.
-        let toml = std::fs::read_to_string(dst_config.path().join("chelix.toml")).unwrap();
-        assert_eq!(toml, "from-export");
+        let toml = std::fs::read_to_string(dst_config.as_path().join("chelix.toml")).unwrap();
+        assert_eq!(toml, valid_config_toml(8080));
         assert!(result.imported.iter().any(|i| i.action == "overwritten"));
     }
 
     #[tokio::test]
     async fn dry_run_does_not_write() {
-        let src_config = tempfile::tempdir().unwrap();
+        let mut config_guard = ConfigDirGuard::install(tempfile::tempdir().unwrap());
+        let src_config = config_guard.path().to_path_buf();
         let src_data = tempfile::tempdir().unwrap();
 
-        std::fs::write(src_config.path().join("chelix.toml"), "content").unwrap();
+        write_valid_config(&src_config, 8080);
 
         let mut buf = Vec::new();
+        let service = open_config_service().await;
         export_archive(
-            src_config.path(),
+            &service,
+            src_config.as_path(),
             src_data.path(),
             &ExportOptions::default(),
             &mut buf,
         )
         .await
         .unwrap();
+        drop(service);
 
-        let dst_config = tempfile::tempdir().unwrap();
         let dst_data = tempfile::tempdir().unwrap();
+        config_guard.retarget(tempfile::tempdir().unwrap());
+        let dst_config = config_guard.path().to_path_buf();
+        write_valid_config(&dst_config, 9090);
+        let service = open_config_service().await;
 
         let result = import_archive(
-            dst_config.path(),
+            &service,
+            dst_config.as_path(),
             dst_data.path(),
             &ImportOptions {
                 conflict: ConflictStrategy::Skip,
                 dry_run: true,
             },
-            Cursor::new(&buf),
+            Cursor::new(buf.clone()),
         )
         .await
         .unwrap()
         .result;
 
         // Nothing should be written.
-        assert!(!dst_config.path().join("chelix.toml").exists());
+        let toml = std::fs::read_to_string(dst_config.as_path().join("chelix.toml")).unwrap();
+        assert_eq!(toml, valid_config_toml(9090));
         assert!(result.imported.is_empty());
         assert!(!result.skipped.is_empty());
     }
 
     fn archive_with_config_then_manifest(manifest: Option<&[u8]>) -> Vec<u8> {
-        let toml = b"replacement";
+        let toml = valid_config_toml(7070);
+        let toml = toml.as_bytes();
         let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
         {
             let mut builder = tar::Builder::new(&mut encoder);
@@ -253,7 +341,7 @@ mod integration_tests {
                 .append_data(
                     &mut header,
                     "chelix-backup/config/chelix.toml",
-                    Cursor::new(&toml[..]),
+                    Cursor::new(toml),
                 )
                 .unwrap();
             if let Some(manifest) = manifest {
@@ -279,11 +367,14 @@ mod integration_tests {
         let archive = archive_with_config_then_manifest(Some(
             br#"{"format_version":1,"chelix_version":"old","created_at":"t","inventory":{"config_files":[],"workspace_files":[],"has_chelix_db":false,"has_memory_db":false,"session_files":[],"media_files":[]}}"#,
         ));
-        let dst_config = tempfile::tempdir().unwrap();
         let dst_data = tempfile::tempdir().unwrap();
-        std::fs::write(dst_config.path().join("chelix.toml"), "original").unwrap();
+        let config_guard = ConfigDirGuard::install(tempfile::tempdir().unwrap());
+        let dst_config = config_guard.path().to_path_buf();
+        write_valid_config(&dst_config, 9090);
+        let service = open_config_service().await;
         let error = import_archive(
-            dst_config.path(),
+            &service,
+            dst_config.as_path(),
             dst_data.path(),
             &ImportOptions::default(),
             Cursor::new(archive),
@@ -292,19 +383,22 @@ mod integration_tests {
         .unwrap_err();
         assert!(error.to_string().contains("older than supported version"));
         assert_eq!(
-            std::fs::read_to_string(dst_config.path().join("chelix.toml")).unwrap(),
-            "original"
+            std::fs::read_to_string(dst_config.join("chelix.toml")).unwrap(),
+            valid_config_toml(9090)
         );
     }
 
     #[tokio::test]
     async fn archive_without_manifest_is_rejected_before_any_file_is_written() {
         let archive = archive_with_config_then_manifest(None);
-        let dst_config = tempfile::tempdir().unwrap();
         let dst_data = tempfile::tempdir().unwrap();
-        std::fs::write(dst_config.path().join("chelix.toml"), "original").unwrap();
+        let config_guard = ConfigDirGuard::install(tempfile::tempdir().unwrap());
+        let dst_config = config_guard.path().to_path_buf();
+        write_valid_config(&dst_config, 9090);
+        let service = open_config_service().await;
         let error = import_archive(
-            dst_config.path(),
+            &service,
+            dst_config.as_path(),
             dst_data.path(),
             &ImportOptions::default(),
             Cursor::new(archive),
@@ -313,8 +407,8 @@ mod integration_tests {
         .unwrap_err();
         assert!(error.to_string().contains("missing manifest.json"));
         assert_eq!(
-            std::fs::read_to_string(dst_config.path().join("chelix.toml")).unwrap(),
-            "original"
+            std::fs::read_to_string(dst_config.join("chelix.toml")).unwrap(),
+            valid_config_toml(9090)
         );
     }
 
@@ -374,7 +468,8 @@ mod integration_tests {
         let dst_parent = tempfile::tempdir().unwrap();
         let dst_data = dst_parent.path().join("o'quote");
         std::fs::create_dir_all(&dst_data).unwrap();
-        let dst_config = tempfile::tempdir().unwrap();
+        let config_guard = ConfigDirGuard::install(tempfile::tempdir().unwrap());
+        let dst_config = config_guard.path().to_path_buf();
         let live_path = dst_data.join("chelix.db");
         let live = sqlx::sqlite::SqlitePoolOptions::new()
             .connect_with(
@@ -394,8 +489,11 @@ mod integration_tests {
             .unwrap();
         live.close().await;
 
+        write_valid_config(&dst_config, 9090);
+        let service = open_config_service().await;
         let skipped = import_archive(
-            dst_config.path(),
+            &service,
+            dst_config.as_path(),
             &dst_data,
             &ImportOptions {
                 conflict: ConflictStrategy::Skip,
@@ -428,7 +526,8 @@ mod integration_tests {
         live.close().await;
 
         let overwritten = import_archive(
-            dst_config.path(),
+            &service,
+            dst_config.as_path(),
             &dst_data,
             &ImportOptions {
                 conflict: ConflictStrategy::Overwrite,
@@ -465,7 +564,6 @@ mod integration_tests {
         let parent = tempfile::tempdir().unwrap();
         let src_data = parent.path().join("o'quote");
         std::fs::create_dir_all(&src_data).unwrap();
-        let src_config = tempfile::tempdir().unwrap();
         let db_path = src_data.join("chelix.db");
         let pool = sqlx::sqlite::SqlitePoolOptions::new()
             .connect_with(
@@ -507,9 +605,14 @@ mod integration_tests {
                 .unwrap();
         }
         pool.close().await;
+        let config_guard = ConfigDirGuard::install(tempfile::tempdir().unwrap());
+        let src_config = config_guard.path().to_path_buf();
+        write_valid_config(&src_config, 8080);
+        let service = open_config_service().await;
         let mut archive = Vec::new();
         export_archive(
-            src_config.path(),
+            &service,
+            src_config.as_path(),
             &src_data,
             &ExportOptions::default(),
             &mut archive,
@@ -524,7 +627,6 @@ mod integration_tests {
         let parent = tempfile::tempdir().unwrap();
         let src_data = parent.path().join("o'quote");
         std::fs::create_dir_all(&src_data).unwrap();
-        let src_config = tempfile::tempdir().unwrap();
         let db_path = src_data.join("chelix.db");
         let pool = sqlx::sqlite::SqlitePoolOptions::new()
             .connect_with(
@@ -552,20 +654,25 @@ mod integration_tests {
             .await
             .unwrap();
         pool.close().await;
+        let mut config_guard = ConfigDirGuard::install(tempfile::tempdir().unwrap());
+        let src_config = config_guard.path().to_path_buf();
+        write_valid_config(&src_config, 8080);
+        let service = open_config_service().await;
         let mut archive = Vec::new();
         export_archive(
-            src_config.path(),
+            &service,
+            src_config.as_path(),
             &src_data,
             &ExportOptions::default(),
             &mut archive,
         )
         .await
         .unwrap();
+        drop(service);
 
         let dst_parent = tempfile::tempdir().unwrap();
         let dst_data = dst_parent.path().join("o'quote");
         std::fs::create_dir_all(&dst_data).unwrap();
-        let dst_config = tempfile::tempdir().unwrap();
         let live_path = dst_data.join("chelix.db");
         let live = sqlx::sqlite::SqlitePoolOptions::new()
             .connect_with(
@@ -589,8 +696,13 @@ mod integration_tests {
             .unwrap();
         live.close().await;
 
+        config_guard.retarget(tempfile::tempdir().unwrap());
+        let dst_config = config_guard.path().to_path_buf();
+        write_valid_config(&dst_config, 9090);
+        let service = open_config_service().await;
         let imported = import_archive(
-            dst_config.path(),
+            &service,
+            dst_config.as_path(),
             &dst_data,
             &ImportOptions {
                 conflict: ConflictStrategy::Overwrite,

@@ -25,13 +25,9 @@ pub fn agent_workspace_dir(agent_id: &str) -> PathBuf {
     data_dir().join("agents").join(agent_id)
 }
 
-/// Build a fully-resolved user profile by merging `chelix.toml` `[user]` with `USER.md`.
-pub fn resolve_user_profile() -> crate::Result<UserProfile> {
-    let config = discover_and_load()?;
-    Ok(resolve_user_profile_from_config(&config))
-}
-
-/// Like [`resolve_user_profile`] but accepts a pre-loaded config.
+/// Merge `[user]` from `config` with values loaded from `USER.md`.
+///
+/// A field present in `USER.md` replaces the corresponding config field.
 pub fn resolve_user_profile_from_config(config: &ChelixConfig) -> UserProfile {
     let mut user = config.user.clone();
     if let Some(file_user) = load_user() {

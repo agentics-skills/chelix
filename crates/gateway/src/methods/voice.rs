@@ -1057,13 +1057,31 @@ async fn check_vllm_server(endpoint: &str) -> bool {
     false
 }
 
-/// Toggle a voice provider on/off by updating the config file.
-pub(super) fn toggle_voice_provider(
+/// Toggle a voice provider on/off through the config service.
+pub(super) async fn toggle_voice_provider(
+    config_service: &chelix_config_service::ConfigService,
     provider: &str,
     enabled: bool,
     provider_type: &str,
 ) -> Result<(), anyhow::Error> {
-    chelix_config::update_config(|cfg| match provider_type {
+    let provider = provider.to_string();
+    let provider_type = provider_type.to_string();
+    config_service
+        .update(move |cfg| {
+            apply_voice_provider_toggle(cfg, &provider, enabled, &provider_type);
+            Ok(())
+        })
+        .await?;
+    Ok(())
+}
+
+fn apply_voice_provider_toggle(
+    cfg: &mut chelix_config::ChelixConfig,
+    provider: &str,
+    enabled: bool,
+    provider_type: &str,
+) {
+    match provider_type {
         "tts" => {
             let config_provider = match provider {
                 "openai-tts" => "openai",
@@ -1111,8 +1129,7 @@ pub(super) fn toggle_voice_provider(
             }
         },
         _ => {},
-    })?;
-    Ok(())
+    }
 }
 
 #[cfg(test)]

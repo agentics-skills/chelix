@@ -1,16 +1,12 @@
-//! Configuration validation engine.
+//! Structural configuration validation.
 //!
-//! Validates TOML configuration files against the known schema, detects
-//! unknown/misspelled fields, and reports security warnings.
-
-use std::path::Path;
+//! Checks TOML syntax, deserializable types, and unknown fields against the
+//! schema map. Business rules live in the crates that own those fields.
 
 use crate::schema::ChelixConfig;
 
 #[path = "validate/schema_map.rs"]
 pub(crate) mod schema_map;
-#[path = "validate/semantic.rs"]
-mod semantic;
 
 /// Severity level for a diagnostic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -30,16 +26,49 @@ impl std::fmt::Display for Severity {
     }
 }
 
+/// Diagnostic class. `Display` is the label recorded by tracing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiagnosticCategory {
+    Agents,
+    FileRef,
+    InvalidValue,
+    MissingField,
+    Security,
+    Syntax,
+    TypeError,
+    UnknownField,
+    UnknownProvider,
+    ValidationWorker,
+}
+
+impl std::fmt::Display for DiagnosticCategory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Agents => "agents",
+            Self::FileRef => "file-ref",
+            Self::InvalidValue => "invalid-value",
+            Self::MissingField => "missing-field",
+            Self::Security => "security",
+            Self::Syntax => "syntax",
+            Self::TypeError => "type-error",
+            Self::UnknownField => "unknown-field",
+            Self::UnknownProvider => "unknown-provider",
+            Self::ValidationWorker => "validation-worker",
+        })
+    }
+}
+
 /// A single validation diagnostic.
 #[derive(Debug, Clone)]
 pub struct Diagnostic {
     pub severity: Severity,
-    /// Category: "syntax", "unknown-field", "unknown-provider", "type-error", "invalid-value",
-    /// "security", "file-ref"
-    pub category: &'static str,
+    pub category: DiagnosticCategory,
     /// Dotted path, e.g. "server.bnd"
     pub path: String,
+    /// Detailed diagnostic text.
     pub message: String,
+    /// Text for transaction errors and operational logs.
+    pub summary_message: Option<String>,
 }
 
 /// Result of validating a configuration file.
@@ -68,59 +97,7 @@ impl ValidationResult {
     }
 }
 
-pub fn validate(path: Option<&Path>) -> ValidationResult {
-    let config_path = if let Some(p) = path {
-        Some(p.to_path_buf())
-    } else {
-        match crate::loader::find_config_file() {
-            Ok(found) => found,
-            Err(error) => {
-                return ValidationResult {
-                    diagnostics: vec![Diagnostic {
-                        severity: Severity::Error,
-                        category: "invalid-value",
-                        path: "CHELIX_CONFIG_DIR".into(),
-                        message: error.to_string(),
-                    }],
-                    config_path: None,
-                };
-            },
-        }
-    };
-
-    let Some(ref actual_path) = config_path else {
-        return ValidationResult {
-            diagnostics: vec![Diagnostic {
-                severity: Severity::Info,
-                category: "file-ref",
-                path: String::new(),
-                message: "no config file found; startup initialization will create one".into(),
-            }],
-            config_path: None,
-        };
-    };
-
-    match std::fs::read_to_string(actual_path) {
-        Ok(content) => {
-            let mut result = validate_toml_str(&content);
-            result.config_path = Some(actual_path.clone());
-            semantic::check_file_references(&content, actual_path, &mut result.diagnostics);
-            result
-        },
-        Err(e) => ValidationResult {
-            diagnostics: vec![Diagnostic {
-                severity: Severity::Error,
-                category: "syntax",
-                path: String::new(),
-                message: format!("failed to read config file: {e}"),
-            }],
-            config_path: Some(actual_path.clone()),
-        },
-    }
-}
-
-/// Validate a TOML string without file-system side effects (useful for tests
-/// and the gateway).
+/// Validate TOML syntax, unknown fields, and deserializable types.
 #[must_use]
 pub fn validate_toml_str(toml_str: &str) -> ValidationResult {
     let mut diagnostics = Vec::new();
@@ -131,9 +108,10 @@ pub fn validate_toml_str(toml_str: &str) -> ValidationResult {
         Err(e) => {
             diagnostics.push(Diagnostic {
                 severity: Severity::Error,
-                category: "syntax",
+                category: DiagnosticCategory::Syntax,
                 path: String::new(),
                 message: format!("TOML syntax error: {e}"),
+                summary_message: None,
             });
             return ValidationResult {
                 diagnostics,
@@ -148,33 +126,22 @@ pub fn validate_toml_str(toml_str: &str) -> ValidationResult {
         Ok(value) => schema_map::check_unknown_fields(&value, &schema, "", &mut diagnostics),
         Err(error) => diagnostics.push(Diagnostic {
             severity: Severity::Error,
-            category: "syntax",
+            category: DiagnosticCategory::Syntax,
             path: String::new(),
             message: format!("failed to inspect TOML structure: {error}"),
+            summary_message: None,
         }),
     }
 
-    // 3. Type check and semantic checks on the parsed config
-    match toml::from_str::<ChelixConfig>(toml_str) {
-        Ok(config) => {
-            if config.tools.execute_command.terminal_size.is_none() {
-                diagnostics.push(Diagnostic {
-                    severity: Severity::Error,
-                    category: "missing-field",
-                    path: "tools.execute_command.terminal_size".into(),
-                    message: "tools.execute_command.terminal_size is required".into(),
-                });
-            }
-            semantic::check_semantic_warnings(&config, &mut diagnostics);
-        },
-        Err(error) => {
-            diagnostics.push(Diagnostic {
-                severity: Severity::Error,
-                category: "type-error",
-                path: String::new(),
-                message: format!("type error: {error}"),
-            });
-        },
+    // 3. Type check. A successful parse has no further structural diagnostics.
+    if let Err(error) = toml::from_str::<ChelixConfig>(toml_str) {
+        diagnostics.push(Diagnostic {
+            severity: Severity::Error,
+            category: DiagnosticCategory::TypeError,
+            path: String::new(),
+            message: format!("type error: {error}"),
+            summary_message: None,
+        });
     }
 
     ValidationResult {

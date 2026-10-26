@@ -22,10 +22,13 @@ pub enum SandboxAction {
     Clean,
 }
 
-pub async fn handle_sandbox(action: SandboxAction) -> Result<()> {
+pub async fn handle_sandbox(
+    action: SandboxAction,
+    config_service: chelix_config_service::ConfigService,
+) -> Result<()> {
     match action {
         SandboxAction::List => list().await,
-        SandboxAction::Build => build().await,
+        SandboxAction::Build => build(config_service).await,
         SandboxAction::Remove { tag } => remove(&tag).await,
         SandboxAction::Clean => clean().await,
     }
@@ -44,8 +47,8 @@ async fn list() -> Result<()> {
     Ok(())
 }
 
-async fn build() -> Result<()> {
-    let config = chelix_config::discover_and_load()?;
+async fn build(config_service: chelix_config_service::ConfigService) -> Result<()> {
+    let config = config_service.read(|config| config.clone()).await?;
     let mut sandbox_config = sandbox::SandboxConfig::from(&config.sandbox);
     sandbox_config.container_prefix = Some(instance_sandbox_prefix(&config)?);
 

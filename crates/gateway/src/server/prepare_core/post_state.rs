@@ -443,11 +443,6 @@ pub(super) async fn complete_startup(
     let webauthn_registry = build_webauthn_registry(&config, port).await?;
 
     {
-        let mut inner = state.inner.write().await;
-        inner.channels_offered = config.channels.offered.clone();
-    }
-
-    {
         let broadcaster: Arc<dyn chelix_tools::approval::ApprovalBroadcaster> =
             Arc::new(GatewayApprovalBroadcaster::new(Arc::clone(&state)));
 
@@ -761,7 +756,7 @@ pub(super) async fn complete_startup(
             Arc::clone(&queued_prompts),
             config.clone(),
             Arc::clone(&agents_config),
-            chelix_config::ToolsConfigSource::Filesystem,
+            chelix_chat::ToolsConfigSource::Service(state.services.configuration().clone()),
             Arc::clone(&skill_files),
         )
         .with_session_state_store(Arc::clone(&session_state_store))

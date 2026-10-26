@@ -18,23 +18,31 @@ pub enum AuthAction {
     },
 }
 
-pub async fn handle_auth(action: AuthAction) -> Result<()> {
+pub async fn handle_auth(
+    action: AuthAction,
+    config_service: chelix_config_service::ConfigService,
+) -> Result<()> {
     match action {
-        AuthAction::ResetPassword => reset_password().await,
-        AuthAction::ResetProfile => reset_profile(),
-        AuthAction::CreateApiKey { label, scopes } => create_api_key(&label, scopes).await,
+        AuthAction::ResetPassword => reset_password(config_service).await,
+        AuthAction::ResetProfile => reset_profile(config_service).await,
+        AuthAction::CreateApiKey { label, scopes } => {
+            create_api_key(&label, scopes, config_service).await
+        },
     }
 }
 
-fn reset_profile() -> Result<()> {
-    chelix_config::loader::update_config(|cfg| {
-        cfg.user = Default::default();
-    })?;
+async fn reset_profile(config_service: chelix_config_service::ConfigService) -> Result<()> {
+    config_service
+        .update(|cfg| {
+            cfg.user = Default::default();
+            Ok(())
+        })
+        .await?;
     println!("User profile cleared. Onboarding will be required on next load.");
     Ok(())
 }
 
-async fn reset_password() -> Result<()> {
+async fn reset_password(config_service: chelix_config_service::ConfigService) -> Result<()> {
     let data_dir = chelix_config::data_dir();
     let db_path = data_dir.join("chelix.db");
     if !db_path.exists() {
@@ -42,7 +50,7 @@ async fn reset_password() -> Result<()> {
         return Ok(());
     }
 
-    chelix_gateway::auth::CredentialStore::reset_from_db_path(&db_path).await?;
+    chelix_gateway::auth::CredentialStore::reset_from_db_path(&db_path, config_service).await?;
     for line in reset_password_success_lines() {
         println!("{line}");
     }
@@ -56,7 +64,11 @@ fn reset_password_success_lines() -> [&'static str; 2] {
     ]
 }
 
-async fn create_api_key(label: &str, scopes_str: Option<String>) -> Result<()> {
+async fn create_api_key(
+    label: &str,
+    scopes_str: Option<String>,
+    config_service: chelix_config_service::ConfigService,
+) -> Result<()> {
     let data_dir = chelix_config::data_dir();
     let db_path = data_dir.join("chelix.db");
     if !db_path.exists() {
@@ -85,11 +97,11 @@ async fn create_api_key(label: &str, scopes_str: Option<String>) -> Result<()> {
     // Connect to database and create the key
     let db_url = format!("sqlite:{}", db_path.display());
     let pool = sqlx::SqlitePool::connect(&db_url).await?;
-    let config = chelix_config::discover_and_load()?;
+    let config = config_service.read(|config| config.clone()).await?;
     let store = chelix_gateway::auth::CredentialStore::with_config(
         pool,
         &config.auth,
-        chelix_gateway::auth::AuthConfigPersistence::Filesystem,
+        chelix_gateway::auth::AuthConfigPersistence::Service(config_service),
     )
     .await?;
 

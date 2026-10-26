@@ -330,8 +330,6 @@ pub struct GatewayInner {
     /// Per-session steering text queue injected mid-run via `/steer`.
     /// Multiple `/steer` calls accumulate; all are drained on the next poll.
     pub steer_text: HashMap<String, Vec<String>>,
-    /// Which channel types are offered in the web UI (from config).
-    pub channels_offered: Vec<String>,
     /// Hostnames that were discovered after passkeys already existed.
     /// Users should sign in with password and register a fresh passkey on these hosts.
     pub passkey_host_update_pending: HashSet<String>,
@@ -366,7 +364,6 @@ impl GatewayInner {
             channel_status_log: HashMap::new(),
             fast_mode_sessions: HashSet::new(),
             steer_text: HashMap::new(),
-            channels_offered: vec!["telegram".into()],
             passkey_host_update_pending: HashSet::new(),
             shiki_cdn_url: None,
         }
@@ -984,14 +981,14 @@ mod tests {
         },
     };
 
-    fn test_state() -> Arc<GatewayState> {
+    fn test_state(configuration: chelix_config_service::ConfigService) -> Arc<GatewayState> {
         GatewayState::new(
             ResolvedAuth {
                 mode: AuthMode::Token,
                 token: None,
                 password: None,
             },
-            GatewayServices::noop(),
+            GatewayServices::noop(configuration),
         )
     }
 
@@ -1035,15 +1032,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn default_channels_offered() {
-        let state = test_state();
-        let inner = state.inner.read().await;
-        assert_eq!(inner.channels_offered, vec!["telegram".to_owned()]);
-    }
-
-    #[tokio::test]
     async fn disconnect_all_clients_drains_state_and_notifies() {
-        let state = test_state();
+        let fixture = crate::test_config::ConfigFixture::new().await;
+        let state = test_state(fixture.service.clone());
 
         let (c1, mut rx1) = mock_client("conn-1");
         let (c2, mut rx2) = mock_client("conn-2");
@@ -1093,7 +1084,8 @@ mod tests {
 
     #[tokio::test]
     async fn disconnect_all_clients_is_noop_when_empty() {
-        let state = test_state();
+        let fixture = crate::test_config::ConfigFixture::new().await;
+        let state = test_state(fixture.service.clone());
         assert_eq!(state.client_count().await, 0);
         // Should not panic.
         state.disconnect_all_clients("noop").await;
@@ -1161,7 +1153,8 @@ mod tests {
 
     #[tokio::test]
     async fn broadcast_skips_unsubscribed_clients() {
-        let state = test_state();
+        let fixture = crate::test_config::ConfigFixture::new().await;
+        let state = test_state(fixture.service.clone());
 
         // Client 1: subscribed to "chat" only
         let (mut c1, mut rx1) = mock_client("conn-sub");
@@ -1192,7 +1185,8 @@ mod tests {
 
     #[tokio::test]
     async fn broadcast_channel_filter_skips_non_members() {
-        let state = test_state();
+        let fixture = crate::test_config::ConfigFixture::new().await;
+        let state = test_state(fixture.service.clone());
 
         // Client 1: in channel "session:abc"
         let (mut c1, mut rx1) = mock_client("conn-in");

@@ -1877,7 +1877,7 @@ mod tests {
             Arc::new(QueuedPrompts::new(pool)),
             config.clone(),
             agents_config,
-            chelix_config::ToolsConfigSource::snapshot(config.tools),
+            crate::ToolsConfigSource::snapshot(config.tools),
             chelix_skills::skill_file::SkillFiles::new()
                 .unwrap_or_else(|error| panic!("skill files: {error}")),
         );

@@ -22,6 +22,29 @@ use chelix_gateway::{
     state::{ConnectedClient, GatewayState},
 };
 
+fn persist_browser_timezone(
+    config: Arc<chelix_config::ChelixConfig>,
+    tz: chrono_tz::Tz,
+    conn_id: String,
+    tz_display: String,
+) {
+    let write_mode = config.memory.user_profile_write_mode;
+    let existing_user = chelix_config::resolve_user_profile_from_config(&config);
+    if existing_user.timezone.as_ref().is_none() && write_mode.allows_auto_write() {
+        let mut user = existing_user;
+        user.timezone = Some(chelix_config::Timezone::from(tz));
+        if let Err(error) = chelix_config::save_user_with_mode(&user, write_mode) {
+            warn!(conn_id = %conn_id, %error, "ws: failed to auto-persist timezone");
+        } else {
+            info!(
+                conn_id = %conn_id,
+                timezone = %tz_display,
+                "ws: auto-persisted browser timezone to USER.md"
+            );
+        }
+    }
+}
+
 fn top_level_param_keys(params: &Option<serde_json::Value>) -> Vec<String> {
     params
         .as_ref()
@@ -338,35 +361,28 @@ pub async fn handle_connection(
     resolved_params.role = Some(role.clone());
     let browser_timezone = params.timezone.clone();
 
-    // Auto-persist browser timezone to USER.md on first connect (one-time).
-    // Runs in spawn_blocking because discover_and_load / resolve_user_profile
-    // do synchronous file I/O that must not block the async WS task.
+    // Read memory.user_profile_write_mode from the config snapshot. USER.md remains
+    // the profile owner and is loaded and saved on the blocking task.
     if let Some(ref tz_str) = browser_timezone
         && let Ok(tz) = tz_str.parse::<chrono_tz::Tz>()
     {
         let tz_conn_id = conn_id.clone();
         let tz_val = tz;
         let tz_display = tz_str.clone();
-        tokio::task::spawn_blocking(move || {
-            let config = match chelix_config::discover_and_load() {
-                Ok(config) => config,
-                Err(error) => {
-                    warn!(conn_id = %tz_conn_id, %error, "ws: failed to load config for timezone persistence");
-                    return;
-                },
-            };
-            let write_mode = config.memory.user_profile_write_mode;
-            let existing_user = chelix_config::resolve_user_profile_from_config(&config);
-            if existing_user.timezone.as_ref().is_none() && write_mode.allows_auto_write() {
-                let mut user = existing_user;
-                user.timezone = Some(chelix_config::Timezone::from(tz_val));
-                if let Err(e) = chelix_config::save_user_with_mode(&user, write_mode) {
-                    warn!(conn_id = %tz_conn_id, error = %e, "ws: failed to auto-persist timezone");
-                } else {
-                    info!(conn_id = %tz_conn_id, timezone = %tz_display, "ws: auto-persisted browser timezone to USER.md");
-                }
-            }
-        });
+        match state.services.configuration().read(Arc::clone).await {
+            Ok(snapshot) => {
+                tokio::task::spawn_blocking(move || {
+                    persist_browser_timezone(snapshot, tz_val, tz_conn_id, tz_display);
+                });
+            },
+            Err(error) => {
+                warn!(
+                    conn_id = %tz_conn_id,
+                    %error,
+                    "ws: failed to read config snapshot for timezone persistence"
+                );
+            },
+        }
     }
 
     // v3 clients default to wildcard subscriptions (all events).

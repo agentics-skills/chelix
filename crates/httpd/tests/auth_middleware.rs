@@ -36,6 +36,7 @@ model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 128
 compaction_reminder = true
+prepend_sender_badge = true
 
 [tools.execute_command]
 terminal_size = "115x58"
@@ -61,6 +62,32 @@ fn test_config() -> chelix_config::ChelixConfig {
 
 fn write_test_config(config_dir: &std::path::Path) {
     std::fs::write(config_dir.join("chelix.toml"), TEST_CONFIG_TOML).unwrap();
+}
+
+struct ServerConfig {
+    directory: tempfile::TempDir,
+    service: chelix_config_service::ConfigService,
+}
+
+impl ServerConfig {
+    async fn new() -> Self {
+        let directory = tempfile::tempdir().unwrap();
+        write_test_config(directory.path());
+        chelix_config::set_config_dir(directory.path().to_path_buf());
+        chelix_config::set_data_dir(directory.path().to_path_buf());
+        let service =
+            chelix_config_service::ConfigService::open(Default::default(), Default::default())
+                .await
+                .unwrap();
+        Self { directory, service }
+    }
+}
+
+impl Drop for ServerConfig {
+    fn drop(&mut self) {
+        chelix_config::clear_config_dir();
+        chelix_config::clear_data_dir();
+    }
 }
 
 struct TestOnboardingService;
@@ -203,12 +230,7 @@ async fn start_auth_server_impl_with_webauthn(
 ) -> (SocketAddr, Arc<CredentialStore>, Arc<GatewayState>) {
     // Isolate each test process with its own config/data directory so
     // concurrent nextest processes don't race on shared config files.
-    let tmp = tempfile::tempdir().unwrap();
-    write_test_config(tmp.path());
-    chelix_config::set_config_dir(tmp.path().to_path_buf());
-    chelix_config::set_data_dir(tmp.path().to_path_buf());
-    // Leak the TempDir so it outlives the test (cleaned up on process exit).
-    std::mem::forget(tmp);
+    let config_fixture = ServerConfig::new().await;
 
     let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
     let auth_config = chelix_config::AuthConfig::default();
@@ -219,7 +241,7 @@ async fn start_auth_server_impl_with_webauthn(
     );
 
     let resolved_auth = auth::resolve_auth(None, None);
-    let services = with_test_web_services(GatewayServices::noop());
+    let services = with_test_web_services(GatewayServices::noop(config_fixture.service.clone()));
     let (config, sandbox_router) = sandbox_off_runtime();
     let state = GatewayState::with_options(
         resolved_auth,
@@ -259,6 +281,7 @@ async fn start_auth_server_impl_with_webauthn(
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
+        let _config_fixture = config_fixture;
         axum::serve(
             listener,
             app.into_make_service_with_connect_info::<SocketAddr>(),
@@ -287,11 +310,7 @@ async fn start_localhost_server_with_vault() -> (
     Arc<GatewayState>,
     Arc<chelix_vault::Vault>,
 ) {
-    let tmp = tempfile::tempdir().unwrap();
-    write_test_config(tmp.path());
-    chelix_config::set_config_dir(tmp.path().to_path_buf());
-    chelix_config::set_data_dir(tmp.path().to_path_buf());
-    std::mem::forget(tmp);
+    let config_fixture = ServerConfig::new().await;
 
     let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
     chelix_vault::run_migrations(&pool).await.unwrap();
@@ -309,7 +328,7 @@ async fn start_localhost_server_with_vault() -> (
     );
 
     let resolved_auth = auth::resolve_auth(None, None);
-    let services = with_test_web_services(GatewayServices::noop());
+    let services = with_test_web_services(GatewayServices::noop(config_fixture.service.clone()));
     let (config, sandbox_router) = sandbox_off_runtime();
     let state = GatewayState::with_options(
         resolved_auth,
@@ -349,6 +368,7 @@ async fn start_localhost_server_with_vault() -> (
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
+        let _config_fixture = config_fixture;
         axum::serve(
             listener,
             app.into_make_service_with_connect_info::<SocketAddr>(),
@@ -368,12 +388,8 @@ async fn start_localhost_server_with_vault_and_session_store() -> (
     Arc<chelix_vault::Vault>,
     Arc<chelix_sessions::store::SessionStore>,
 ) {
-    let tmp = tempfile::tempdir().unwrap();
-    write_test_config(tmp.path());
-    chelix_config::set_config_dir(tmp.path().to_path_buf());
-    chelix_config::set_data_dir(tmp.path().to_path_buf());
-    let sessions_dir = tmp.path().join("sessions");
-    std::mem::forget(tmp);
+    let config_fixture = ServerConfig::new().await;
+    let sessions_dir = config_fixture.directory.path().join("sessions");
 
     let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
     chelix_projects::run_migrations(&pool).await.unwrap();
@@ -407,7 +423,7 @@ async fn start_localhost_server_with_vault_and_session_store() -> (
 
     let resolved_auth = auth::resolve_auth(None, None);
     let services = with_test_web_services(
-        GatewayServices::noop()
+        GatewayServices::noop(config_fixture.service.clone())
             .with_session_store(Arc::clone(&session_store))
             .with_session_metadata(session_metadata),
     );
@@ -450,6 +466,7 @@ async fn start_localhost_server_with_vault_and_session_store() -> (
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
+        let _config_fixture = config_fixture;
         axum::serve(
             listener,
             app.into_make_service_with_connect_info::<SocketAddr>(),
@@ -462,14 +479,10 @@ async fn start_localhost_server_with_vault_and_session_store() -> (
 
 /// Start a test server without a credential store (no auth).
 async fn start_noauth_server() -> SocketAddr {
-    let tmp = tempfile::tempdir().unwrap();
-    write_test_config(tmp.path());
-    chelix_config::set_config_dir(tmp.path().to_path_buf());
-    chelix_config::set_data_dir(tmp.path().to_path_buf());
-    std::mem::forget(tmp);
+    let config_fixture = ServerConfig::new().await;
 
     let resolved_auth = auth::resolve_auth(None, None);
-    let services = with_test_web_services(GatewayServices::noop());
+    let services = with_test_web_services(GatewayServices::noop(config_fixture.service.clone()));
     let state = GatewayState::new(resolved_auth, services);
     let methods = Arc::new(MethodRegistry::new());
     #[cfg(feature = "push-notifications")]
@@ -483,6 +496,7 @@ async fn start_noauth_server() -> SocketAddr {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
+        let _config_fixture = config_fixture;
         axum::serve(
             listener,
             app.into_make_service_with_connect_info::<SocketAddr>(),

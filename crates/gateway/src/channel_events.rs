@@ -230,7 +230,7 @@ async fn prepare_channel_session(
                 crate::session_reasoning::agent_defaults_for_agent(state, Some(&agent_id))
                     .await
                     .map_err(ChannelError::unavailable)?;
-            let model_reasoning = crate::model_reasoning::resolve_model_reasoning(
+            let model_reasoning = chelix_agents::model_validation::resolve_model_reasoning(
                 state.services.model.as_ref(),
                 &model,
                 &reasoning_effort,
@@ -248,7 +248,7 @@ async fn prepare_channel_session(
     } else {
         let agent_id = resolve_channel_agent_id(state, session_key, requested_agent_id).await?;
         let model_reasoning = if let Some(model_override) = initial_model_override {
-            crate::model_reasoning::resolve_model_reasoning(
+            chelix_agents::model_validation::resolve_model_reasoning(
                 state.services.model.as_ref(),
                 &model_override.model,
                 &model_override.reasoning_effort,
@@ -260,7 +260,7 @@ async fn prepare_channel_session(
                 crate::session_reasoning::agent_defaults_for_agent(state, Some(&agent_id))
                     .await
                     .map_err(ChannelError::unavailable)?;
-            crate::model_reasoning::resolve_model_reasoning(
+            chelix_agents::model_validation::resolve_model_reasoning(
                 state.services.model.as_ref(),
                 &agent_model,
                 &agent_reasoning_effort,
@@ -336,7 +336,7 @@ async fn patch_channel_session_model(
     session_key: &str,
     model_override: &ModelOverride,
 ) -> ChannelResult<PatchedChannelModelReasoning> {
-    let resolved = crate::model_reasoning::resolve_model_reasoning(
+    let resolved = chelix_agents::model_validation::resolve_model_reasoning(
         state.services.model.as_ref(),
         &model_override.model,
         &model_override.reasoning_effort,

@@ -8,24 +8,25 @@ default = ["metrics"]
 metrics = ["dep:chelix-metrics"]
 
 [dependencies]
-anyhow          = { workspace = true }
-async-trait     = { workspace = true }
-chelix-common   = { workspace = true }
-chelix-config   = { workspace = true }
-chelix-sessions = { workspace = true }
-chelix-skills   = { workspace = true }
-futures         = { workspace = true }
-include_dir     = { workspace = true }
-secrecy         = { workspace = true }
-serde           = { workspace = true }
-serde_json      = { workspace = true }
-thiserror       = { workspace = true }
-time            = { features = ["macros"], workspace = true }
-tokio           = { workspace = true }
-tokio-stream    = { workspace = true }
-tokio-util      = { workspace = true }
-tracing         = { workspace = true }
-uuid            = { workspace = true }
+anyhow                = { workspace = true }
+async-trait           = { workspace = true }
+chelix-common         = { workspace = true }
+chelix-config         = { workspace = true }
+chelix-service-traits = { workspace = true }
+chelix-sessions       = { workspace = true }
+chelix-skills         = { workspace = true }
+futures               = { workspace = true }
+include_dir           = { workspace = true }
+secrecy               = { workspace = true }
+serde                 = { workspace = true }
+serde_json            = { workspace = true }
+thiserror             = { workspace = true }
+time                  = { features = ["macros"], workspace = true }
+tokio                 = { workspace = true }
+tokio-stream          = { workspace = true }
+tokio-util            = { workspace = true }
+tracing               = { workspace = true }
+uuid                  = { workspace = true }
 
 # Optional
 chelix-metrics = { optional = true, workspace = true }

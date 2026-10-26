@@ -100,6 +100,7 @@ pub(super) async fn skill_detail_discovered(
 #[cfg(feature = "bundled-skills")]
 pub(super) async fn skill_detail_bundled(
     files: &Arc<chelix_skills::skill_file::SkillFiles>,
+    configuration: &chelix_config_service::ConfigService,
     skill_name: &str,
 ) -> ServiceResult {
     let store = chelix_skills::bundled::BundledSkillStore::new(Arc::clone(files));
@@ -114,7 +115,9 @@ pub(super) async fn skill_detail_bundled(
         .await
         .ok_or_else(|| format!("bundled skill '{skill_name}' body not readable"))?;
 
-    let config = chelix_config::discover_and_load().map_err(ServiceError::message)?;
+    let config = crate::config_document::read_config(configuration)
+        .await
+        .map_err(ServiceError::message)?;
     let enabled = config
         .skills
         .is_bundled_skill_enabled(&meta.name, meta.category.as_deref());
@@ -139,6 +142,7 @@ pub(super) async fn skill_detail_bundled(
 /// `disabled_bundled_skills`.
 pub(super) async fn toggle_bundled_skill(
     files: &Arc<chelix_skills::skill_file::SkillFiles>,
+    configuration: &chelix_config_service::ConfigService,
     params: &Value,
     enabled: bool,
 ) -> ServiceResult {
@@ -159,31 +163,38 @@ pub(super) async fn toggle_bundled_skill(
         let category = skill.category.clone();
 
         let skill_name = skill_name.to_string();
-        let mut effective_enabled = enabled;
-        if let Err(e) = chelix_config::update_config(|cfg| {
-            if enabled {
-                cfg.skills
-                    .disabled_bundled_skills
-                    .retain(|name| name != &skill_name);
-                if let Some(category) = &category {
+        let persisted_skill = skill_name.clone();
+        let persisted_category = category.clone();
+        let effective_enabled = match configuration
+            .update(move |cfg| {
+                if enabled {
                     cfg.skills
-                        .disabled_bundled_categories
-                        .retain(|name| name != category);
+                        .disabled_bundled_skills
+                        .retain(|name| name != &persisted_skill);
+                    if let Some(category) = &persisted_category {
+                        cfg.skills
+                            .disabled_bundled_categories
+                            .retain(|name| name != category);
+                    }
+                } else if !cfg
+                    .skills
+                    .disabled_bundled_skills
+                    .iter()
+                    .any(|name| name == &persisted_skill)
+                {
+                    cfg.skills
+                        .disabled_bundled_skills
+                        .push(persisted_skill.clone());
                 }
-            } else if !cfg
-                .skills
-                .disabled_bundled_skills
-                .iter()
-                .any(|name| name == &skill_name)
-            {
-                cfg.skills.disabled_bundled_skills.push(skill_name.clone());
-            }
-            effective_enabled = cfg
-                .skills
-                .is_bundled_skill_enabled(&skill_name, category.as_deref());
-        }) {
-            return Err(format!("failed to save config: {e}").into());
-        }
+                Ok(cfg
+                    .skills
+                    .is_bundled_skill_enabled(&persisted_skill, persisted_category.as_deref()))
+            })
+            .await
+        {
+            Ok(enabled) => enabled,
+            Err(e) => return Err(format!("failed to save config: {e}").into()),
+        };
 
         security_audit(
             "skills.skill.toggle",
@@ -201,7 +212,7 @@ pub(super) async fn toggle_bundled_skill(
     }
     #[cfg(not(feature = "bundled-skills"))]
     {
-        let _ = (skill_name, enabled);
+        let _ = (skill_name, enabled, configuration);
         Err("bundled skills are not available in this build".into())
     }
 }

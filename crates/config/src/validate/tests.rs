@@ -1,8 +1,27 @@
 use super::{
-    ChelixConfig, Severity,
+    ChelixConfig, DiagnosticCategory, Severity,
     schema_map::{KnownKeys, build_schema_map},
     validate_toml_str,
 };
+
+#[test]
+fn diagnostic_category_display_matches_tracing_labels() {
+    let cases = [
+        (DiagnosticCategory::Agents, "agents"),
+        (DiagnosticCategory::FileRef, "file-ref"),
+        (DiagnosticCategory::InvalidValue, "invalid-value"),
+        (DiagnosticCategory::MissingField, "missing-field"),
+        (DiagnosticCategory::Security, "security"),
+        (DiagnosticCategory::Syntax, "syntax"),
+        (DiagnosticCategory::TypeError, "type-error"),
+        (DiagnosticCategory::UnknownField, "unknown-field"),
+        (DiagnosticCategory::UnknownProvider, "unknown-provider"),
+        (DiagnosticCategory::ValidationWorker, "validation-worker"),
+    ];
+    for (category, label) in cases {
+        assert_eq!(category.to_string(), label);
+    }
+}
 
 #[path = "tests/agents.rs"]
 mod agents;
@@ -22,5 +41,3 @@ mod security;
 mod structural;
 #[path = "tests/tools.rs"]
 mod tools;
-#[path = "tests/voice.rs"]
-mod voice;

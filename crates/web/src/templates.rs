@@ -1,6 +1,6 @@
 //! SPA templates, gon data, and template rendering.
 
-use std::{collections::HashSet, path::Path};
+use std::collections::HashSet;
 
 use {
     askama::Template,
@@ -382,16 +382,12 @@ pub(crate) async fn build_gon_data(gw: &GatewayState) -> crate::Result<GonData> 
         "gon: nav_counts"
     );
 
-    // Read all fields from gw.inner in a SINGLE lock acquisition to avoid
+    // Read hooks and update status from gw.inner in one lock acquisition to avoid
     // deadlocks with concurrent write-lock requests (tokio's fair RwLock
     // blocks new reads when a write is queued).
-    let (hooks_count, cached_channels_offered, update) = {
+    let (hooks_count, update) = {
         let inner = gw.inner.read().await;
-        (
-            inner.discovered_hooks.len(),
-            inner.channels_offered.clone(),
-            inner.update.clone(),
-        )
+        (inner.discovered_hooks.len(), inner.update.clone())
     };
     counts.hooks = hooks_count;
     tracing::debug!(
@@ -425,10 +421,9 @@ pub(crate) async fn build_gon_data(gw: &GatewayState) -> crate::Result<GonData> 
         .ok()
         .and_then(|v| serde_json::from_value(v).ok())
         .unwrap_or_default();
-    let channels_offered =
-        tokio::task::spawn_blocking(move || resolve_channels_offered(cached_channels_offered))
-            .await
-            .unwrap_or_default();
+    // channels.offered is read from the config service snapshot.
+    let config = gw.services.configuration();
+    let channels_offered = channels_offered_snapshot(config).await?;
     let channel_descriptors: Vec<chelix_channels::ChannelDescriptor> = channels_offered
         .iter()
         .filter_map(|s| s.parse::<chelix_channels::ChannelType>().ok())
@@ -567,33 +562,13 @@ pub(crate) async fn build_gon_data(gw: &GatewayState) -> crate::Result<GonData> 
     })
 }
 
-fn load_channels_offered_from_config_path(
-    path: &Path,
-) -> Result<Vec<String>, chelix_config::Error> {
-    chelix_config::loader::load_config(path).map(|config| config.channels.offered)
-}
-
-fn resolve_channels_offered(cached_channels_offered: Vec<String>) -> Vec<String> {
-    let path = match chelix_config::loader::find_config_file() {
-        Ok(Some(path)) => path,
-        Ok(None) => return cached_channels_offered,
-        Err(error) => {
-            tracing::error!(error = %error, "config file discovery failed");
-            return cached_channels_offered;
-        },
-    };
-
-    match load_channels_offered_from_config_path(&path) {
-        Ok(channels_offered) => channels_offered,
-        Err(error) => {
-            warn!(
-                path = %path.display(),
-                error = %error,
-                "failed to reload channels.offered for gon data, using startup value"
-            );
-            cached_channels_offered
-        },
-    }
+async fn channels_offered_snapshot(
+    config: &chelix_config_service::ConfigService,
+) -> crate::Result<Vec<String>> {
+    config
+        .read(|cfg| cfg.channels.offered.clone())
+        .await
+        .map_err(|error| crate::Error::message(error.to_string()))
 }
 
 // ── Templates ────────────────────────────────────────────────────────────────
@@ -1021,9 +996,7 @@ fn is_onboarding_path(path: &str) -> bool {
 }
 
 pub(crate) async fn onboarding_completed(_gw: &GatewayState) -> bool {
-    // Check the onboarded sentinel file directly instead of going through
-    // wizard_status() which acquires a std::sync::Mutex and does filesystem
-    // I/O — both block the async runtime on low-CPU runners.
+    // Read the onboarded sentinel file directly. Onboarding state is guarded by a tokio Mutex.
     tokio::task::spawn_blocking(|| chelix_config::data_dir().join(".onboarded").exists())
         .await
         .unwrap_or(false)
@@ -1032,7 +1005,37 @@ pub(crate) async fn onboarding_completed(_gw: &GatewayState) -> bool {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
-    use {super::*, std::io::Write};
+    use super::*;
+
+    struct ConfigDirGuard {
+        lock: std::sync::MutexGuard<'static, Option<tempfile::TempDir>>,
+    }
+
+    impl ConfigDirGuard {
+        fn install() -> Self {
+            static LOCK: std::sync::Mutex<Option<tempfile::TempDir>> = std::sync::Mutex::new(None);
+            let mut lock = LOCK.lock().unwrap_or_else(|error| error.into_inner());
+            let dir = tempfile::tempdir().unwrap();
+            *lock = Some(dir);
+            let guard = Self { lock };
+            chelix_config::set_config_dir(guard.path().to_path_buf());
+            guard
+        }
+
+        fn path(&self) -> &std::path::Path {
+            self.lock
+                .as_ref()
+                .unwrap_or_else(|| panic!("config override directory is not installed"))
+                .path()
+        }
+    }
+
+    impl Drop for ConfigDirGuard {
+        fn drop(&mut self) {
+            chelix_config::clear_config_dir();
+            self.lock.take();
+        }
+    }
 
     #[test]
     fn parse_git_branch_filters_defaults() {
@@ -1126,18 +1129,22 @@ mod tests {
         assert!(!should_redirect_from_onboarding(false, true));
     }
 
-    #[test]
-    fn load_channels_offered_from_config_path_reads_offered_entries() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("chelix.toml");
-        let mut file = std::fs::File::create(&path).unwrap();
-        writeln!(
-            file,
-            "[channels]\noffered = [\"telegram\", \"telephony\"]\n[tools.execute_command]\nterminal_size = \"115x58\"\n[sandbox]\narchived_session_retention_days = 3"
+    #[tokio::test]
+    async fn channels_offered_snapshot_reads_offered_entries() {
+        let guard = ConfigDirGuard::install();
+        std::fs::write(
+            guard.path().join("chelix.toml"),
+            "[server]\nport = 18789\n\n[channels]\noffered = [\"telegram\", \"telephony\"]\n[tools.execute_command]\nterminal_size = \"115x58\"\n[sandbox]\narchived_session_retention_days = 3\n",
         )
         .unwrap();
+        let service = chelix_config_service::ConfigService::open(
+            chelix_config_service::ConfigValidation::default(),
+            chelix_config_service::ConfigInitialization::default(),
+        )
+        .await
+        .unwrap();
 
-        let offered = load_channels_offered_from_config_path(&path).unwrap();
+        let offered = channels_offered_snapshot(&service).await.unwrap();
 
         assert_eq!(
             offered,

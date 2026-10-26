@@ -5,6 +5,7 @@
 //! messaging, status, and gateway lifecycle.
 
 pub mod commands;
+pub mod config_validation;
 pub mod config_view;
 pub mod contract;
 pub mod error;

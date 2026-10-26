@@ -22,6 +22,10 @@ pub mod channel_store;
 pub mod chat;
 pub mod chat_error;
 pub mod chat_status_outbox;
+mod config_document;
+pub mod config_initialization;
+pub mod config_validation;
+pub mod config_wiring;
 pub mod cron;
 pub mod logs;
 pub mod mcp_agent_tools;
@@ -31,7 +35,6 @@ pub mod mcp_service;
 pub mod mdns;
 pub mod message_log_store;
 pub mod methods;
-pub mod model_reasoning;
 pub mod onboarding;
 pub(crate) mod operation_progress;
 pub mod project;
@@ -58,12 +61,7 @@ pub mod voice_persona;
 pub mod webhooks;
 
 #[cfg(test)]
-pub(crate) fn config_override_test_lock() -> std::sync::MutexGuard<'static, ()> {
-    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
-    LOCK.get_or_init(|| std::sync::Mutex::new(()))
-        .lock()
-        .unwrap_or_else(|error| error.into_inner())
-}
+pub(crate) mod test_config;
 
 /// Run database migrations for the gateway crate.
 ///

@@ -165,33 +165,6 @@ prepend_sender_badge = true
 }
 
 #[test]
-fn agent_rejects_empty_model_and_reasoning_effort() {
-    let cases = [
-        (
-            "model = \"\"\nreasoning_effort = \"off\"",
-            "agents.quick.model",
-        ),
-        (
-            "model = \"test::model\"\nreasoning_effort = \"\"",
-            "agents.quick.reasoning_effort",
-        ),
-    ];
-
-    for (selection, expected_path) in cases {
-        let result = validate_toml_str(&format!(
-            "[agents]\ndefault = \"quick\"\n\n[agents.quick]\nname = \"Quick\"\n{selection}\nmax_tools_threshold = 128\ncompaction_reminder = true\nprepend_sender_badge = true\n"
-        ));
-        assert!(
-            result.diagnostics.iter().any(|diagnostic| {
-                diagnostic.severity == Severity::Error && diagnostic.path == expected_path
-            }),
-            "expected error at {expected_path}, got: {:?}",
-            result.diagnostics
-        );
-    }
-}
-
-#[test]
 fn agent_rejects_arbitrary_extra_key() {
     let result = validate_toml_str(
         r#"
@@ -211,7 +184,7 @@ arbitrary_extra_key = true
 
     assert!(result.diagnostics.iter().any(|diagnostic| {
         diagnostic.severity == Severity::Error
-            && diagnostic.category == "unknown-field"
+            && diagnostic.category == DiagnosticCategory::UnknownField
             && diagnostic.path == "agents.quick.arbitrary_extra_key"
     }));
 }
@@ -338,72 +311,6 @@ archived_session_retention_days = 3
 }
 
 #[test]
-fn agent_max_tools_threshold_must_be_positive() {
-    let result = validate_toml_str(
-        r#"
-[agents.quick]
-name = "Quick"
-model = "test::model"
-reasoning_effort = "off"
-max_tools_threshold = 0
-compaction_reminder = true
-prepend_sender_badge = true
-"#,
-    );
-    assert!(result.diagnostics.iter().any(|diagnostic| {
-        diagnostic.severity == Severity::Error
-            && diagnostic.category == "invalid-value"
-            && diagnostic.path == "agents.quick.max_tools_threshold"
-    }));
-}
-
-#[test]
-fn semantic_validation_rejects_reserved_agent_ids() {
-    let mut config = ChelixConfig::default();
-    config.agents.entries.insert(
-        "default".to_string(),
-        crate::AgentConfig::new(
-            "Reserved",
-            "test::model",
-            crate::schema::ReasoningEffort::from("off"),
-        ),
-    );
-    let mut diagnostics = Vec::new();
-
-    crate::validate::semantic::check_semantic_warnings(&config, &mut diagnostics);
-
-    assert!(diagnostics.iter().any(|diagnostic| {
-        diagnostic.severity == Severity::Error
-            && diagnostic.category == "invalid-value"
-            && diagnostic.path == "agents.default"
-            && diagnostic.message.contains("reserved")
-    }));
-}
-
-#[test]
-fn agents_default_must_reference_configured_agent() {
-    let result = validate_toml_str(
-        r#"
-[agents]
-default = "missing"
-
-[agents.main]
-name = "Main"
-model = "test::model"
-reasoning_effort = "off"
-max_tools_threshold = 128
-compaction_reminder = true
-prepend_sender_badge = true
-"#,
-    );
-    assert!(result.diagnostics.iter().any(|diagnostic| {
-        diagnostic.severity == Severity::Error
-            && diagnostic.path == "agents.default"
-            && diagnostic.message.contains("missing")
-    }));
-}
-
-#[test]
 fn reasoning_effort_accepts_provider_defined_value() {
     let result = validate_toml_str(
         r#"
@@ -443,7 +350,8 @@ reasoning_effort = "high"
 "#,
     );
     let unknown = result.diagnostics.iter().find(|diagnostic| {
-        diagnostic.category == "unknown-field" && diagnostic.message.contains("reasoning_effort")
+        diagnostic.category == DiagnosticCategory::UnknownField
+            && diagnostic.message.contains("reasoning_effort")
     });
     assert!(
         unknown.is_none(),

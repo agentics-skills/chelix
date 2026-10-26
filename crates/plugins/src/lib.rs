@@ -1,6 +1,7 @@
 //! Plugin hooks: bundled hooks, discovery, eligibility, and shell/metadata support.
 
 pub mod bundled;
+pub mod config_validation;
 pub mod error;
 pub mod hook_discovery;
 pub mod hook_eligibility;

@@ -36,11 +36,13 @@ pub struct ExportOptions {
 ///
 /// Uses `VACUUM INTO` for SQLite snapshots so the live DB is never locked.
 pub async fn export_archive<W: Write>(
+    config: &chelix_config_service::ConfigService,
     config_dir: &Path,
     data_dir: &Path,
     opts: &ExportOptions,
     writer: W,
 ) -> anyhow::Result<ExportManifest> {
+    let document = config.read_document().await?;
     let encoder = GzEncoder::new(writer, Compression::default());
     let mut builder = Builder::new(encoder);
     let mut inventory = ArchiveInventory::default();
@@ -48,13 +50,13 @@ pub async fn export_archive<W: Write>(
     let prefix = archive_prefix();
 
     // ── Config files ─────────────────────────────────────────────────
-    add_config_file(
+    add_bytes_to_tar(
         &mut builder,
-        config_dir,
-        "chelix.toml",
-        &prefix,
-        &mut inventory,
+        document.toml.as_bytes(),
+        &format!("{prefix}/config/chelix.toml"),
     )?;
+    inventory.config_files.push("chelix.toml".to_owned());
+    debug!(file = "chelix.toml", "added config file");
     add_config_file(
         &mut builder,
         config_dir,
@@ -251,6 +253,20 @@ fn add_workspace_file<W: Write>(
         inventory.workspace_files.push(name.to_owned());
         debug!(file = name, "added workspace file");
     }
+    Ok(())
+}
+
+/// Append owned bytes into the tar archive.
+fn add_bytes_to_tar<W: Write>(
+    builder: &mut Builder<W>,
+    bytes: &[u8],
+    archive_path: &str,
+) -> anyhow::Result<()> {
+    let mut header = Header::new_gnu();
+    header.set_size(bytes.len() as u64);
+    header.set_mode(0o644);
+    header.set_cksum();
+    builder.append_data(&mut header, archive_path, bytes)?;
     Ok(())
 }
 

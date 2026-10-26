@@ -96,6 +96,7 @@ impl chelix_service_traits::ChatService for ArchiveChat {
 
 #[tokio::test]
 async fn archive_patch_error_does_not_call_stop_session() {
+    let fixture = crate::test_config::ConfigFixture::new().await;
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
     let pool = sqlite_pool().await;
@@ -107,8 +108,10 @@ async fn archive_patch_error_does_not_call_stop_session() {
         .await
         .unwrap();
     let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    let svc = LiveSessionService::new(store, metadata)
-        .with_chat(Arc::new(ArchiveChat::Count(Arc::clone(&calls))));
+    let svc = LiveSessionService::new(store, metadata).with_chat(
+        fixture.service.clone(),
+        Arc::new(ArchiveChat::Count(Arc::clone(&calls))),
+    );
     let error = svc
         .patch(serde_json::json!({ "key": "telegram:bot1:123", "archived": true }))
         .await
@@ -281,6 +284,7 @@ fn archive_router(backend: Arc<RecordingSandbox>) -> Arc<SandboxRouter> {
 
 #[tokio::test(flavor = "current_thread")]
 async fn archive_patch_error_does_not_stop_sandbox() {
+    let fixture = crate::test_config::ConfigFixture::new().await;
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
     let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
@@ -295,7 +299,10 @@ async fn archive_patch_error_does_not_stop_sandbox() {
     let router = archive_router(Arc::clone(&backend));
     let watch = router.watch_background_stops();
     let svc = LiveSessionService::new(store, metadata)
-        .with_chat(Arc::new(ArchiveChat::Count(Arc::clone(&calls))))
+        .with_chat(
+            fixture.service.clone(),
+            Arc::new(ArchiveChat::Count(Arc::clone(&calls))),
+        )
         .with_sandbox_router(router);
     let error = svc
         .patch(serde_json::json!({ "key": "telegram:bot1:123", "archived": true }))
@@ -309,6 +316,7 @@ async fn archive_patch_error_does_not_stop_sandbox() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn archive_calls_stop_session_before_background_stop() {
+    let fixture = crate::test_config::ConfigFixture::new().await;
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
     let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
@@ -319,11 +327,14 @@ async fn archive_calls_stop_session_before_background_stop() {
     let router = archive_router(Arc::clone(&backend));
     let watch = router.watch_background_stops();
     let svc = LiveSessionService::new(store, Arc::clone(&metadata))
-        .with_chat(Arc::new(ArchiveChat::Wait {
-            entered: Arc::clone(&entered),
-            release: Arc::clone(&release),
-            mark: Arc::clone(&backend.mark),
-        }))
+        .with_chat(
+            fixture.service.clone(),
+            Arc::new(ArchiveChat::Wait {
+                entered: Arc::clone(&entered),
+                release: Arc::clone(&release),
+                mark: Arc::clone(&backend.mark),
+            }),
+        )
         .with_sandbox_router(router);
     let entered_wait = entered.notified();
     let archived = tokio::spawn(async move {
@@ -355,6 +366,7 @@ async fn archive_calls_stop_session_before_background_stop() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn archive_stop_session_error_skips_background_stop() {
+    let fixture = crate::test_config::ConfigFixture::new().await;
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
     let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
@@ -363,7 +375,7 @@ async fn archive_stop_session_error_skips_background_stop() {
     let router = archive_router(Arc::clone(&backend));
     let watch = router.watch_background_stops();
     let svc = LiveSessionService::new(store, Arc::clone(&metadata))
-        .with_chat(Arc::new(ArchiveChat::Fail))
+        .with_chat(fixture.service.clone(), Arc::new(ArchiveChat::Fail))
         .with_sandbox_router(router);
     let error = svc
         .patch(serde_json::json!({ "key": "session:owner", "archived": true }))
@@ -384,6 +396,7 @@ async fn archive_stop_session_error_skips_background_stop() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn archive_foreign_owner_skips_background_stop() {
+    let fixture = crate::test_config::ConfigFixture::new().await;
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
     let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
@@ -398,7 +411,10 @@ async fn archive_foreign_owner_skips_background_stop() {
     let router = archive_router(Arc::clone(&backend));
     let watch = router.watch_background_stops();
     let svc = LiveSessionService::new(store, metadata)
-        .with_chat(Arc::new(ArchiveChat::Count(Arc::clone(&calls))))
+        .with_chat(
+            fixture.service.clone(),
+            Arc::new(ArchiveChat::Count(Arc::clone(&calls))),
+        )
         .with_sandbox_router(router);
     svc.patch(serde_json::json!({ "key": "session:child", "archived": true }))
         .await

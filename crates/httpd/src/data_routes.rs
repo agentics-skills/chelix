@@ -56,7 +56,11 @@ pub fn data_router() -> Router<AppState> {
 /// Writes the archive to a temporary file, then streams it to the client.
 /// This avoids buffering the entire archive in memory while still allowing
 /// the synchronous `tar`/`flate2` writers to work naturally.
-async fn export_handler(Query(query): Query<ExportQuery>) -> impl IntoResponse {
+async fn export_handler(
+    State(state): State<AppState>,
+    Query(query): Query<ExportQuery>,
+) -> impl IntoResponse {
+    let config = state.gateway.services.configuration();
     let config_dir = match chelix_config::config_dir() {
         Ok(dir) => dir,
         Err(error) => {
@@ -100,7 +104,9 @@ async fn export_handler(Query(query): Query<ExportQuery>) -> impl IntoResponse {
             },
         };
 
-        if let Err(e) = chelix_portable::export_archive(&config_dir, &data_dir, &opts, file).await {
+        if let Err(e) =
+            chelix_portable::export_archive(config, &config_dir, &data_dir, &opts, file).await
+        {
             warn!(error = %e, "data export failed");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -181,6 +187,7 @@ async fn run_import(
             .into_response();
     }
 
+    let config = state.gateway.services.configuration();
     let config_dir = match chelix_config::config_dir() {
         Ok(dir) => dir,
         Err(error) => {
@@ -202,7 +209,7 @@ async fn run_import(
 
     // Cursor<Bytes> implements Read without copying the data.
     let reader = std::io::Cursor::new(body);
-    match chelix_portable::import_archive(&config_dir, &data_dir, &opts, reader).await {
+    match chelix_portable::import_archive(config, &config_dir, &data_dir, &opts, reader).await {
         Ok(imported) => {
             let mut result = imported.result;
             if let Some(snapshot) = imported.journal_snapshot {

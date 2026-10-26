@@ -245,9 +245,11 @@ pub(super) fn register(reg: &mut MethodRegistry) {
 
         reg.register(
             "phone.providers.all",
-            Box::new(|_ctx| {
+            Box::new(|ctx| {
                 Box::pin(async move {
-                    let config = chelix_config::discover_and_load()
+                    let configuration = ctx.state.services.configuration().clone();
+                    let config = crate::config_document::read_config(&configuration)
+                        .await
                         .map_err(|error| ErrorShape::new("storage_error", error.to_string()))?;
                     phone::detect_phone_providers(&config)
                         .map_err(|error| ErrorShape::new("storage_error", error.to_string()))
@@ -266,7 +268,9 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         .as_bool()
                         .ok_or_else(|| ErrorShape::new("invalid_params", "missing enabled"))?;
 
-                    phone::toggle_phone_provider(provider, enabled)
+                    let configuration = ctx.state.services.configuration().clone();
+                    phone::toggle_phone_provider(&configuration, provider, enabled)
+                        .await
                         .map_err(|e| ErrorShape::new("config_error", e.to_string()))?;
                     phone::reload_running_phone_account(&ctx.state)
                         .await
@@ -306,12 +310,18 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         ));
                     }
 
-                    chelix_config::update_config(|cfg| {
-                        cfg.phone.enabled = true;
-                        cfg.phone.provider = provider.to_string();
-                        phone::apply_phone_provider_settings(cfg, provider, &ctx.params);
-                    })
-                    .map_err(|e| ErrorShape::new("config_error", e.to_string()))?;
+                    let configuration = ctx.state.services.configuration().clone();
+                    let provider_name = provider.to_string();
+                    let params = ctx.params.clone();
+                    configuration
+                        .update(move |cfg| {
+                            cfg.phone.enabled = true;
+                            cfg.phone.provider = provider_name.clone();
+                            phone::apply_phone_provider_settings(cfg, &provider_name, &params);
+                            Ok(())
+                        })
+                        .await
+                        .map_err(|e| ErrorShape::new("config_error", e.to_string()))?;
                     let key_updates: &[(&[&str], Option<&str>)] = match provider {
                         "twilio" => &[
                             (
@@ -339,8 +349,12 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         ],
                         _ => &[],
                     };
-                    chelix_config::set_config_strings(key_updates)
-                        .map_err(|error| ErrorShape::new("storage_error", error.to_string()))?;
+                    phone::patch_phone_config_strings(
+                        &configuration,
+                        crate::config_document::owned_string_paths(key_updates),
+                    )
+                    .await
+                    .map_err(|error| ErrorShape::new("storage_error", error.to_string()))?;
                     phone::reload_running_phone_account(&ctx.state)
                         .await
                         .map_err(|e| ErrorShape::new("config_error", e.to_string()))?;
@@ -366,10 +380,16 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         .as_str()
                         .ok_or_else(|| ErrorShape::new("invalid_params", "missing provider"))?;
 
-                    chelix_config::update_config(|cfg| {
-                        phone::apply_phone_provider_settings(cfg, provider, &ctx.params);
-                    })
-                    .map_err(|e| ErrorShape::new("config_error", e.to_string()))?;
+                    let configuration = ctx.state.services.configuration().clone();
+                    let provider_name = provider.to_string();
+                    let params = ctx.params.clone();
+                    configuration
+                        .update(move |cfg| {
+                            phone::apply_phone_provider_settings(cfg, &provider_name, &params);
+                            Ok(())
+                        })
+                        .await
+                        .map_err(|e| ErrorShape::new("config_error", e.to_string()))?;
                     phone::reload_running_phone_account(&ctx.state)
                         .await
                         .map_err(|e| ErrorShape::new("config_error", e.to_string()))?;
@@ -395,13 +415,18 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         .as_str()
                         .ok_or_else(|| ErrorShape::new("invalid_params", "missing provider"))?;
 
-                    chelix_config::update_config(|cfg| {
-                        if cfg.phone.provider == provider {
-                            cfg.phone.enabled = false;
-                            cfg.phone.provider = String::new();
-                        }
-                    })
-                    .map_err(|e| ErrorShape::new("config_error", e.to_string()))?;
+                    let configuration = ctx.state.services.configuration().clone();
+                    let provider_name = provider.to_string();
+                    configuration
+                        .update(move |cfg| {
+                            if cfg.phone.provider == provider_name {
+                                cfg.phone.enabled = false;
+                                cfg.phone.provider = String::new();
+                            }
+                            Ok(())
+                        })
+                        .await
+                        .map_err(|e| ErrorShape::new("config_error", e.to_string()))?;
                     let key_updates: &[(&[&str], Option<&str>)] = match provider {
                         "twilio" => &[
                             (&["phone", "twilio", "account_sid"], None),
@@ -417,8 +442,12 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         ],
                         _ => &[],
                     };
-                    chelix_config::set_config_strings(key_updates)
-                        .map_err(|error| ErrorShape::new("storage_error", error.to_string()))?;
+                    phone::patch_phone_config_strings(
+                        &configuration,
+                        crate::config_document::owned_string_paths(key_updates),
+                    )
+                    .await
+                    .map_err(|error| ErrorShape::new("storage_error", error.to_string()))?;
                     phone::reload_running_phone_account(&ctx.state)
                         .await
                         .map_err(|e| ErrorShape::new("config_error", e.to_string()))?;

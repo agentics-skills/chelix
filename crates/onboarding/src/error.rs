@@ -4,6 +4,8 @@ use chelix_common::FromMessage;
 pub enum Error {
     #[error(transparent)]
     Io(#[from] std::io::Error),
+    #[error(transparent)]
+    ConfigService(#[from] chelix_config_service::Error),
     #[error("{message}")]
     Message { message: String },
 }

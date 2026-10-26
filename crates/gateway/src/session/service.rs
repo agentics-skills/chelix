@@ -127,10 +127,14 @@ impl LiveSessionService {
     }
 
     #[cfg(test)]
-    pub fn with_chat(self, chat: Arc<dyn crate::services::ChatService>) -> Self {
+    pub fn with_chat(
+        self,
+        configuration: chelix_config_service::ConfigService,
+        chat: Arc<dyn crate::services::ChatService>,
+    ) -> Self {
         let state = crate::state::GatewayState::new(
             crate::auth::resolve_auth(None, None),
-            crate::services::GatewayServices::noop(),
+            crate::services::GatewayServices::noop(configuration),
         );
         state.set_chat(chat);
         let _ = self.deferred_state.set(state);

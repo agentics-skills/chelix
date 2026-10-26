@@ -2,10 +2,11 @@
 
 use std::{
     io::{Read, Seek, SeekFrom},
-    path::{Component, Path},
+    path::{Component, Path, PathBuf},
 };
 
 use {
+    anyhow::Context as _,
     flate2::read::GzDecoder,
     serde::{Deserialize, Serialize},
     tar::Archive,
@@ -16,7 +17,7 @@ use crate::manifest::{ExportManifest, FORMAT_VERSION};
 
 /// Drop guard that removes a temporary file when it goes out of scope.
 #[derive(Debug)]
-pub struct TempFileGuard(pub(crate) std::path::PathBuf);
+pub struct TempFileGuard(pub(crate) PathBuf);
 
 impl TempFileGuard {
     pub fn path(&self) -> &Path {
@@ -82,99 +83,63 @@ pub struct ImportResult {
 }
 
 /// Import a `.tar.gz` archive into the given config and data directories.
-pub async fn import_archive<R: Read + Seek>(
+pub async fn import_archive<R>(
+    config: &chelix_config_service::ConfigService,
     config_dir: &Path,
     data_dir: &Path,
     opts: &ImportOptions,
     mut reader: R,
-) -> anyhow::Result<ImportedArchive> {
+) -> anyhow::Result<ImportedArchive>
+where
+    R: Read + Seek + Send + 'static,
+{
     let manifest = read_supported_manifest(&mut reader)?;
-    reader.seek(SeekFrom::Start(0))?;
-    let decoder = GzDecoder::new(reader);
-    let mut archive = Archive::new(decoder);
-
-    let mut imported = Vec::new();
-    let mut skipped = Vec::new();
-    let mut warnings = Vec::new();
-    let mut db_snapshots: Vec<(String, Vec<u8>)> = Vec::new();
-    let mut journal_bytes = None;
-
-    for entry in archive.entries()? {
-        let mut entry = entry?;
-        let raw_path = entry.path()?.to_path_buf();
-
-        // Strip the top-level prefix directory (chelix-backup-YYYYMMDD-HHMMSS/).
-        let stripped = strip_archive_prefix(&raw_path);
-
-        // Validate path safety — reject traversal attacks.
-        if !is_safe_path(stripped) {
-            warnings.push(format!("skipped unsafe path: {}", raw_path.display()));
-            continue;
-        }
-
-        let stripped_str = stripped.display().to_string();
-
-        if stripped_str == "manifest.json" {
-            continue;
-        }
-
-        if stripped_str.starts_with("config/") {
-            let filename = stripped.strip_prefix("config/").unwrap_or(stripped);
-            let dest = config_dir.join(filename);
-            let action = apply_file(&mut entry, &dest, opts)?;
-            record_action(
-                &action,
-                "config",
-                &stripped_str,
-                &mut imported,
-                &mut skipped,
+    let (commit_tx, mut commit_rx) = tokio::sync::mpsc::channel(1);
+    let (done_tx, done_rx) = tokio::sync::oneshot::channel();
+    let extracted_config_dir = config_dir.to_path_buf();
+    let extracted_data_dir = data_dir.to_path_buf();
+    let extract_opts = opts.clone();
+    let worker = std::thread::Builder::new()
+        .name("chelix-import".to_owned())
+        .spawn(move || {
+            let outcome = extract_archive(
+                reader,
+                extracted_config_dir,
+                extracted_data_dir,
+                extract_opts,
+                commit_tx,
             );
-            continue;
-        }
+            if done_tx.send(outcome).is_err() {
+                error!("import coordinator dropped before receiving the extraction result");
+            }
+        })
+        .map_err(|error| anyhow::anyhow!("failed to start import extraction thread: {error}"))?;
 
-        if stripped_str.starts_with("workspace/") {
-            let rel = stripped.strip_prefix("workspace/").unwrap_or(stripped);
-            let dest = data_dir.join(rel);
-            let action = apply_file(&mut entry, &dest, opts)?;
-            record_action(
-                &action,
-                "workspace",
-                &stripped_str,
-                &mut imported,
-                &mut skipped,
-            );
-            continue;
+    while let Some(request) = commit_rx.recv().await {
+        let action = commit_config_document(config, request.raw, opts).await;
+        if request.reply.send(action).is_err() {
+            break;
         }
-
-        if stripped_str.starts_with("db/") {
-            // Buffer database files in memory — they need special merge handling.
-            let mut buf = Vec::new();
-            entry.read_to_end(&mut buf)?;
-            db_snapshots.push((stripped_str.clone(), buf));
-            continue;
-        }
-
-        if stripped_str.starts_with("sessions/") {
-            let rel = stripped.strip_prefix("sessions/").unwrap_or(stripped);
-            let dest = data_dir.join("sessions").join(rel);
-            let action = apply_file(&mut entry, &dest, opts)?;
-            let category = if stripped_str.contains("media/") {
-                "media"
-            } else {
-                "session"
-            };
-            record_action(
-                &action,
-                category,
-                &stripped_str,
-                &mut imported,
-                &mut skipped,
-            );
-            continue;
-        }
-
-        debug!(path = %stripped_str, "ignoring unknown archive entry");
     }
+
+    let extraction = done_rx.await;
+    let joined = worker.join();
+    if joined.is_err() && extraction.is_err() {
+        anyhow::bail!("import extraction thread panicked");
+    }
+    let extraction = extraction
+        .map_err(|_| anyhow::anyhow!("import extraction thread ended without a result"))??;
+    if joined.is_err() {
+        anyhow::bail!("import extraction thread panicked");
+    }
+
+    let ArchiveExtraction {
+        mut imported,
+        mut skipped,
+        mut warnings,
+        db_snapshots,
+    } = extraction;
+    let mut journal_bytes = None;
 
     // ── Merge SQLite databases ───────────────────────────────────────
     if !opts.dry_run {
@@ -309,6 +274,179 @@ fn is_safe_path(path: &Path) -> bool {
         }
     }
     true
+}
+
+struct ConfigEntryCommit {
+    raw: Vec<u8>,
+    reply: tokio::sync::oneshot::Sender<anyhow::Result<FileAction>>,
+}
+
+struct ArchiveExtraction {
+    imported: Vec<ImportedItem>,
+    skipped: Vec<ImportedItem>,
+    warnings: Vec<String>,
+    db_snapshots: Vec<(String, Vec<u8>)>,
+}
+
+fn extract_archive<R: Read + Seek>(
+    mut reader: R,
+    config_dir: PathBuf,
+    data_dir: PathBuf,
+    opts: ImportOptions,
+    config_commits: tokio::sync::mpsc::Sender<ConfigEntryCommit>,
+) -> anyhow::Result<ArchiveExtraction> {
+    reader.seek(SeekFrom::Start(0))?;
+    let decoder = GzDecoder::new(reader);
+    let mut archive = Archive::new(decoder);
+    let mut entries = archive.entries()?;
+    let mut imported = Vec::new();
+    let mut skipped = Vec::new();
+    let mut warnings = Vec::new();
+    let mut db_snapshots = Vec::new();
+
+    loop {
+        if config_commits.is_closed() {
+            anyhow::bail!("import extraction cancelled");
+        }
+        let Some(entry) = entries.next() else {
+            break;
+        };
+        let mut entry = entry?;
+        let raw_path = entry.path()?.to_path_buf();
+        let stripped = strip_archive_prefix(&raw_path);
+        if !is_safe_path(stripped) {
+            warnings.push(format!("skipped unsafe path: {}", raw_path.display()));
+            continue;
+        }
+        let stripped_str = stripped.display().to_string();
+        if stripped_str == "manifest.json" {
+            continue;
+        }
+
+        if let Some(filename) = stripped_str.strip_prefix("config/") {
+            if filename == "chelix.toml" {
+                if opts.dry_run {
+                    record_action(
+                        &FileAction::DryRun,
+                        "config",
+                        &stripped_str,
+                        &mut imported,
+                        &mut skipped,
+                    );
+                    continue;
+                }
+                let mut raw = Vec::new();
+                entry.read_to_end(&mut raw)?;
+                let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+                config_commits
+                    .blocking_send(ConfigEntryCommit {
+                        raw,
+                        reply: reply_tx,
+                    })
+                    .context("failed to send archived chelix.toml for commit")?;
+                let action = reply_rx
+                    .blocking_recv()
+                    .context("failed to receive the chelix.toml commit result")??;
+                record_action(
+                    &action,
+                    "config",
+                    &stripped_str,
+                    &mut imported,
+                    &mut skipped,
+                );
+                continue;
+            }
+            let dest = config_dir.join(filename);
+            let action = apply_file(&mut entry, &dest, &opts)?;
+            record_action(
+                &action,
+                "config",
+                &stripped_str,
+                &mut imported,
+                &mut skipped,
+            );
+            continue;
+        }
+
+        if let Some(rel) = stripped_str.strip_prefix("workspace/") {
+            let dest = data_dir.join(rel);
+            let action = apply_file(&mut entry, &dest, &opts)?;
+            record_action(
+                &action,
+                "workspace",
+                &stripped_str,
+                &mut imported,
+                &mut skipped,
+            );
+            continue;
+        }
+
+        if stripped_str.starts_with("db/") {
+            let mut buf = Vec::new();
+            entry.read_to_end(&mut buf)?;
+            db_snapshots.push((stripped_str, buf));
+            continue;
+        }
+
+        if let Some(rel) = stripped_str.strip_prefix("sessions/") {
+            let dest = data_dir.join("sessions").join(rel);
+            let action = apply_file(&mut entry, &dest, &opts)?;
+            let category = if stripped_str.contains("media/") {
+                "media"
+            } else {
+                "session"
+            };
+            record_action(
+                &action,
+                category,
+                &stripped_str,
+                &mut imported,
+                &mut skipped,
+            );
+            continue;
+        }
+
+        debug!(path = %stripped_str, "ignoring unknown archive entry");
+    }
+
+    Ok(ArchiveExtraction {
+        imported,
+        skipped,
+        warnings,
+        db_snapshots,
+    })
+}
+
+async fn persisted_config_exists(
+    config: &chelix_config_service::ConfigService,
+) -> anyhow::Result<bool> {
+    match config.validate_persisted(None).await {
+        Ok(chelix_config_service::PersistedConfigStatus::Valid) => Ok(true),
+        Ok(chelix_config_service::PersistedConfigStatus::Missing) => Ok(false),
+        Err(error) if error.is_validation() => Ok(true),
+        Err(error) => Err(anyhow::Error::from(error)),
+    }
+}
+
+/// Commit the archived `chelix.toml` through `replace_document` and return its file action.
+async fn commit_config_document(
+    config: &chelix_config_service::ConfigService,
+    raw: Vec<u8>,
+    opts: &ImportOptions,
+) -> anyhow::Result<FileAction> {
+    if opts.dry_run {
+        return Ok(FileAction::DryRun);
+    }
+    let exists = persisted_config_exists(config).await?;
+    if exists && opts.conflict == ConflictStrategy::Skip {
+        return Ok(FileAction::Skipped);
+    }
+    let raw = String::from_utf8(raw).context("archived chelix.toml is not valid UTF-8")?;
+    config
+        .replace_document(raw, None)
+        .await
+        .map_err(anyhow::Error::from)?;
+    Ok(FileAction::Overwritten)
 }
 
 enum FileAction {

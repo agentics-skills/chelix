@@ -21,10 +21,23 @@ use super::support::default_error_parser;
 
 // ── LiveProviderSetupService ───────────────────────────────────────────────
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Where provider setup commits configuration changes.
+///
+/// `Service` commits each change through the shared configuration queue.
+/// `MemoryOnly` keeps the updated provider snapshot in the process.
+#[derive(Clone)]
 pub enum ProviderConfigPersistence {
-    Filesystem,
+    Service(chelix_config_service::ConfigService),
     MemoryOnly,
+}
+
+impl std::fmt::Debug for ProviderConfigPersistence {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Service(_) => formatter.write_str("ProviderConfigPersistence::Service(..)"),
+            Self::MemoryOnly => formatter.write_str("ProviderConfigPersistence::MemoryOnly"),
+        }
+    }
 }
 
 pub struct LiveProviderSetupService {

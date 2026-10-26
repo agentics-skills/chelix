@@ -9,6 +9,7 @@
 use {
     axum::{Json, extract::State, http::StatusCode, response::IntoResponse},
     chelix_gateway::auth::AuthIdentity,
+    std::sync::Arc,
 };
 
 const CONFIG_AUTH_REQUIRED: &str = "CONFIG_AUTH_REQUIRED";
@@ -28,27 +29,101 @@ fn config_error(code: &str, error: impl Into<String>) -> serde_json::Value {
     })
 }
 
-fn config_validation_errors(toml_str: &str) -> Vec<String> {
-    chelix_config::validate::validate_toml_str(toml_str)
-        .diagnostics
-        .into_iter()
-        .filter(|diagnostic| diagnostic.severity == chelix_config::Severity::Error)
-        .map(|diagnostic| {
-            if diagnostic.path.is_empty() {
-                diagnostic.message
-            } else {
-                format!("{}: {}", diagnostic.path, diagnostic.message)
-            }
-        })
-        .collect()
+fn diagnostic_text(diagnostic: &chelix_config::Diagnostic) -> String {
+    if diagnostic.path.is_empty() {
+        diagnostic.message.clone()
+    } else {
+        format!("{}: {}", diagnostic.path, diagnostic.message)
+    }
 }
 
-async fn validate_effective_config_candidate(toml_str: &str) -> Result<(), String> {
-    let candidate = chelix_config::load_layered_config_candidate(toml_str)
-        .map_err(|error| error.to_string())?;
-    chelix_gateway::model_reasoning::validate_candidate_agents_config(&candidate)
-        .await
-        .map_err(|error| error.to_string())
+fn config_diagnose_response(result: chelix_config::ValidationResult) -> axum::response::Response {
+    let mut syntax_errors = Vec::new();
+    let mut config_errors = Vec::new();
+    let mut warnings = Vec::new();
+    for diagnostic in result.diagnostics {
+        let text = diagnostic_text(&diagnostic);
+        match (diagnostic.severity, diagnostic.category) {
+            (
+                chelix_config::Severity::Error,
+                chelix_config::DiagnosticCategory::Syntax
+                | chelix_config::DiagnosticCategory::TypeError,
+            ) => syntax_errors.push(text),
+            (chelix_config::Severity::Error, _) => config_errors.push(text),
+            (chelix_config::Severity::Warning, _) => warnings.push(text),
+            (chelix_config::Severity::Info, _) => {},
+        }
+    }
+
+    if !syntax_errors.is_empty() && config_errors.is_empty() {
+        return Json(serde_json::json!({
+            "code": CONFIG_INVALID_TOML,
+            "valid": false,
+            "error": syntax_errors.join("; "),
+        }))
+        .into_response();
+    }
+    if !config_errors.is_empty() || !syntax_errors.is_empty() {
+        let mut diagnostics = syntax_errors;
+        diagnostics.extend(config_errors);
+        return Json(serde_json::json!({
+            "code": CONFIG_INVALID_CONFIG,
+            "valid": false,
+            "error": diagnostics.join("; "),
+            "diagnostics": diagnostics,
+        }))
+        .into_response();
+    }
+    Json(serde_json::json!({
+        "valid": true,
+        "warnings": warnings,
+    }))
+    .into_response()
+}
+
+fn config_save_error(error: chelix_config_service::Error) -> axum::response::Response {
+    if error.is_validation() {
+        let code = match &error {
+            chelix_config_service::Error::Config(chelix_config::Error::TomlDe(_))
+            | chelix_config_service::Error::Config(chelix_config::Error::TomlEdit(_)) => {
+                CONFIG_INVALID_TOML
+            },
+            _ => CONFIG_INVALID_CONFIG,
+        };
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "code": code,
+                "error": error.to_string(),
+                "valid": false,
+            })),
+        )
+            .into_response();
+    }
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(config_error(
+            CONFIG_SAVE_FAILED,
+            format!("failed to save config: {error}"),
+        )),
+    )
+        .into_response()
+}
+
+fn config_read_error(error: chelix_config_service::Error) -> axum::response::Response {
+    let (status, code, message) = match &error {
+        chelix_config_service::Error::Read { source, .. } => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            CONFIG_READ_FAILED,
+            format!("failed to read config: {source}"),
+        ),
+        _ => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            CONFIG_LOAD_FAILED,
+            error.to_string(),
+        ),
+    };
+    (status, Json(config_error(code, message))).into_response()
 }
 
 /// Check if the request should be allowed for config operations.
@@ -136,43 +211,16 @@ pub async fn config_get(State(state): State<crate::server::AppState>) -> impl In
         return resp.into_response();
     }
 
-    // Read raw file from disk to preserve comments.
-    let path = match chelix_config::find_or_default_config_path() {
-        Ok(path) => path,
-        Err(error) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(config_error(CONFIG_LOAD_FAILED, error.to_string())),
-            )
-                .into_response();
-        },
-    };
-    let toml_str = if path.exists() {
-        match std::fs::read_to_string(&path) {
-            Ok(s) => s,
-            Err(e) => {
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(config_error(
-                        CONFIG_READ_FAILED,
-                        format!("failed to read config: {e}"),
-                    )),
-                )
-                    .into_response();
-            },
-        }
-    } else {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(config_error(CONFIG_LOAD_FAILED, "no config file found")),
-        )
-            .into_response();
+    let config = state.gateway.services.configuration();
+    let document = match config.read_document().await {
+        Ok(document) => document,
+        Err(error) => return config_read_error(error),
     };
 
     Json(serde_json::json!({
-        "toml": toml_str,
+        "toml": document.toml,
         "valid": true,
-        "path": path.to_string_lossy(),
+        "path": document.path.to_string_lossy(),
     }))
     .into_response()
 }
@@ -195,41 +243,36 @@ pub async fn config_validate(
             .into_response();
     };
 
-    // Try to parse the TOML as ChelixConfig
-    match toml::from_str::<chelix_config::ChelixConfig>(toml_str) {
-        Ok(config) => {
-            // Deserialization ignores unknown keys; the schema walk rejects them.
-            let diagnostics = config_validation_errors(toml_str);
-            if !diagnostics.is_empty() {
-                return Json(serde_json::json!({
-                    "code": CONFIG_INVALID_CONFIG,
-                    "valid": false,
-                    "error": diagnostics.join("; "),
-                    "diagnostics": diagnostics,
-                }))
-                .into_response();
-            }
-
-            // Run validation checks
-            let warnings = validate_config(&config);
-
-            Json(serde_json::json!({
-                "valid": true,
-                "warnings": warnings,
-            }))
-            .into_response()
-        },
-        Err(e) => {
-            // Parse error message to extract line/column if available
-            let error_msg = e.to_string();
-            Json(serde_json::json!({
-                "code": CONFIG_INVALID_TOML,
-                "valid": false,
-                "error": error_msg,
-            }))
-            .into_response()
-        },
+    let config = state.gateway.services.configuration();
+    let diagnosed = config.diagnose(toml_str).await;
+    if diagnosed.has_errors() {
+        return config_diagnose_response(diagnosed);
     }
+    let parsed = match chelix_config::parse_raw_config(toml_str, config.location()) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            let code = match &error {
+                chelix_config::Error::TomlDe(_) | chelix_config::Error::TomlEdit(_) => {
+                    CONFIG_INVALID_TOML
+                },
+                _ => CONFIG_INVALID_CONFIG,
+            };
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "code": code,
+                    "valid": false,
+                    "error": error.to_string(),
+                })),
+            )
+                .into_response();
+        },
+    };
+    Json(serde_json::json!({
+        "valid": true,
+        "warnings": chelix_gateway::config_validation::configuration_editor_warnings(&parsed),
+    }))
+    .into_response()
 }
 
 /// Get the default configuration template with all options documented.
@@ -240,18 +283,12 @@ pub async fn config_template(State(state): State<crate::server::AppState>) -> im
         return resp.into_response();
     }
 
-    // Load current config to preserve the port
-    let config = match chelix_config::discover_and_load() {
-        Ok(config) => config,
-        Err(error) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(config_error(CONFIG_LOAD_FAILED, error.to_string())),
-            )
-                .into_response();
-        },
+    let config = state.gateway.services.configuration();
+    let port = match config.read(|cfg| cfg.server.port).await {
+        Ok(port) => port,
+        Err(error) => return config_read_error(error),
     };
-    let template = chelix_config::template::default_config_template(config.server.port);
+    let template = chelix_config::template::default_config_template(port);
 
     Json(serde_json::json!({
         "toml": template,
@@ -278,64 +315,44 @@ pub async fn config_save(
             .into_response();
     };
 
-    // Validate the complete candidate before the raw write preserves its comments.
-    if let Err(error) = toml::from_str::<chelix_config::ChelixConfig>(toml_str) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({
-                "code": CONFIG_INVALID_TOML,
-                "error": format!("invalid TOML: {error}"),
-                "valid": false,
-            })),
-        )
-            .into_response();
-    }
-
-    let diagnostics = config_validation_errors(toml_str);
-    if !diagnostics.is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({
-                "code": CONFIG_INVALID_CONFIG,
-                "error": diagnostics.join("; "),
-                "diagnostics": diagnostics,
-                "valid": false,
-            })),
-        )
-            .into_response();
-    }
-
-    if let Err(error) = validate_effective_config_candidate(toml_str).await {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({
-                "code": CONFIG_INVALID_CONFIG,
-                "error": error,
-                "valid": false,
-            })),
-        )
-            .into_response();
-    }
-
-    match chelix_config::save_raw_config(toml_str) {
-        Ok(path) => {
-            tracing::info!(path = %path.display(), "saved config (raw)");
-            Json(serde_json::json!({
-                "ok": true,
-                "path": path.to_string_lossy(),
-                "restart_required": true,
-            }))
-            .into_response()
-        },
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(config_error(
-                CONFIG_SAVE_FAILED,
-                format!("failed to save config: {e}"),
+    let config = state.gateway.services.configuration();
+    if let Err(error) = config
+        .replace_document_checked(
+            toml_str.to_owned(),
+            Some(Arc::new(
+                chelix_providers::config_model_resolver::ModelConfigValidator,
             )),
         )
-            .into_response(),
+        .await
+    {
+        if error.is_validation() {
+            let diagnosed = config.diagnose(toml_str).await;
+            if diagnosed.has_errors() {
+                let mut response = config_diagnose_response(diagnosed);
+                *response.status_mut() = StatusCode::BAD_REQUEST;
+                return response;
+            }
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "code": CONFIG_INVALID_CONFIG,
+                    "error": error.to_string(),
+                    "valid": false,
+                })),
+            )
+                .into_response();
+        }
+        return config_save_error(error);
     }
+
+    let path = config.location().to_path_buf();
+    tracing::info!(path = %path.display(), "saved config (raw)");
+    Json(serde_json::json!({
+        "ok": true,
+        "path": path.to_string_lossy(),
+        "restart_required": true,
+    }))
+    .into_response()
 }
 
 /// Restart the chelix process.
@@ -354,53 +371,19 @@ pub async fn restart(
         return resp.into_response();
     }
 
-    // Validate the on-disk config before restarting to avoid crash loops.
-    let config_path = match chelix_config::find_or_default_config_path() {
-        Ok(path) => path,
-        Err(error) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(config_error(CONFIG_LOAD_FAILED, error.to_string())),
-            )
-                .into_response();
-        },
-    };
-    if config_path.exists() {
-        match std::fs::read_to_string(&config_path) {
-            Ok(toml_str) => {
-                if let Err(error) = validate_effective_config_candidate(&toml_str).await {
-                    tracing::warn!(
-                        path = %config_path.display(),
-                        error = %error,
-                        "restart refused: saved config is invalid"
-                    );
-                    return (
-                        StatusCode::BAD_REQUEST,
-                        Json(serde_json::json!({
-                            "code": CONFIG_RESTART_INVALID,
-                            "error": format!("Config is invalid, refusing to restart: {error}"),
-                            "valid": false,
-                        })),
-                    )
-                        .into_response();
-                }
-            },
-            Err(e) => {
-                tracing::warn!(
-                    path = %config_path.display(),
-                    error = %e,
-                    "restart refused: cannot read config file"
-                );
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(config_error(
-                        CONFIG_RESTART_READ_FAILED,
-                        format!("Cannot read config file: {e}"),
-                    )),
-                )
-                    .into_response();
-            },
-        }
+    // The writer validates the persisted file before restart.
+    let config = state.gateway.services.configuration();
+    match config
+        .validate_persisted(Some(Arc::new(
+            chelix_providers::config_model_resolver::ModelConfigValidator,
+        )))
+        .await
+    {
+        Ok(
+            chelix_config_service::PersistedConfigStatus::Valid
+            | chelix_config_service::PersistedConfigStatus::Missing,
+        ) => {},
+        Err(error) => return config_restart_error(error),
     }
 
     tracing::info!("restart requested via API");
@@ -515,32 +498,48 @@ pub async fn update(
     }
 }
 
-/// Validate config and return warnings.
-fn validate_config(config: &chelix_config::ChelixConfig) -> Vec<String> {
-    let mut warnings = Vec::new();
+fn config_restart_invalid(error: impl std::fmt::Display) -> axum::response::Response {
+    tracing::warn!(error = %error, "restart refused: saved config is invalid");
+    (
+        StatusCode::BAD_REQUEST,
+        Json(serde_json::json!({
+            "code": CONFIG_RESTART_INVALID,
+            "error": format!("Config is invalid, refusing to restart: {error}"),
+            "valid": false,
+        })),
+    )
+        .into_response()
+}
 
-    // Check command execution sandbox config
-    if config.sandbox.mode == chelix_config::schema::SandboxMode::Off {
-        warnings.push(
-            "Sandbox mode is off. Commands will run directly on host without isolation."
-                .to_string(),
-        );
+fn config_restart_error(error: chelix_config_service::Error) -> axum::response::Response {
+    match error {
+        chelix_config_service::Error::Read { path, source } => {
+            tracing::warn!(
+                path = %path.display(),
+                error = %source,
+                "restart refused: cannot read config file"
+            );
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(config_error(
+                    CONFIG_RESTART_READ_FAILED,
+                    format!("Cannot read config file: {source}"),
+                )),
+            )
+                .into_response()
+        },
+        chelix_config_service::Error::Config(error) => config_restart_invalid(error),
+        chelix_config_service::Error::Validation(error) => config_restart_invalid(error),
+        error if error.is_validation() => config_restart_invalid(error),
+        error => {
+            tracing::warn!(error = %error, "restart refused: config check failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(config_error(CONFIG_LOAD_FAILED, error.to_string())),
+            )
+                .into_response()
+        },
     }
-
-    // Check auth config
-    if config.auth.disabled {
-        warnings.push(
-            "Authentication is disabled. Anyone with network access can use the gateway."
-                .to_string(),
-        );
-    }
-
-    // Check TLS config
-    if !config.tls.enabled {
-        warnings.push("TLS is disabled. Connections will use unencrypted HTTP.".to_string());
-    }
-
-    warnings
 }
 
 #[cfg(test)]
@@ -565,12 +564,35 @@ mod tests {
         }
     }
 
-    fn localhost_app_state() -> crate::server::AppState {
+    const SERVICE_CONFIG_TOML: &str = "\
+[server]\n\
+port = 18789\n\
+\n\
+[tools.execute_command]\n\
+terminal_size = \"115x58\"\n\
+\n\
+[sandbox]\n\
+archived_session_retention_days = 3\n\
+";
+
+    use crate::test_config::ConfigDirGuard;
+
+    async fn localhost_app_state() -> (crate::server::AppState, ConfigDirGuard) {
+        let guard = ConfigDirGuard::install(SERVICE_CONFIG_TOML).await;
+        let service = match chelix_config_service::ConfigService::open(
+            chelix_config_service::ConfigValidation::default(),
+            chelix_config_service::ConfigInitialization::default(),
+        )
+        .await
+        {
+            Ok(service) => service,
+            Err(error) => panic!("config service should open: {error}"),
+        };
         let mut config = chelix_config::ChelixConfig::default();
         config.sandbox.mode = chelix_config::schema::SandboxMode::Off;
         let gateway = GatewayState::with_options(
             auth::resolve_auth(None, None),
-            GatewayServices::noop(),
+            GatewayServices::noop(service),
             config,
             Arc::new(chelix_tools::sandbox::SandboxRouter::disabled()),
             None,
@@ -593,19 +615,113 @@ mod tests {
             #[cfg(feature = "vault")]
             None,
         );
-        crate::server::AppState {
-            gateway,
-            methods: Arc::new(MethodRegistry::new()),
-            request_throttle: Arc::new(crate::request_throttle::RequestThrottle::new()),
-            webauthn_registry: None,
-            #[cfg(feature = "push-notifications")]
-            push_service: None,
+        (
+            crate::server::AppState {
+                gateway,
+                methods: Arc::new(MethodRegistry::new()),
+                request_throttle: Arc::new(crate::request_throttle::RequestThrottle::new()),
+                webauthn_registry: None,
+                #[cfg(feature = "push-notifications")]
+                push_service: None,
+            },
+            guard,
+        )
+    }
+
+    #[tokio::test]
+    async fn config_save_rejects_invalid_documents_and_publishes_valid_document() {
+        let (state, guard) = localhost_app_state().await;
+        let service = state.gateway.services.configuration().clone();
+        for (raw, code) in [
+            ("[server\nport = 12345\n", CONFIG_INVALID_TOML),
+            ("[server]\nremoved_option = true\n", CONFIG_INVALID_CONFIG),
+        ] {
+            let response = config_save(
+                None,
+                State(state.clone()),
+                Json(serde_json::json!({"toml": raw})),
+            )
+            .await
+            .into_response();
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+            assert_eq!(response_json(response).await["code"], code);
+            let persisted = std::fs::read_to_string(guard.path().join("chelix.toml"))
+                .unwrap_or_else(|error| panic!("read rejected document: {error}"));
+            assert_eq!(persisted, SERVICE_CONFIG_TOML);
+            let snapshot = service
+                .read_document()
+                .await
+                .unwrap_or_else(|error| panic!("read unchanged snapshot: {error}"));
+            assert_eq!(snapshot.toml, SERVICE_CONFIG_TOML);
+        }
+        let raw = "[server]\nport = 12345\n";
+        let response = config_save(None, State(state), Json(serde_json::json!({"toml": raw})))
+            .await
+            .into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response_json(response).await["restart_required"], true);
+        assert_eq!(
+            std::fs::read_to_string(guard.path().join("chelix.toml"))
+                .unwrap_or_else(|error| panic!("read saved document: {error}")),
+            raw
+        );
+        assert_eq!(
+            service
+                .read_document()
+                .await
+                .unwrap_or_else(|error| panic!("read published document: {error}"))
+                .toml,
+            raw
+        );
+        assert_eq!(
+            service
+                .read(|config| config.server.port)
+                .await
+                .unwrap_or_else(|error| panic!("read published config: {error}")),
+            12345
+        );
+    }
+
+    #[tokio::test]
+    async fn config_service_errors_keep_endpoint_status_and_code() {
+        use chelix_config_service::Error;
+        let cases = [
+            (
+                config_save_error(Error::Write {
+                    path: "chelix.toml".into(),
+                    source: std::io::Error::other("write failed"),
+                }),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                CONFIG_SAVE_FAILED,
+            ),
+            (
+                config_restart_error(Error::Read {
+                    path: "chelix.toml".into(),
+                    source: std::io::Error::other("read failed"),
+                }),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                CONFIG_RESTART_READ_FAILED,
+            ),
+            (
+                config_restart_error(Error::Validation("owner rejected candidate".into())),
+                StatusCode::BAD_REQUEST,
+                CONFIG_RESTART_INVALID,
+            ),
+            (
+                config_read_error(Error::QueueClosed),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                CONFIG_LOAD_FAILED,
+            ),
+        ];
+        for (response, status, code) in cases {
+            assert_eq!(response.status(), status);
+            assert_eq!(response_json(response).await["code"], code);
         }
     }
 
     #[tokio::test]
     async fn config_validate_rejects_unknown_memory_field() {
-        let state = localhost_app_state();
+        let (state, _guard) = localhost_app_state().await;
         let body = serde_json::json!({
             "toml": "[memory]\nunexpected_field = \"x\"\n",
         });

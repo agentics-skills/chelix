@@ -573,8 +573,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn unknown_method_returns_unknown_code() {
+    #[tokio::test]
+    async fn unknown_method_returns_unknown_code() {
+        let fixture = crate::test_config::ConfigFixture::new().await;
         use crate::{
             auth::{AuthMode, ResolvedAuth},
             services::GatewayServices,
@@ -596,14 +597,11 @@ mod tests {
                     token: None,
                     password: None,
                 },
-                GatewayServices::noop(),
+                GatewayServices::noop(fixture.service.clone()),
             ),
             channel: None,
         };
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .build()
-            .expect("runtime");
-        let resp = rt.block_on(reg.dispatch(ctx));
+        let resp = reg.dispatch(ctx).await;
         assert!(!resp.ok);
         assert_eq!(
             resp.error.as_ref().map(|e| e.code.as_str()),
@@ -620,8 +618,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn mcp_config_update_invalid_type_returns_invalid_message() {
+    #[tokio::test]
+    async fn mcp_config_update_invalid_type_returns_invalid_message() {
+        let fixture = crate::test_config::ConfigFixture::new().await;
         use crate::{
             auth::{AuthMode, ResolvedAuth},
             services::GatewayServices,
@@ -645,14 +644,11 @@ mod tests {
                     token: None,
                     password: None,
                 },
-                GatewayServices::noop(),
+                GatewayServices::noop(fixture.service.clone()),
             ),
             channel: None,
         };
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .build()
-            .expect("runtime");
-        let resp = rt.block_on(reg.dispatch(ctx));
+        let resp = reg.dispatch(ctx).await;
         assert!(!resp.ok);
         assert_eq!(
             resp.error.as_ref().map(|e| e.message.as_str()),
@@ -660,8 +656,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn session_resolution_stays_within_transport_mode() {
+    #[tokio::test]
+    async fn session_resolution_stays_within_transport_mode() {
+        let fixture = crate::test_config::ConfigFixture::new().await;
         use crate::{
             auth::{AuthMode, ResolvedAuth},
             services::GatewayServices,
@@ -674,19 +671,16 @@ mod tests {
                 token: None,
                 password: None,
             },
-            GatewayServices::noop(),
+            GatewayServices::noop(fixture.service.clone()),
         );
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .build()
-            .expect("runtime");
-        runtime.block_on(async {
+        {
             state
                 .client_registry
                 .write()
                 .await
                 .active_sessions
                 .insert("stateful".into(), "session:stateful".into());
-        });
+        }
 
         let cases = [
             (
@@ -729,7 +723,7 @@ mod tests {
                 state: Arc::clone(&state),
                 channel: None,
             };
-            let actual = runtime.block_on(context.resolved_session_id());
+            let actual = context.resolved_session_id().await;
             assert_eq!(actual.as_ref().map(SessionKey::as_str), expected, "{name}");
         }
     }

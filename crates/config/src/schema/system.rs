@@ -88,6 +88,12 @@ impl Default for ServerConfig {
 }
 
 impl ServerConfig {
+    /// Reports whether the configured bind uses a localhost alias.
+    #[must_use]
+    pub fn binds_localhost(&self) -> bool {
+        self.bind == "127.0.0.1" || self.bind == "localhost" || self.bind == "::1"
+    }
+
     /// Returns whether the web UI terminal is enabled.
     pub fn is_terminal_enabled(&self) -> bool {
         self.terminal_enabled

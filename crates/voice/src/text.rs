@@ -1,0 +1,728 @@
+use std::borrow::Cow;
+
+/// Parsed TTS directives from `[[tts:key=value]]` tags in message text.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct TtsDirectives {
+    /// Per-message persona override.
+    pub persona: Option<String>,
+    /// Per-message provider override.
+    pub provider: Option<String>,
+    /// Per-message voice ID override.
+    pub voice_id: Option<String>,
+    /// Per-message model override.
+    pub model: Option<String>,
+    /// Per-message speed override.
+    pub speed: Option<f32>,
+    /// Per-message stability override (ElevenLabs).
+    pub stability: Option<f32>,
+    /// Per-message similarity boost override (ElevenLabs).
+    pub similarity_boost: Option<f32>,
+}
+
+/// Extract `[[tts:...]]` directives from text and return cleaned text.
+///
+/// Supported directives:
+/// - `[[tts:persona=alfred]]` — override the active persona for this message
+/// - `[[tts:provider=openai]]` — override the TTS provider for this message
+/// - `[[tts:voiceId=cedar model=gpt-4o-mini-tts speed=0.9]]` — per-field overrides
+/// - `[[tts]]` — bare tag (used by `TtsAutoMode::Tagged`)
+///
+/// Multiple directives can appear in a single tag: `[[tts:persona=alfred provider=openai]]`.
+/// The directive tags are stripped from the returned text.
+#[must_use]
+pub fn parse_tts_directives(text: &str) -> (Cow<'_, str>, TtsDirectives) {
+    if !text.contains("[[tts") {
+        return (Cow::Borrowed(text), TtsDirectives::default());
+    }
+
+    let mut directives = TtsDirectives::default();
+    let mut cleaned = String::with_capacity(text.len());
+    let mut rest = text;
+
+    while let Some(start) = rest.find("[[tts") {
+        cleaned.push_str(&rest[..start]);
+        let after_tag = &rest[start..];
+        if let Some(end) = after_tag.find("]]") {
+            let tag_content = &after_tag[5..end]; // skip "[[tts"
+            // Parse key=value pairs from the tag content (after optional `:`)
+            let params = tag_content.strip_prefix(':').unwrap_or(tag_content);
+            for token in params.split_whitespace() {
+                if let Some((key, value)) = token.split_once('=') {
+                    match key {
+                        "persona" => directives.persona = Some(value.to_string()),
+                        "provider" => directives.provider = Some(value.to_string()),
+                        "voiceId" | "voice_id" | "voice" => {
+                            directives.voice_id = Some(value.to_string());
+                        },
+                        "model" => directives.model = Some(value.to_string()),
+                        "speed" => directives.speed = value.parse().ok(),
+                        "stability" => directives.stability = value.parse().ok(),
+                        "similarityBoost" | "similarity_boost" => {
+                            directives.similarity_boost = value.parse().ok();
+                        },
+                        _ => {},
+                    }
+                }
+            }
+            rest = &after_tag[end + 2..];
+        } else {
+            // Malformed tag — keep as-is
+            cleaned.push_str(after_tag);
+            rest = "";
+            break;
+        }
+    }
+    cleaned.push_str(rest);
+
+    (Cow::Owned(cleaned), directives)
+}
+
+/// Check whether text contains SSML tags (currently `<break`).
+#[must_use]
+pub fn contains_ssml(text: &str) -> bool {
+    text.contains("<break")
+}
+
+/// Strip SSML tags (`<break .../>`) so non-SSML providers don't speak them
+/// literally. Returns the input unchanged (no allocation) when no tags are
+/// present.
+#[must_use]
+pub fn strip_ssml_tags(text: &str) -> Cow<'_, str> {
+    if !contains_ssml(text) {
+        return Cow::Borrowed(text);
+    }
+
+    let mut result = String::with_capacity(text.len());
+    let mut rest = text;
+
+    while let Some(start) = rest.find("<break") {
+        result.push_str(&rest[..start]);
+        // Find the closing `/>` or `>`
+        if let Some(end) = rest[start..].find("/>") {
+            rest = &rest[start + end + 2..];
+        } else if let Some(end) = rest[start..].find('>') {
+            rest = &rest[start + end + 1..];
+        } else {
+            // Malformed tag — keep the rest as-is
+            result.push_str(&rest[start..]);
+            rest = "";
+            break;
+        }
+    }
+    result.push_str(rest);
+
+    Cow::Owned(result)
+}
+
+/// Sanitize LLM output for text-to-speech consumption.
+///
+/// Strips markdown formatting, raw URLs, code fences, and other visual syntax
+/// that TTS engines would read literally. Returns `Cow::Borrowed` when the
+/// input needs no changes (zero-alloc fast path).
+///
+/// Processing order:
+/// 1. Remove fenced code blocks (``` ... ```)
+/// 2. Remove URLs (`https?://…`)
+/// 3. Strip markdown headers (`# `, `## `, etc.)
+/// 4. Strip bold/italic markers (`**`, `__`, word-boundary `*`/`_`)
+/// 5. Strip inline code backticks
+/// 6. Strip bullet/list prefixes (`- `, `* `, `1. `)
+/// 7. Collapse runs of whitespace / blank lines
+/// 8. Strip SSML tags (via [`strip_ssml_tags`])
+#[must_use]
+pub fn sanitize_text_for_tts(text: &str) -> Cow<'_, str> {
+    // Fast path: if none of the markers we strip are present, return as-is.
+    if !needs_sanitization(text) {
+        return Cow::Borrowed(text);
+    }
+
+    let mut out = String::with_capacity(text.len());
+
+    // --- Pass 1: remove fenced code blocks ---
+    let after_fences = remove_code_fences(text);
+
+    // --- Pass 2: remove markdown tables ---
+    let after_tables = remove_tables(&after_fences);
+
+    // --- Process line by line ---
+    for line in after_tables.lines() {
+        let mut l: &str = line;
+
+        // Strip markdown headers (e.g. "## Title" → "Title")
+        l = strip_leading_hashes(l);
+
+        // Strip bullet/list prefixes ("- ", "* " at line start, "1. " etc.)
+        l = strip_bullet_prefix(l);
+
+        // Strip inline code backticks
+        let l_owned;
+        if l.contains('`') {
+            l_owned = l.replace('`', "");
+            l = &l_owned;
+        } else {
+            l_owned = String::new();
+            let _ = &l_owned; // suppress unused warning
+        }
+
+        // Remove URLs (http:// or https://)
+        let after_urls = remove_urls(l);
+
+        // Strip bold/italic markers
+        let after_bold = strip_bold_italic(&after_urls);
+
+        // Push the cleaned line
+        let trimmed = after_bold.trim();
+        if !trimmed.is_empty() {
+            if !out.is_empty() {
+                out.push('\n');
+            }
+            out.push_str(trimmed);
+        }
+    }
+
+    // Collapse any remaining multiple blank lines into one
+    let collapsed = collapse_whitespace(&out);
+
+    // Final pass: strip SSML tags
+    match strip_ssml_tags(&collapsed) {
+        Cow::Borrowed(_) => Cow::Owned(collapsed),
+        Cow::Owned(s) => Cow::Owned(s),
+    }
+}
+
+/// Quick check for whether the text contains any markers we strip.
+fn needs_sanitization(text: &str) -> bool {
+    text.contains("```")
+        || text.contains("http://")
+        || text.contains("https://")
+        || text.contains('#')
+        || text.contains('*')
+        || text.contains('_')
+        || text.contains('`')
+        || text.contains('|')
+        || text.contains("\n- ")
+        || text.starts_with("- ")
+        || has_ordered_list(text)
+        || text.contains("<break")
+}
+
+/// Check if the text contains an ordered list pattern (`\n1. `, `\n2. `, etc.).
+fn has_ordered_list(text: &str) -> bool {
+    for (i, ch) in text.char_indices() {
+        if ch == '\n' {
+            // Check if next chars are digits followed by ". "
+            let rest = &text[i + 1..];
+            let digit_len = rest.chars().take_while(|c| c.is_ascii_digit()).count();
+            if digit_len > 0 && rest[digit_len..].starts_with(". ") {
+                return true;
+            }
+        }
+    }
+    // Also check start of text
+    let digit_len = text.chars().take_while(|c| c.is_ascii_digit()).count();
+    digit_len > 0 && text[digit_len..].starts_with(". ")
+}
+
+/// Remove fenced code blocks (` ``` ... ``` `).
+fn remove_code_fences(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut in_fence = false;
+
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("```") {
+            in_fence = !in_fence;
+            continue;
+        }
+        if in_fence {
+            continue;
+        }
+        result.push_str(line);
+        result.push('\n');
+    }
+
+    // Remove trailing newline added by the loop
+    if result.ends_with('\n') && !text.ends_with('\n') {
+        result.pop();
+    }
+
+    result
+}
+
+/// Remove markdown table blocks from text. A table block is a run of
+/// consecutive lines containing pipe (`|`) column separators that includes
+/// a separator row (`|---|` or `---+---`). Entire tables are removed because
+/// pipe characters and alignment dashes are meaningless when read aloud.
+fn remove_tables(text: &str) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut result = String::with_capacity(text.len());
+    let mut i = 0;
+
+    while i < lines.len() {
+        // Look for the start of a potential table (a line with table-like pipes).
+        if is_tts_table_line(lines[i]) {
+            // Gather consecutive table-like lines.
+            let start = i;
+            while i < lines.len() && is_tts_table_line(lines[i]) {
+                i += 1;
+            }
+            let block = &lines[start..i];
+            // Only strip if there's a separator row (confirming it's really a table).
+            if block.len() >= 2 && block.iter().any(|l| is_tts_separator_row(l)) {
+                // Skip the entire table block — don't emit anything for it.
+                continue;
+            }
+            // Not a real table, keep the lines.
+            for line in block {
+                result.push_str(line);
+                result.push('\n');
+            }
+        } else {
+            result.push_str(lines[i]);
+            result.push('\n');
+            i += 1;
+        }
+    }
+
+    if result.ends_with('\n') && !text.ends_with('\n') {
+        result.pop();
+    }
+    result
+}
+
+/// Check if a line looks like a table row (contains `|` as column separator).
+fn is_tts_table_line(line: &str) -> bool {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    // Standard: starts with |
+    if trimmed.starts_with('|') {
+        return true;
+    }
+    // Non-standard: at least 2 pipe separators
+    if trimmed.chars().filter(|&c| c == '|').count() >= 2 {
+        return true;
+    }
+    // Separator row with + intersections
+    is_tts_separator_row(line)
+}
+
+/// Check if a line is a table separator row (`|---|` or `---+---`).
+fn is_tts_separator_row(line: &str) -> bool {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    // Pipe-separated: |---|---|
+    let inner = trimmed.strip_prefix('|').unwrap_or(trimmed);
+    let inner = inner.strip_suffix('|').unwrap_or(inner);
+    if !inner.is_empty()
+        && inner.split('|').all(|cell| {
+            let c = cell.trim();
+            !c.is_empty() && c.chars().all(|ch| ch == '-' || ch == ':')
+        })
+    {
+        return true;
+    }
+    // Plus-separated: ---+---+---
+    trimmed.contains('+')
+        && trimmed.split('+').all(|cell| {
+            let c = cell.trim();
+            !c.is_empty() && c.chars().all(|ch| ch == '-' || ch == ':')
+        })
+}
+
+/// Strip leading `#` characters (markdown headers) from a line.
+fn strip_leading_hashes(line: &str) -> &str {
+    let trimmed = line.trim_start();
+    if !trimmed.starts_with('#') {
+        return line;
+    }
+    let after_hashes = trimmed.trim_start_matches('#');
+    // Only strip if followed by a space (avoids false positives like "#hashtag")
+    after_hashes.strip_prefix(' ').unwrap_or(line)
+}
+
+/// Strip bullet/list prefixes from a line start.
+fn strip_bullet_prefix(line: &str) -> &str {
+    let trimmed = line.trim_start();
+    // Unordered: "- " or "* "
+    if let Some(rest) = trimmed.strip_prefix("- ") {
+        return rest;
+    }
+    if let Some(rest) = trimmed.strip_prefix("* ") {
+        return rest;
+    }
+    // Ordered: "1. ", "2. ", etc.
+    if let Some(pos) = trimmed.find(". ") {
+        let prefix = &trimmed[..pos];
+        if !prefix.is_empty() && prefix.chars().all(|c| c.is_ascii_digit()) {
+            return &trimmed[pos + 2..];
+        }
+    }
+    line
+}
+
+/// Remove URLs matching `https?://\S+`.
+fn remove_urls(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut rest = text;
+
+    loop {
+        // Find the next URL start
+        let pos = rest.find("https://").or_else(|| rest.find("http://"));
+
+        match pos {
+            Some(start) => {
+                result.push_str(&rest[..start]);
+                // Skip the URL (until whitespace or end)
+                let url_start = &rest[start..];
+                let url_end = url_start
+                    .find(|c: char| c.is_whitespace() || c == ')' || c == ']' || c == '>')
+                    .unwrap_or(url_start.len());
+                rest = &rest[start + url_end..];
+            },
+            None => {
+                result.push_str(rest);
+                break;
+            },
+        }
+    }
+
+    result
+}
+
+/// Strip bold/italic markers (`**`, `__`, and word-boundary `*`/`_`).
+///
+/// Preserves contractions like "don't" by only stripping `_` at word boundaries
+/// (i.e. preceded/followed by whitespace or at string boundaries).
+fn strip_bold_italic(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let chars: Vec<char> = text.chars().collect();
+    let len = chars.len();
+    let mut i = 0;
+
+    while i < len {
+        // Double markers: ** or __
+        if i + 1 < len && chars[i] == chars[i + 1] && (chars[i] == '*' || chars[i] == '_') {
+            i += 2;
+            continue;
+        }
+
+        // Single * is always a markdown marker (less common in prose)
+        if chars[i] == '*' {
+            i += 1;
+            continue;
+        }
+
+        // Single _ only at word boundaries to preserve contractions
+        if chars[i] == '_' {
+            let at_start = i == 0 || chars[i - 1].is_whitespace();
+            let at_end = i + 1 >= len || chars[i + 1].is_whitespace();
+            if at_start || at_end {
+                i += 1;
+                continue;
+            }
+        }
+
+        result.push(chars[i]);
+        i += 1;
+    }
+
+    result
+}
+
+/// Collapse runs of multiple blank lines into a single newline.
+fn collapse_whitespace(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut prev_was_newline = false;
+
+    for ch in text.chars() {
+        if ch == '\n' {
+            if !prev_was_newline {
+                result.push('\n');
+            }
+            prev_was_newline = true;
+        } else {
+            prev_was_newline = false;
+            result.push(ch);
+        }
+    }
+
+    result.trim().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_tts_directives_no_tags() {
+        let (text, dirs) = parse_tts_directives("Hello world, no directives.");
+        assert!(matches!(text, Cow::Borrowed(_)));
+        assert_eq!(dirs, TtsDirectives::default());
+    }
+
+    #[test]
+    fn test_parse_tts_directives_persona() {
+        let (text, dirs) = parse_tts_directives("Hello [[tts:persona=alfred]] world.");
+        assert_eq!(text.as_ref(), "Hello  world.");
+        assert_eq!(dirs.persona.as_deref(), Some("alfred"));
+        assert_eq!(dirs.provider, None);
+    }
+
+    #[test]
+    fn test_parse_tts_directives_multiple() {
+        let (text, dirs) =
+            parse_tts_directives("Say this [[tts:persona=narrator provider=openai]] please.");
+        assert_eq!(text.as_ref(), "Say this  please.");
+        assert_eq!(dirs.persona.as_deref(), Some("narrator"));
+        assert_eq!(dirs.provider.as_deref(), Some("openai"));
+    }
+
+    #[test]
+    fn test_parse_tts_directives_bare_tag() {
+        let (text, dirs) = parse_tts_directives("Speak this [[tts]] aloud.");
+        assert_eq!(text.as_ref(), "Speak this  aloud.");
+        assert_eq!(dirs, TtsDirectives::default());
+    }
+
+    #[test]
+    fn test_parse_tts_directives_per_field() {
+        let (text, dirs) = parse_tts_directives(
+            "Hello [[tts:voiceId=cedar model=gpt-4o-mini-tts speed=0.9 stability=0.65]] world.",
+        );
+        assert_eq!(text.as_ref(), "Hello  world.");
+        assert_eq!(dirs.voice_id.as_deref(), Some("cedar"));
+        assert_eq!(dirs.model.as_deref(), Some("gpt-4o-mini-tts"));
+        assert_eq!(dirs.speed, Some(0.9));
+        assert_eq!(dirs.stability, Some(0.65));
+        assert_eq!(dirs.persona, None);
+    }
+
+    #[test]
+    fn test_parse_tts_directives_at_boundaries() {
+        let (text, dirs) = parse_tts_directives("[[tts:persona=butler]]Hello");
+        assert_eq!(text.as_ref(), "Hello");
+        assert_eq!(dirs.persona.as_deref(), Some("butler"));
+    }
+
+    #[test]
+    fn test_sanitize_noop_plain_text() {
+        let text = "Hello, this is a plain response with no formatting.";
+        let result = sanitize_text_for_tts(text);
+        assert!(
+            matches!(result, Cow::Borrowed(_)),
+            "plain text should return Cow::Borrowed"
+        );
+        assert_eq!(result, text);
+    }
+
+    #[test]
+    fn test_sanitize_strips_urls() {
+        let text = "Check out https://example.com/foo for details.";
+        let result = sanitize_text_for_tts(text);
+        assert!(!result.contains("https://"));
+        assert!(result.contains("Check out"));
+        assert!(result.contains("for details."));
+    }
+
+    #[test]
+    fn test_sanitize_strips_http_urls() {
+        let text = "Visit http://example.com for more.";
+        let result = sanitize_text_for_tts(text);
+        assert!(!result.contains("http://"));
+    }
+
+    #[test]
+    fn test_sanitize_strips_markdown_headers() {
+        let text = "## Title\nSome content";
+        let result = sanitize_text_for_tts(text);
+        assert!(result.contains("Title"));
+        assert!(!result.contains("##"));
+    }
+
+    #[test]
+    fn test_sanitize_strips_code_fences() {
+        let text = "Before\n```rust\nfn main() {}\n```\nAfter";
+        let result = sanitize_text_for_tts(text);
+        assert!(result.contains("Before"));
+        assert!(result.contains("After"));
+        assert!(!result.contains("fn main"));
+        assert!(!result.contains("```"));
+    }
+
+    #[test]
+    fn test_sanitize_strips_inline_code() {
+        let text = "Run `cargo build` to compile.";
+        let result = sanitize_text_for_tts(text);
+        assert_eq!(result.as_ref(), "Run cargo build to compile.");
+    }
+
+    #[test]
+    fn test_sanitize_strips_bold_italic() {
+        let text = "This is **bold** and *italic* text.";
+        let result = sanitize_text_for_tts(text);
+        assert_eq!(result.as_ref(), "This is bold and italic text.");
+    }
+
+    #[test]
+    fn test_sanitize_strips_underscore_bold_italic() {
+        let text = "This is __bold__ and _italic_ text.";
+        let result = sanitize_text_for_tts(text);
+        assert!(result.contains("bold"));
+        assert!(result.contains("italic"));
+        assert!(!result.contains("__"));
+    }
+
+    #[test]
+    fn test_sanitize_strips_bullet_lists() {
+        let text = "Items:\n- First item\n- Second item";
+        let result = sanitize_text_for_tts(text);
+        assert!(result.contains("First item"));
+        assert!(result.contains("Second item"));
+        assert!(!result.contains("\n- "));
+    }
+
+    #[test]
+    fn test_sanitize_strips_ordered_lists() {
+        let text = "Steps:\n1. First step\n2. Second step";
+        let result = sanitize_text_for_tts(text);
+        assert!(result.contains("First step"));
+        assert!(result.contains("Second step"));
+        assert!(!result.contains("1. "));
+    }
+
+    #[test]
+    fn test_sanitize_preserves_contractions() {
+        let text = "I don't think it's a problem.";
+        let result = sanitize_text_for_tts(text);
+        assert_eq!(result.as_ref(), "I don't think it's a problem.");
+    }
+
+    #[test]
+    fn test_sanitize_realistic_llm_output() {
+        let text = "\
+## Getting Started with Rust
+
+Here's how to set up your project:
+
+1. Install Rust from https://rustup.rs/
+2. Run `cargo new my_project`
+3. Edit `src/main.rs`
+
+```rust
+fn main() {
+    println!(\"Hello, world!\");
+}
+```
+
+For more details, check the **official documentation** at https://doc.rust-lang.org/book/.
+
+- Use `cargo build` to compile
+- Use `cargo test` to run tests";
+
+        let result = sanitize_text_for_tts(text);
+
+        // No URLs
+        assert!(!result.contains("https://"));
+        // No code fences or code content
+        assert!(!result.contains("```"));
+        assert!(!result.contains("println"));
+        // No markdown formatting
+        assert!(!result.contains("##"));
+        assert!(!result.contains("**"));
+        assert!(!result.contains('`'));
+        // Content is preserved
+        assert!(result.contains("Getting Started with Rust"));
+        assert!(result.contains("Install Rust from"));
+        assert!(result.contains("official documentation"));
+    }
+
+    #[test]
+    fn test_sanitize_strips_ssml_tags() {
+        let text = "Hello<break time=\"0.5s\"/> world";
+        let result = sanitize_text_for_tts(text);
+        assert!(!result.contains("<break"));
+    }
+
+    #[test]
+    fn test_sanitize_strips_pipe_table() {
+        let text = "Before\n| Name | Age |\n|------|-----|\n| Alice | 30 |\n| Bob | 25 |\nAfter";
+        let result = sanitize_text_for_tts(text);
+        assert!(
+            result.contains("Before"),
+            "text before table kept: {result}"
+        );
+        assert!(result.contains("After"), "text after table kept: {result}");
+        assert!(!result.contains("Alice"), "table content removed: {result}");
+        assert!(!result.contains("|"), "no pipe chars: {result}");
+    }
+
+    #[test]
+    fn test_sanitize_strips_plus_separator_table() {
+        let text = "Here are restaurants:\nName | Rating | Open\n-----+--------+-----\nJay | 4.8 | 11 PM\nBob | 4.5 | 10 PM\nDone!";
+        let result = sanitize_text_for_tts(text);
+        assert!(result.contains("Here are restaurants:"), "{result}");
+        assert!(result.contains("Done!"), "{result}");
+        assert!(!result.contains("Jay"), "table data removed: {result}");
+        assert!(!result.contains("4.8"), "table data removed: {result}");
+    }
+
+    #[test]
+    fn test_sanitize_keeps_single_pipe_in_prose() {
+        let text = "Use the A | B operator for choices.";
+        let result = sanitize_text_for_tts(text);
+        // A single pipe in prose is kept (not a table).
+        assert!(result.contains("A"), "{result}");
+        assert!(result.contains("B"), "{result}");
+    }
+
+    #[test]
+    fn test_contains_ssml() {
+        assert!(contains_ssml("Hello <break time=\"0.5s\"/> world"));
+        assert!(contains_ssml("text<break/>more"));
+        assert!(!contains_ssml("Hello world"));
+        assert!(!contains_ssml("a <b>bold</b> tag"));
+    }
+
+    #[test]
+    fn test_strip_ssml_tags_no_tags() {
+        let text = "Hello world, no tags here";
+        let result = strip_ssml_tags(text);
+        assert!(matches!(result, Cow::Borrowed(_)));
+        assert_eq!(result, "Hello world, no tags here");
+    }
+
+    #[test]
+    fn test_strip_ssml_tags_self_closing() {
+        assert_eq!(
+            strip_ssml_tags("Hello...<break time=\"0.5s\"/>...world"),
+            "Hello......world"
+        );
+    }
+
+    #[test]
+    fn test_strip_ssml_tags_multiple() {
+        assert_eq!(
+            strip_ssml_tags("A<break time=\"0.5s\"/> B<break time=\"0.7s\"/> C"),
+            "A B C"
+        );
+    }
+
+    #[test]
+    fn test_strip_ssml_tags_at_boundaries() {
+        assert_eq!(strip_ssml_tags("<break time=\"0.3s\"/>Hello"), "Hello");
+        assert_eq!(strip_ssml_tags("Hello<break time=\"0.3s\"/>"), "Hello");
+    }
+
+    #[test]
+    fn test_strip_ssml_tags_malformed() {
+        // Malformed tag with no closing — kept as-is
+        assert_eq!(
+            strip_ssml_tags("Hello <break time=\"0.5s\""),
+            "Hello <break time=\"0.5s\""
+        );
+    }
+}

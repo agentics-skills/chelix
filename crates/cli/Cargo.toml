@@ -11,31 +11,32 @@ name = "chelix"
 path = "src/main.rs"
 
 [dependencies]
-anyhow             = { workspace = true }
-chelix-common      = { workspace = true }
-chelix-config      = { workspace = true }
-chelix-cron        = { workspace = true }
-chelix-gateway     = { workspace = true }
-chelix-httpd       = { workspace = true }
-chelix-memory      = { workspace = true }
-chelix-onboarding  = { workspace = true }
-chelix-plugins     = { workspace = true }
-chelix-portable    = { workspace = true }
-chelix-projects    = { workspace = true }
-chelix-sessions    = { workspace = true }
-chelix-skills      = { workspace = true }
-chelix-tools       = { workspace = true }
-chelix-web         = { optional = true, workspace = true }
-clap               = { workspace = true }
-dotenvy            = { workspace = true }
-openssl            = { workspace = true }
-reqwest            = { workspace = true }
-serde_json         = { workspace = true }
-sqlx               = { workspace = true }
-time               = { workspace = true }
-tokio              = { workspace = true }
-tracing            = { workspace = true }
-tracing-subscriber = { workspace = true }
+anyhow                = { workspace = true }
+chelix-common         = { workspace = true }
+chelix-config         = { workspace = true }
+chelix-config-service = { workspace = true }
+chelix-cron           = { workspace = true }
+chelix-gateway        = { workspace = true }
+chelix-httpd          = { workspace = true }
+chelix-memory         = { workspace = true }
+chelix-onboarding     = { workspace = true }
+chelix-plugins        = { workspace = true }
+chelix-portable       = { workspace = true }
+chelix-projects       = { workspace = true }
+chelix-sessions       = { workspace = true }
+chelix-skills         = { workspace = true }
+chelix-tools          = { workspace = true }
+chelix-web            = { optional = true, workspace = true }
+clap                  = { workspace = true }
+dotenvy               = { workspace = true }
+openssl               = { workspace = true }
+reqwest               = { workspace = true }
+serde_json            = { workspace = true }
+sqlx                  = { workspace = true }
+time                  = { workspace = true }
+tokio                 = { workspace = true }
+tracing               = { workspace = true }
+tracing-subscriber    = { workspace = true }
 
 [target.'cfg(all(not(target_os = "windows"), not(all(target_os = "linux", target_arch = "aarch64"))))'.dependencies]
 tikv-jemallocator = { optional = true, workspace = true }
@@ -44,7 +45,7 @@ tikv-jemallocator = { optional = true, workspace = true }
 tempfile = { workspace = true }
 
 [features]
-agent          = ["chelix-gateway/agent", "chelix-web?/agent"]
+agent = ["chelix-gateway/agent", "chelix-web?/agent"]
 # User-facing integrations stay default-on in the CLI crate per workspace policy,
 # even when the underlying implementation remains feature-gated in lower crates.
 #
@@ -127,7 +128,7 @@ linkup             = ["chelix-gateway/linkup"]
 # crashes on 16 KiB page kernels (e.g. Raspberry Pi OS variants).
 lightweight        = ["jemalloc", "tls", "web-ui"]
 mdns               = ["chelix-gateway/mdns"]
-metrics            = ["chelix-httpd/metrics", "chelix-web?/metrics"]
+metrics            = ["chelix-config-service/metrics", "chelix-httpd/metrics", "chelix-web?/metrics"]
 prometheus         = ["chelix-httpd/prometheus"]
 push-notifications = ["chelix-httpd/push-notifications", "chelix-web?/push-notifications"]
 telegram           = ["chelix-gateway/telegram"]

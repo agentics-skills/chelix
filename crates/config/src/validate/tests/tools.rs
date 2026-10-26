@@ -1,49 +1,6 @@
 use super::*;
 
 #[test]
-fn sandbox_mode_requires_retention_only_when_on() {
-    let toml = r#"
-[sandbox]
-mode = "Off"
-
-[tools.execute_command]
-terminal_size = "115x58"
-"#;
-    let result = validate_toml_str(toml);
-    let warning = result.diagnostics.iter().find(|d| d.path == "sandbox.mode");
-    assert!(warning.is_some(), "expected warning for sandbox mode off");
-    assert!(!result.has_errors(), "{:?}", result.diagnostics);
-
-    for sandbox in ["", "[sandbox]\nmode = \"On\"\n"] {
-        let input = format!("[tools.execute_command]\nterminal_size = \"115x58\"\n{sandbox}");
-        let result = validate_toml_str(&input);
-        assert!(
-            result.diagnostics.iter().any(|diagnostic| {
-                diagnostic.path == "sandbox.archived_session_retention_days"
-                    && diagnostic.category == "missing-field"
-                    && diagnostic.severity == Severity::Error
-            }),
-            "{:?}",
-            result.diagnostics
-        );
-    }
-}
-
-#[test]
-fn port_zero_info() {
-    let toml = r#"
-[server]
-port = 0
-"#;
-    let result = validate_toml_str(toml);
-    let info = result
-        .diagnostics
-        .iter()
-        .find(|d| d.severity == Severity::Info && d.path == "server.port");
-    assert!(info.is_some(), "expected info for port 0");
-}
-
-#[test]
 fn podman_sandbox_backend_accepted() {
     let toml = r#"
 [sandbox]
@@ -69,142 +26,12 @@ workspace_mount = "ro"
 "#;
     let result = validate_toml_str(toml);
     let unknown = result.diagnostics.iter().find(|diagnostic| {
-        diagnostic.category == "unknown-field" && diagnostic.path == "sandbox.workspace_mount"
+        diagnostic.category == DiagnosticCategory::UnknownField
+            && diagnostic.path == "sandbox.workspace_mount"
     });
     assert!(
         unknown.is_some(),
         "removed workspace_mount setting must not be accepted, got: {:?}",
-        result.diagnostics
-    );
-}
-
-#[test]
-fn valid_declarative_sandbox_mount_is_accepted() {
-    let toml = r#"
-[[sandbox.mounts]]
-host = "/srv/reference"
-guest = "/mnt/reference"
-mode = "ro"
-"#;
-    let result = validate_toml_str(toml);
-    let mount_errors: Vec<_> = result
-        .diagnostics
-        .iter()
-        .filter(|diagnostic| diagnostic.path.starts_with("sandbox.mounts"))
-        .collect();
-    assert!(
-        mount_errors.is_empty(),
-        "valid custom mount should be accepted, got: {mount_errors:?}"
-    );
-}
-
-#[test]
-fn sandbox_data_dir_source_cannot_use_a_different_guest_path() {
-    let toml = r#"
-[sandbox]
-host_data_dir = "/host/chelix-data"
-
-[[sandbox.mounts]]
-host = "/host/chelix-data"
-guest = "/different/data"
-mode = "rw"
-"#;
-    let result = validate_toml_str(toml);
-    let error = result.diagnostics.iter().find(|diagnostic| {
-        diagnostic.path == "sandbox.mounts[0].guest"
-            && diagnostic.severity == Severity::Error
-            && diagnostic.message.contains("identical agent path")
-    });
-    assert!(
-        error.is_some(),
-        "expected mismatched data_dir guest path error, got: {:?}",
-        result.diagnostics
-    );
-}
-
-#[test]
-fn sandbox_custom_mount_paths_must_be_absolute() {
-    let toml = r#"
-[[sandbox.mounts]]
-host = "relative/source"
-guest = "/mnt/source"
-mode = "ro"
-"#;
-    let result = validate_toml_str(toml);
-    let error = result.diagnostics.iter().find(|diagnostic| {
-        diagnostic.path == "sandbox.mounts[0].host"
-            && diagnostic.severity == Severity::Error
-            && diagnostic.message.contains("must be absolute")
-    });
-    assert!(
-        error.is_some(),
-        "expected relative mount source error, got: {:?}",
-        result.diagnostics
-    );
-}
-
-#[test]
-fn sandbox_custom_mount_diagnostics_preserve_configured_index() {
-    let toml = r#"
-[[sandbox.mounts]]
-host = "/srv/reference"
-guest = "/mnt/reference"
-mode = "ro"
-
-[[sandbox.mounts]]
-host = "/srv/invalid"
-guest = "relative/guest"
-mode = "rw"
-"#;
-    let result = validate_toml_str(toml);
-    let error = result.diagnostics.iter().find(|diagnostic| {
-        diagnostic.path == "sandbox.mounts[1].guest"
-            && diagnostic.severity == Severity::Error
-            && diagnostic.message.contains("must be absolute")
-    });
-    assert!(
-        error.is_some(),
-        "expected indexed custom mount error, got: {:?}",
-        result.diagnostics
-    );
-}
-
-#[test]
-fn sandbox_data_mount_cannot_source_config_dir() {
-    let toml = r#"
-[sandbox]
-mode = "Off"
-host_data_dir = "/"
-"#;
-    let result = validate_toml_str(toml);
-    let error = result.diagnostics.iter().find(|diagnostic| {
-        diagnostic.path == "sandbox.host_data_dir"
-            && diagnostic.severity == Severity::Error
-            && diagnostic.category == "security"
-    });
-    assert!(
-        error.is_some(),
-        "expected data/config overlap error, got: {:?}",
-        result.diagnostics
-    );
-}
-
-#[test]
-fn sandbox_shared_home_cannot_source_config_dir() {
-    let toml = r#"
-[sandbox]
-home_persistence = "shared"
-shared_home_dir = "/"
-"#;
-    let result = validate_toml_str(toml);
-    let error = result.diagnostics.iter().find(|diagnostic| {
-        diagnostic.path == "sandbox.shared_home_dir"
-            && diagnostic.severity == Severity::Error
-            && diagnostic.category == "security"
-    });
-    assert!(
-        error.is_some(),
-        "expected shared home/config overlap error, got: {:?}",
         result.diagnostics
     );
 }
@@ -218,13 +45,23 @@ rewrite_timeout_secs = 300
     let result = validate_toml_str(toml);
     let invalid = result.diagnostics.iter().find(|diagnostic| {
         diagnostic.path == "tools.execute_command.rewrite_timeout_secs"
-            || diagnostic.category == "type-error"
+            || diagnostic.category == DiagnosticCategory::TypeError
     });
     assert!(
         invalid.is_none(),
         "rewrite_timeout_secs should be accepted, got: {:?}",
         result.diagnostics
     );
+}
+
+#[test]
+fn invalid_sandbox_mode_is_a_type_error() {
+    let result = validate_toml_str("[sandbox]\nmode = \"Of\"\n");
+    assert!(result.diagnostics.iter().any(|diagnostic| {
+        diagnostic.severity == Severity::Error
+            && diagnostic.category == DiagnosticCategory::TypeError
+            && diagnostic.message.contains("Of")
+    }));
 }
 
 #[test]
@@ -237,192 +74,11 @@ agent_max_iterations = 25
     let unknown = result.diagnostics.iter().find(|d| {
         d.path == "tools.agent_max_iterations"
             && d.severity == Severity::Error
-            && d.category == "unknown-field"
+            && d.category == DiagnosticCategory::UnknownField
     });
     assert!(
         unknown.is_some(),
         "expected tools.agent_max_iterations unknown-field error, got: {:?}",
-        result.diagnostics
-    );
-}
-
-#[test]
-fn new_search_timeouts_reject_zero() {
-    for name in ["exa", "google", "felo"] {
-        let config = format!("[tools.{name}]\nrequest_timeout_secs = 0\n");
-        let result = validate_toml_str(&config);
-        assert!(result.diagnostics.iter().any(|diagnostic| {
-            diagnostic.path == format!("tools.{name}.request_timeout_secs")
-                && diagnostic.severity == Severity::Error
-        }));
-    }
-}
-
-#[test]
-fn context7_request_timeout_is_accepted() {
-    let toml = r#"
-[tools.context7]
-request_timeout_secs = 300
-"#;
-    let result = validate_toml_str(toml);
-    let invalid = result
-        .diagnostics
-        .iter()
-        .find(|diagnostic| diagnostic.path == "tools.context7.request_timeout_secs");
-    assert!(
-        invalid.is_none(),
-        "positive Context7 timeout should be accepted, got: {:?}",
-        result.diagnostics
-    );
-}
-
-#[test]
-fn context7_request_timeout_must_be_positive() {
-    let toml = r#"
-[tools.context7]
-request_timeout_secs = 0
-"#;
-    let result = validate_toml_str(toml);
-    let invalid = result.diagnostics.iter().find(|diagnostic| {
-        diagnostic.path == "tools.context7.request_timeout_secs"
-            && diagnostic.severity == Severity::Error
-            && diagnostic.category == "invalid-value"
-    });
-    assert!(
-        invalid.is_some(),
-        "expected tools.context7.request_timeout_secs invalid-value error, got: {:?}",
-        result.diagnostics
-    );
-}
-
-#[test]
-fn linkup_request_timeout_is_accepted() {
-    let toml = r#"
-[tools.linkup]
-request_timeout_secs = 300
-"#;
-    let result = validate_toml_str(toml);
-    let invalid = result
-        .diagnostics
-        .iter()
-        .find(|diagnostic| diagnostic.path == "tools.linkup.request_timeout_secs");
-    assert!(
-        invalid.is_none(),
-        "positive Linkup timeout should be accepted, got: {:?}",
-        result.diagnostics
-    );
-}
-
-#[test]
-fn linkup_request_timeout_must_be_positive() {
-    let toml = r#"
-[tools.linkup]
-request_timeout_secs = 0
-"#;
-    let result = validate_toml_str(toml);
-    let invalid = result.diagnostics.iter().find(|diagnostic| {
-        diagnostic.path == "tools.linkup.request_timeout_secs"
-            && diagnostic.severity == Severity::Error
-            && diagnostic.category == "invalid-value"
-    });
-    assert!(
-        invalid.is_some(),
-        "expected tools.linkup.request_timeout_secs invalid-value error, got: {:?}",
-        result.diagnostics
-    );
-}
-
-#[test]
-fn duckduckgo_request_timeout_must_be_positive() {
-    let toml = r#"
-[tools.duckduckgo]
-request_timeout_secs = 0
-"#;
-    let result = validate_toml_str(toml);
-    let invalid = result.diagnostics.iter().find(|diagnostic| {
-        diagnostic.path == "tools.duckduckgo.request_timeout_secs"
-            && diagnostic.severity == Severity::Error
-            && diagnostic.category == "invalid-value"
-    });
-    assert!(
-        invalid.is_some(),
-        "expected tools.duckduckgo.request_timeout_secs invalid-value error, got: {:?}",
-        result.diagnostics
-    );
-}
-
-#[test]
-fn github_request_timeout_is_accepted() {
-    let toml = r#"
-[tools.github]
-request_timeout_secs = 300
-"#;
-    let result = validate_toml_str(toml);
-    let invalid = result
-        .diagnostics
-        .iter()
-        .find(|diagnostic| diagnostic.path == "tools.github.request_timeout_secs");
-    assert!(
-        invalid.is_none(),
-        "positive GitHub timeout should be accepted, got: {:?}",
-        result.diagnostics
-    );
-}
-
-#[test]
-fn github_request_timeout_must_be_positive() {
-    let toml = r#"
-[tools.github]
-request_timeout_secs = 0
-"#;
-    let result = validate_toml_str(toml);
-    let invalid = result.diagnostics.iter().find(|diagnostic| {
-        diagnostic.path == "tools.github.request_timeout_secs"
-            && diagnostic.severity == Severity::Error
-            && diagnostic.category == "invalid-value"
-    });
-    assert!(
-        invalid.is_some(),
-        "expected tools.github.request_timeout_secs invalid-value error, got: {:?}",
-        result.diagnostics
-    );
-}
-
-#[test]
-fn mcp_request_timeout_must_be_positive() {
-    let toml = r#"
-[mcp]
-request_timeout_secs = 0
-"#;
-    let result = validate_toml_str(toml);
-    let invalid = result.diagnostics.iter().find(|d| {
-        d.path == "mcp.request_timeout_secs"
-            && d.severity == Severity::Error
-            && d.category == "invalid-value"
-    });
-    assert!(
-        invalid.is_some(),
-        "expected mcp.request_timeout_secs invalid-value error, got: {:?}",
-        result.diagnostics
-    );
-}
-
-#[test]
-fn mcp_server_request_timeout_override_must_be_positive() {
-    let toml = r#"
-[mcp.servers.memory]
-command = "npx"
-request_timeout_secs = 0
-"#;
-    let result = validate_toml_str(toml);
-    let invalid = result.diagnostics.iter().find(|d| {
-        d.path == "mcp.servers.memory.request_timeout_secs"
-            && d.severity == Severity::Error
-            && d.category == "invalid-value"
-    });
-    assert!(
-        invalid.is_some(),
-        "expected mcp server request_timeout_secs invalid-value error, got: {:?}",
         result.diagnostics
     );
 }

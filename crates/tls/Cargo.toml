@@ -5,20 +5,38 @@ repository.workspace = true
 version.workspace    = true
 
 [dependencies]
-axum           = { workspace = true }
-chelix-common  = { workspace = true }
+axum           = { optional = true, workspace = true }
+chelix-common  = { optional = true, workspace = true }
 chelix-config  = { workspace = true }
-hostname       = { workspace = true }
-hyper-util     = { workspace = true }
-rcgen          = { workspace = true }
-rustls         = { workspace = true }
-rustls-pemfile = { workspace = true }
-thiserror      = { workspace = true }
-time           = { workspace = true }
-tokio          = { workspace = true }
-tokio-rustls   = { workspace = true }
-tower          = { workspace = true }
-tracing        = { workspace = true }
+hostname       = { optional = true, workspace = true }
+hyper-util     = { optional = true, workspace = true }
+rcgen          = { optional = true, workspace = true }
+rustls         = { optional = true, workspace = true }
+rustls-pemfile = { optional = true, workspace = true }
+thiserror      = { optional = true, workspace = true }
+time           = { optional = true, workspace = true }
+tokio          = { optional = true, workspace = true }
+tokio-rustls   = { optional = true, workspace = true }
+tower          = { optional = true, workspace = true }
+tracing        = { optional = true, workspace = true }
+
+[features]
+default = ["runtime"]
+runtime = [
+  "dep:axum",
+  "dep:chelix-common",
+  "dep:hostname",
+  "dep:hyper-util",
+  "dep:rcgen",
+  "dep:rustls",
+  "dep:rustls-pemfile",
+  "dep:thiserror",
+  "dep:time",
+  "dep:tokio",
+  "dep:tokio-rustls",
+  "dep:tower",
+  "dep:tracing",
+]
 
 [dev-dependencies]
 tempfile = { workspace = true }

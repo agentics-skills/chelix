@@ -194,7 +194,7 @@ impl ProvidersConfig {
         Self::is_supported_name(&normalized).then_some(normalized)
     }
 
-    pub(crate) fn invalid_provider_names(&self) -> Vec<(String, String)> {
+    pub fn invalid_provider_names(&self) -> Vec<(String, String)> {
         let invalid_sections = self
             .providers
             .keys()

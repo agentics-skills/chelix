@@ -169,7 +169,7 @@ fn message_text(msg: &Value) -> Option<String> {
 fn sanitize_tts_text(text: &str) -> String {
     #[cfg(feature = "voice")]
     {
-        chelix_voice::tts::sanitize_text_for_tts(text).to_string()
+        chelix_voice::sanitize_text_for_tts(text).to_string()
     }
 
     #[cfg(not(feature = "voice"))]

@@ -1,6 +1,8 @@
 //! LLM provider implementations and registry.
 
 mod client;
+pub mod config_model_resolver;
+pub mod config_validation;
 pub mod error;
 pub mod http;
 pub mod model_capabilities;

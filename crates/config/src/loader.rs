@@ -1,77 +1,41 @@
-use std::{
-    net::TcpListener,
-    path::PathBuf,
-    sync::{
-        Mutex,
-        atomic::{AtomicU16, Ordering},
-    },
-};
+use std::{path::PathBuf, sync::Mutex};
 
-#[path = "loader/config_io.rs"]
-mod config_io;
-#[path = "loader/openai_compatible_provider_toml.rs"]
-mod openai_compatible_provider_toml;
+#[path = "loader/codec.rs"]
+mod codec;
 #[path = "loader/workspace.rs"]
 mod workspace;
 
-pub use {config_io::*, openai_compatible_provider_toml::*, workspace::*};
+pub use {codec::*, workspace::*};
 
-/// Generate a random available port by binding to port 0 and reading the assigned port.
-fn generate_random_port() -> u16 {
-    // Bind to port 0 to get an OS-assigned available port
-    TcpListener::bind("127.0.0.1:0")
-        .and_then(|listener| listener.local_addr())
-        .map(|addr| addr.port())
-        .unwrap_or_else(|_| next_fallback_port())
-}
-
-fn next_fallback_port() -> u16 {
-    static FALLBACK_PORT: AtomicU16 = AtomicU16::new(18789);
-
-    FALLBACK_PORT
-        .try_update(Ordering::Relaxed, Ordering::Relaxed, |port| {
-            Some(if port == u16::MAX {
-                1024
-            } else {
-                port + 1
-            })
-        })
-        .unwrap_or(18789)
-}
-
-/// Config file name.
-const CONFIG_FILENAME: &str = "chelix.toml";
-
-/// Override for the config directory, set via `set_config_dir()`.
+/// Override for the config directory, set via [`set_config_dir`].
 static CONFIG_DIR_OVERRIDE: Mutex<Option<PathBuf>> = Mutex::new(None);
 
-/// Override for the data directory, set via `set_data_dir()`.
+/// Override for the data directory, set via [`set_data_dir`].
 static DATA_DIR_OVERRIDE: Mutex<Option<PathBuf>> = Mutex::new(None);
 
-/// Override for the share directory, set via `set_share_dir()`.
+/// Override for the share directory, set via [`set_share_dir`].
 static SHARE_DIR_OVERRIDE: Mutex<Option<PathBuf>> = Mutex::new(None);
 
-/// Set a custom config directory. When set, config discovery only looks in
-/// this directory.
-/// Can be called multiple times (e.g. in tests) - each call replaces the
-/// previous override.
+/// Override the directory returned by [`config_dir`].
+///
+/// Each call replaces the previous override.
 pub fn set_config_dir(path: PathBuf) {
     *CONFIG_DIR_OVERRIDE
         .lock()
-        .unwrap_or_else(|e| e.into_inner()) = Some(path);
+        .unwrap_or_else(|error| error.into_inner()) = Some(path);
 }
 
-/// Clear the config directory override, restoring default discovery.
+/// Clear the config directory override.
 pub fn clear_config_dir() {
     *CONFIG_DIR_OVERRIDE
         .lock()
-        .unwrap_or_else(|e| e.into_inner()) = None;
+        .unwrap_or_else(|error| error.into_inner()) = None;
 }
 
 fn config_dir_override() -> Option<PathBuf> {
     CONFIG_DIR_OVERRIDE
         .lock()
-        .unwrap_or_else(|e| e.into_inner())
+        .unwrap_or_else(|error| error.into_inner())
         .clone()
 }
 
@@ -79,15 +43,19 @@ fn resolve_explicit_config_dir(
     programmatic_override: Option<PathBuf>,
     env_override: Option<PathBuf>,
 ) -> crate::Result<Option<PathBuf>> {
-    match env_override {
-        Some(path) if path.as_os_str().is_empty() => Ok(programmatic_override),
-        Some(path) if !path.is_absolute() => Err(crate::Error::message(format!(
+    let Some(path) = env_override else {
+        return Ok(programmatic_override);
+    };
+    if path.as_os_str().is_empty() {
+        return Ok(programmatic_override);
+    }
+    if !path.is_absolute() {
+        return Err(crate::Error::message(format!(
             "CHELIX_CONFIG_DIR must be an absolute path: {}",
             path.display()
-        ))),
-        Some(path) => Ok(programmatic_override.or(Some(path))),
-        None => Ok(programmatic_override),
+        )));
     }
+    Ok(programmatic_override.or(Some(path)))
 }
 
 fn explicit_config_dir() -> crate::Result<Option<PathBuf>> {
@@ -97,48 +65,55 @@ fn explicit_config_dir() -> crate::Result<Option<PathBuf>> {
     )
 }
 
-/// Set a custom data directory. When set, `data_dir()` returns this path
-/// instead of the default.
+/// Override the directory returned by [`data_dir`].
 pub fn set_data_dir(path: PathBuf) {
-    *DATA_DIR_OVERRIDE.lock().unwrap_or_else(|e| e.into_inner()) = Some(path);
+    *DATA_DIR_OVERRIDE
+        .lock()
+        .unwrap_or_else(|error| error.into_inner()) = Some(path);
 }
 
-/// Clear the data directory override, restoring default discovery.
+/// Clear the data directory override.
 pub fn clear_data_dir() {
-    *DATA_DIR_OVERRIDE.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    *DATA_DIR_OVERRIDE
+        .lock()
+        .unwrap_or_else(|error| error.into_inner()) = None;
 }
 
 fn data_dir_override() -> Option<PathBuf> {
     DATA_DIR_OVERRIDE
         .lock()
-        .unwrap_or_else(|e| e.into_inner())
+        .unwrap_or_else(|error| error.into_inner())
         .clone()
 }
 
-/// Set a custom share directory (for tests or alternative layouts).
+/// Override the directory returned by [`share_dir`].
 pub fn set_share_dir(path: PathBuf) {
-    *SHARE_DIR_OVERRIDE.lock().unwrap_or_else(|e| e.into_inner()) = Some(path);
+    *SHARE_DIR_OVERRIDE
+        .lock()
+        .unwrap_or_else(|error| error.into_inner()) = Some(path);
 }
 
-/// Clear the share directory override, restoring default discovery.
+/// Clear the share directory override.
 pub fn clear_share_dir() {
-    *SHARE_DIR_OVERRIDE.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    *SHARE_DIR_OVERRIDE
+        .lock()
+        .unwrap_or_else(|error| error.into_inner()) = None;
 }
 
 fn share_dir_override() -> Option<PathBuf> {
     SHARE_DIR_OVERRIDE
         .lock()
-        .unwrap_or_else(|e| e.into_inner())
+        .unwrap_or_else(|error| error.into_inner())
         .clone()
 }
 
 /// Returns the share directory for documentation and other share files.
 ///
 /// Resolution order:
-/// 1. Programmatic override via `set_share_dir()`
-/// 2. `CHELIX_SHARE_DIR` env var
-/// 3. `/usr/share/chelix/` (Linux system packages) - only if it exists
-/// 4. `data_dir()/share/` (`~/.chelix/share/`) - only if it exists
+/// 1. Programmatic override via [`set_share_dir`]
+/// 2. `CHELIX_SHARE_DIR`
+/// 3. `/usr/share/chelix/` when that directory exists
+/// 4. `data_dir()/share/` when that directory exists
 /// 5. `None`
 pub fn share_dir() -> Option<PathBuf> {
     if let Some(dir) = share_dir_override() {
@@ -162,11 +137,10 @@ pub fn share_dir() -> Option<PathBuf> {
 
 /// Returns the user's home directory (`$HOME` / `~`).
 ///
-/// This is the **single call-site** for `directories::BaseDirs` - all other
-/// crates must call this via `chelix_config::home_dir()` instead of using the
-/// `directories` crate directly.
+/// This is the only call site for `directories::BaseDirs`. Other crates resolve
+/// the home directory through [`home_dir`].
 pub fn home_dir() -> Option<PathBuf> {
-    directories::BaseDirs::new().map(|d| d.home_dir().to_path_buf())
+    directories::BaseDirs::new().map(|dirs| dirs.home_dir().to_path_buf())
 }
 
 fn default_config_dir() -> Option<PathBuf> {
@@ -175,10 +149,13 @@ fn default_config_dir() -> Option<PathBuf> {
 
 /// Returns the config directory.
 ///
-/// Resolution: programmatic override, then absolute `CHELIX_CONFIG_DIR`,
-/// then `~/.config/chelix/`.
-/// A non-empty `CHELIX_CONFIG_DIR` that is not absolute is an error.
-/// A missing home directory is an error.
+/// Resolution order:
+/// 1. Programmatic override from [`set_config_dir`]
+/// 2. Absolute `CHELIX_CONFIG_DIR`
+/// 3. `~/.config/chelix/`
+///
+/// An empty `CHELIX_CONFIG_DIR` is treated as unset; a relative value is an error.
+/// A missing home directory is an error when no explicit directory is configured.
 pub fn config_dir() -> crate::Result<PathBuf> {
     match explicit_config_dir()? {
         Some(dir) => Ok(dir),
@@ -187,7 +164,9 @@ pub fn config_dir() -> crate::Result<PathBuf> {
     }
 }
 
-/// Returns the data directory: programmatic override -> `CHELIX_DATA_DIR` env ->
+/// Returns the data directory.
+///
+/// Resolution order: programmatic override, non-empty `CHELIX_DATA_DIR`, then
 /// `~/.chelix/`.
 pub fn data_dir() -> PathBuf {
     if let Some(dir) = data_dir_override() {
@@ -199,7 +178,7 @@ pub fn data_dir() -> PathBuf {
         return PathBuf::from(dir);
     }
     home_dir()
-        .map(|h| h.join(".chelix"))
+        .map(|home| home.join(".chelix"))
         .unwrap_or_else(|| PathBuf::from(".chelix"))
 }
 

@@ -298,7 +298,7 @@ async fn validate_model_and_reasoning_effort(
     model: &str,
     reasoning_effort: &ReasoningEffort,
 ) -> chelix_tools::Result<ResolvedModelReasoning> {
-    crate::model_reasoning::resolve_model_reasoning(
+    chelix_agents::model_validation::resolve_model_reasoning(
         state.services.model.as_ref(),
         model,
         reasoning_effort,
@@ -373,15 +373,7 @@ mod tests {
     struct ExactModelService;
 
     #[async_trait]
-    impl ModelService for ExactModelService {
-        async fn list(&self) -> ServiceResult {
-            Ok(serde_json::json!([]))
-        }
-
-        async fn list_all(&self) -> ServiceResult {
-            Ok(serde_json::json!([]))
-        }
-
+    impl chelix_service_traits::ModelResolver for ExactModelService {
         async fn resolve_model_reasoning(
             &self,
             model: &str,
@@ -397,6 +389,17 @@ mod tests {
             }
             ResolvedModelReasoning::try_new(model.to_string(), effort.clone())
                 .map_err(|error| ServiceError::message(error.to_string()))
+        }
+    }
+
+    #[async_trait]
+    impl ModelService for ExactModelService {
+        async fn list(&self) -> ServiceResult {
+            Ok(serde_json::json!([]))
+        }
+
+        async fn list_all(&self) -> ServiceResult {
+            Ok(serde_json::json!([]))
         }
 
         async fn disable(&self, _params: Value) -> ServiceResult {
@@ -416,7 +419,9 @@ mod tests {
         }
     }
 
-    async fn create_test_state() -> Result<
+    async fn create_test_state(
+        configuration: chelix_config_service::ConfigService,
+    ) -> Result<
         (
             Arc<GatewayState>,
             Arc<SqliteSessionMetadata>,
@@ -448,8 +453,11 @@ mod tests {
             Arc::clone(&model_service),
             Arc::new(tokio::sync::OnceCell::new()),
         )
-        .with_chat(Arc::new(chelix_service_traits::NoopChatService));
-        let services = crate::services::GatewayServices::noop()
+        .with_chat(
+            configuration.clone(),
+            Arc::new(chelix_service_traits::NoopChatService),
+        );
+        let services = crate::services::GatewayServices::noop(configuration)
             .with_session(Arc::new(session_service))
             .with_model(model_service)
             .with_agents_config(agents_config)
@@ -475,7 +483,8 @@ mod tests {
     #[tokio::test]
     async fn model_validation_precedes_session_metadata_mutation()
     -> Result<(), Box<dyn std::error::Error>> {
-        let (state, metadata, _dir) = create_test_state().await?;
+        let fixture = crate::test_config::ConfigFixture::new().await;
+        let (state, metadata, _dir) = create_test_state(fixture.service.clone()).await?;
         let create = build_create_session(state, Arc::clone(&metadata));
         create(create_request("session:valid", "test::valid")).await?;
         let valid_entry = metadata
@@ -485,7 +494,7 @@ mod tests {
         assert_eq!(valid_entry.model(), "test::valid");
         assert_eq!(valid_entry.reasoning_effort().as_str(), "medium");
 
-        let (state, metadata, _dir) = create_test_state().await?;
+        let (state, metadata, _dir) = create_test_state(fixture.service.clone()).await?;
         let create = build_create_session(state, Arc::clone(&metadata));
         let invalid = create(create_request("session:invalid", "test::invalid")).await;
         assert!(invalid.is_err());

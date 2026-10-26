@@ -696,11 +696,7 @@ pub(super) async fn start_server_with_onboarding(
     onboarded: bool,
     behind_proxy: bool,
 ) -> (SocketAddr, Arc<CredentialStore>, Arc<GatewayState>) {
-    let tmp = tempfile::tempdir().unwrap();
-    write_test_config(tmp.path());
-    chelix_config::set_config_dir(tmp.path().to_path_buf());
-    chelix_config::set_data_dir(tmp.path().to_path_buf());
-    std::mem::forget(tmp);
+    let config_fixture = ServerConfig::new().await;
 
     let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
     let auth_config = chelix_config::AuthConfig::default();
@@ -715,7 +711,8 @@ pub(super) async fn start_server_with_onboarding(
     });
 
     let resolved_auth = auth::resolve_auth(None, None);
-    let services = with_test_web_services(GatewayServices::noop()).with_onboarding(mock_onboarding);
+    let services = with_test_web_services(GatewayServices::noop(config_fixture.service.clone()))
+        .with_onboarding(mock_onboarding);
     let (config, sandbox_router) = sandbox_off_runtime();
     let state = GatewayState::with_options(
         resolved_auth,
@@ -755,6 +752,7 @@ pub(super) async fn start_server_with_onboarding(
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
+        let _config_fixture = config_fixture;
         axum::serve(
             listener,
             app.into_make_service_with_connect_info::<SocketAddr>(),

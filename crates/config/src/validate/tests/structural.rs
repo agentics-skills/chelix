@@ -14,7 +14,7 @@ unknwon_field = true
     let unknown = result
         .diagnostics
         .iter()
-        .find(|d| d.category == "unknown-field" && d.path.contains("myserver"));
+        .find(|d| d.category == DiagnosticCategory::UnknownField && d.path.contains("myserver"));
     assert!(
         unknown.is_some(),
         "expected unknown-field in MCP server entry, got: {:?}",
@@ -35,7 +35,7 @@ unknwon = "value"
     let unknown = result
         .diagnostics
         .iter()
-        .find(|d| d.category == "unknown-field" && d.path.contains("hooks.hooks"));
+        .find(|d| d.category == DiagnosticCategory::UnknownField && d.path.contains("hooks.hooks"));
     assert!(
         unknown.is_some(),
         "expected unknown-field in hooks entry, got: {:?}",
@@ -61,7 +61,7 @@ token_url = "https://mcp.hubspot.com/oauth/v3/token"
         !result
             .diagnostics
             .iter()
-            .any(|d| d.category == "unknown-field"
+            .any(|d| d.category == DiagnosticCategory::UnknownField
                 && d.path == "mcp.servers.hubspot.oauth.client_secret"),
         "client_secret should be accepted, got: {:?}",
         result.diagnostics

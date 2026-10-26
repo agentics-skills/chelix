@@ -75,6 +75,93 @@ reasoning_supported_efforts = ["low"]
 }
 
 #[test]
+fn assignment_support_does_not_apply_reasoning_effort() {
+    struct MetadataOnly;
+    impl chelix_agents::model::LlmProvider for MetadataOnly {
+        fn name(&self) -> &str {
+            "alpha"
+        }
+
+        fn id(&self) -> &str {
+            "shared"
+        }
+
+        fn stream(
+            &self,
+            _: Vec<chelix_agents::model::ChatMessage>,
+        ) -> std::pin::Pin<
+            Box<dyn futures::Stream<Item = chelix_agents::model::StreamEvent> + Send + '_>,
+        > {
+            Box::pin(futures::stream::empty())
+        }
+    }
+
+    let source = resolution_registry();
+    let info = source
+        .list_models()
+        .iter()
+        .find(|model| model.id == "alpha::shared")
+        .unwrap_or_else(|| panic!("fixture model is registered"))
+        .clone();
+    let mut registry = ProviderRegistry::empty();
+    registry.register(info, std::sync::Arc::new(MetadataOnly));
+    let low = ReasoningEffort::from("low");
+    assert!(registry.supports_chat_model_assignment("alpha::shared", &low));
+    assert!(!registry.supports_chat_model_assignment("shared", &low));
+    assert!(
+        !registry.supports_chat_model_assignment("alpha::shared", &ReasoningEffort::from("off"))
+    );
+    let error = registry
+        .resolve_chat_model("alpha::shared", Some(&low), &Default::default())
+        .err()
+        .unwrap_or_else(|| panic!("runtime effort application must fail"));
+    let expected = ModelResolutionError::ReasoningEffortApplicationFailed {
+        model_id: "alpha::shared".into(),
+        reasoning_effort: "low".into(),
+    };
+    assert_eq!(error.to_string(), expected.to_string());
+}
+
+#[test]
+fn disabled_config_models_are_canonical_and_filtered_by_chat_resolution() {
+    let registry = resolution_registry();
+    let mut metadata: chelix_common::PartialModelMetadata = registry
+        .list_models()
+        .iter()
+        .find(|model| model.id == "alpha::shared")
+        .unwrap_or_else(|| panic!("fixture model is registered"))
+        .metadata
+        .clone()
+        .into();
+    metadata.enabled = false;
+    let mut entry = chelix_config::schema::ProviderEntry::default();
+    entry.models.insert("shared".into(), metadata.clone());
+    metadata.enabled = true;
+    entry.models.insert("active".into(), metadata);
+    let mut config = ChelixConfig::default();
+    config.providers.providers.insert("alpha".into(), entry);
+    let disabled = crate::config_model_resolver::disabled_model_ids(&config);
+    assert_eq!(
+        disabled,
+        std::collections::HashSet::from(["alpha::shared".into()])
+    );
+    let effort = ReasoningEffort::from("low");
+    let error = registry
+        .resolve_chat_model("alpha::shared", Some(&effort), &disabled)
+        .err()
+        .unwrap_or_else(|| panic!("disabled model must be hidden"));
+    assert_eq!(
+        error.to_string(),
+        "model 'alpha::shared' not found in chat model registry"
+    );
+    assert!(
+        registry
+            .resolve_chat_model("beta::shared", Some(&effort), &disabled)
+            .is_ok()
+    );
+}
+
+#[test]
 fn custom_model_config_preserves_metadata_for_runtime_provider() {
     const MODEL_ID: &str = "ai-example::Combos/z.ai/glm";
     let config: ChelixConfig = toml::from_str(

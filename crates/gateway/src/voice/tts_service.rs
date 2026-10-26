@@ -17,9 +17,9 @@ use crate::services::{ServiceError, ServiceResult, TtsService};
 use super::{load_voice_config, resolve_openai_key, resolve_openai_tts_base_url};
 
 /// Live TTS service that delegates to voice providers.
-/// Reads fresh config on each operation to pick up changes.
+/// Reads the config service on each operation so later edits are visible.
 pub struct LiveTtsService {
-    _marker: std::marker::PhantomData<()>,
+    config_service: chelix_config_service::ConfigService,
 }
 
 impl std::fmt::Debug for LiveTtsService {
@@ -29,16 +29,19 @@ impl std::fmt::Debug for LiveTtsService {
 }
 
 impl LiveTtsService {
-    /// Create a new TTS service. Config is read fresh on each operation.
-    pub fn new(_config: TtsConfig) -> Self {
-        Self {
-            _marker: std::marker::PhantomData,
-        }
+    pub fn new(config_service: chelix_config_service::ConfigService) -> Self {
+        Self { config_service }
     }
 
-    /// Load fresh TTS config from disk.
-    fn load_config() -> Result<TtsConfig, ServiceError> {
-        let cfg = load_voice_config().map_err(ServiceError::message)?;
+    fn config_service(&self) -> &chelix_config_service::ConfigService {
+        &self.config_service
+    }
+
+    /// Read fresh TTS settings from the config service.
+    async fn load_config(&self) -> Result<TtsConfig, ServiceError> {
+        let cfg = load_voice_config(self.config_service())
+            .await
+            .map_err(ServiceError::message)?;
         Ok(TtsConfig {
             enabled: cfg.voice.tts.enabled,
             provider: cfg.voice.tts.provider,
@@ -179,7 +182,7 @@ impl LiveTtsService {
 #[async_trait]
 impl TtsService for LiveTtsService {
     async fn status(&self) -> ServiceResult {
-        let config = Self::load_config()?;
+        let config = self.load_config().await?;
         let providers = Self::list_providers(&config);
         let any_configured = providers.iter().any(|(_, configured)| *configured);
         let resolved = Self::resolve_provider(&config, config.provider);
@@ -194,7 +197,7 @@ impl TtsService for LiveTtsService {
     }
 
     async fn providers(&self) -> ServiceResult {
-        let config = Self::load_config()?;
+        let config = self.load_config().await?;
         let providers: Vec<_> = Self::list_providers(&config)
             .into_iter()
             .map(|(id, configured)| {
@@ -210,19 +213,21 @@ impl TtsService for LiveTtsService {
     }
 
     async fn enable(&self, params: Value) -> ServiceResult {
-        let config = Self::load_config()?;
+        let config = self.load_config().await?;
         let provider_id = Self::resolve_from_params(&params, &config, config.provider)?;
 
         if Self::create_provider(&config, provider_id).is_none() {
             return Err(format!("provider '{}' not configured", provider_id).into());
         }
 
-        // Update config file
-        chelix_config::update_config(|cfg| {
-            cfg.voice.tts.provider = Some(provider_id);
-            cfg.voice.tts.enabled = true;
-        })
-        .map_err(|e| format!("failed to update config: {}", e))?;
+        self.config_service()
+            .update(move |cfg| {
+                cfg.voice.tts.provider = Some(provider_id);
+                cfg.voice.tts.enabled = true;
+                Ok(())
+            })
+            .await
+            .map_err(|e| format!("failed to update config: {e}"))?;
 
         debug!("TTS enabled with provider: {}", provider_id);
 
@@ -233,10 +238,13 @@ impl TtsService for LiveTtsService {
     }
 
     async fn disable(&self) -> ServiceResult {
-        chelix_config::update_config(|cfg| {
-            cfg.voice.tts.enabled = false;
-        })
-        .map_err(|e| format!("failed to update config: {}", e))?;
+        self.config_service()
+            .update(|cfg| {
+                cfg.voice.tts.enabled = false;
+                Ok(())
+            })
+            .await
+            .map_err(|e| format!("failed to update config: {e}"))?;
 
         debug!("TTS disabled");
 
@@ -244,7 +252,7 @@ impl TtsService for LiveTtsService {
     }
 
     async fn convert(&self, params: Value) -> ServiceResult {
-        let config = Self::load_config()?;
+        let config = self.load_config().await?;
 
         if !config.enabled {
             warn!("TTS convert called but TTS is not enabled");
@@ -477,15 +485,18 @@ impl TtsService for LiveTtsService {
         let provider_id = TtsProviderId::parse(provider_str)
             .ok_or_else(|| format!("unknown TTS provider '{}'", provider_str))?;
 
-        let config = Self::load_config()?;
+        let config = self.load_config().await?;
         if Self::create_provider(&config, provider_id).is_none() {
             return Err(format!("provider '{}' not configured", provider_id).into());
         }
 
-        chelix_config::update_config(|cfg| {
-            cfg.voice.tts.provider = Some(provider_id);
-        })
-        .map_err(|e| format!("failed to update config: {}", e))?;
+        self.config_service()
+            .update(move |cfg| {
+                cfg.voice.tts.provider = Some(provider_id);
+                Ok(())
+            })
+            .await
+            .map_err(|e| format!("failed to update config: {e}"))?;
 
         debug!("TTS provider set to: {}", provider_id);
 
@@ -498,39 +509,9 @@ impl TtsService for LiveTtsService {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
-    use {super::*, serde_json::json, tempfile::TempDir};
+    use {super::*, serde_json::json};
 
-    struct VoiceConfigTestGuard {
-        _lock: std::sync::MutexGuard<'static, ()>,
-        _config_dir: TempDir,
-        _data_dir: TempDir,
-    }
-
-    impl VoiceConfigTestGuard {
-        fn with_config(config_toml: &str) -> Self {
-            let lock = crate::config_override_test_lock();
-            let config_dir = tempfile::tempdir()
-                .unwrap_or_else(|error| panic!("config tempdir should be created: {error}"));
-            let data_dir = tempfile::tempdir()
-                .unwrap_or_else(|error| panic!("data tempdir should be created: {error}"));
-            std::fs::write(config_dir.path().join("chelix.toml"), config_toml)
-                .unwrap_or_else(|error| panic!("config should be written: {error}"));
-            chelix_config::set_config_dir(config_dir.path().to_path_buf());
-            chelix_config::set_data_dir(data_dir.path().to_path_buf());
-            Self {
-                _lock: lock,
-                _config_dir: config_dir,
-                _data_dir: data_dir,
-            }
-        }
-    }
-
-    impl Drop for VoiceConfigTestGuard {
-        fn drop(&mut self) {
-            chelix_config::clear_config_dir();
-            chelix_config::clear_data_dir();
-        }
-    }
+    use crate::test_config::ConfigFixture as VoiceConfigTestGuard;
 
     #[test]
     fn test_live_tts_resolve_provider_handles_explicit_and_auto_selection() {
@@ -545,10 +526,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_live_tts_service_status() {
-        let _guard = VoiceConfigTestGuard::with_config(
+        let guard = VoiceConfigTestGuard::with_config(
             "[tools.execute_command]\nterminal_size = \"115x58\"\n\n[sandbox]\narchived_session_retention_days = 3\n",
-        );
-        let service = LiveTtsService::new(TtsConfig::default());
+        )
+        .await;
+        let service = LiveTtsService::new(guard.service.clone());
         let status = service.status().await.unwrap();
 
         // Status should always contain these fields
@@ -562,10 +544,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_live_tts_service_providers() {
-        let _guard = VoiceConfigTestGuard::with_config(
+        let guard = VoiceConfigTestGuard::with_config(
             "[tools.execute_command]\nterminal_size = \"115x58\"\n\n[sandbox]\narchived_session_retention_days = 3\n",
-        );
-        let service = LiveTtsService::new(TtsConfig::default());
+        )
+        .await;
+        let service = LiveTtsService::new(guard.service.clone());
         let providers = service.providers().await.unwrap();
 
         let providers_arr = providers.as_array().unwrap();
@@ -585,25 +568,16 @@ mod tests {
 
     #[tokio::test]
     async fn test_live_tts_service_enable() {
-        // enable() may call update_config() which writes to the config dir.
+        // enable() queues an update through the config service.
         // Hold the config lock so concurrent tests don't see our writes.
-        let _guard = VoiceConfigTestGuard::with_config(
+        let guard = VoiceConfigTestGuard::with_config(
             "[tools.execute_command]\nterminal_size = \"115x58\"\n\n[sandbox]\narchived_session_retention_days = 3\n",
-        );
-        let service = LiveTtsService::new(TtsConfig::default());
+        )
+        .await;
+        let service = LiveTtsService::new(guard.service.clone());
         let result = service.enable(json!({})).await;
 
         // Result depends on whether a provider is configured in the environment
-        // We just verify it returns a proper result (ok or error)
-        let _ = result;
-    }
-
-    #[tokio::test]
-    async fn test_live_tts_service_convert() {
-        let service = LiveTtsService::new(TtsConfig::default());
-        let result = service.convert(json!({ "text": "hello" })).await;
-
-        // Result depends on whether TTS is enabled and configured
         // We just verify it returns a proper result (ok or error)
         let _ = result;
     }

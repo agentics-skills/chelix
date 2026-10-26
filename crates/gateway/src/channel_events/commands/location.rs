@@ -46,7 +46,7 @@ pub(in crate::channel_events) async fn update_location(
         },
     };
 
-    let config = match chelix_config::discover_and_load() {
+    let config = match crate::config_document::read_config(state.services.configuration()).await {
         Ok(config) => config,
         Err(error) => {
             warn!(%error, "failed to load config while updating location");
@@ -104,7 +104,7 @@ pub(in crate::channel_events) async fn resolve_pending_location(
             return false;
         },
     };
-    let config = match chelix_config::discover_and_load() {
+    let config = match crate::config_document::read_config(state.services.configuration()).await {
         Ok(config) => config,
         Err(error) => {
             warn!(%error, "failed to load config while resolving location");

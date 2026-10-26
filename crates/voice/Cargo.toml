@@ -5,24 +5,39 @@ version.workspace = true
 
 [dependencies]
 anyhow        = { workspace = true }
-async-trait   = "0.1"
-base64        = { workspace = true }
+async-trait   = { workspace = true }
+base64        = { optional = true, workspace = true }
 bytes         = { workspace = true }
 chelix-config = { workspace = true }
-dirs          = "6"
-reqwest       = { features = ["multipart"], workspace = true }
+dirs          = { optional = true, version = "6" }
+reqwest       = { features = ["multipart"], optional = true, workspace = true }
 secrecy       = { workspace = true }
 serde         = { workspace = true }
-serde_json    = { workspace = true }
-tempfile      = "3"
-tokio         = { features = ["process"], workspace = true }
-tracing       = { workspace = true }
-urlencoding   = "2"
-which         = "7"
+serde_json    = { optional = true, workspace = true }
+tempfile      = { optional = true, version = "3" }
+tokio         = { features = ["process"], optional = true, workspace = true }
+tracing       = { optional = true, workspace = true }
+urlencoding   = { optional = true, version = "2" }
+which         = { optional = true, version = "7" }
+
+[features]
+default = ["runtime"]
+runtime = [
+  "dep:base64",
+  "dep:dirs",
+  "dep:reqwest",
+  "dep:serde_json",
+  "dep:tempfile",
+  "dep:tokio",
+  "dep:tracing",
+  "dep:urlencoding",
+  "dep:which",
+]
 
 [dev-dependencies]
-tokio    = { features = ["macros", "test-util"], workspace = true }
-wiremock = "0.6"
+serde_json = { workspace = true }
+tokio      = { features = ["macros", "test-util"], workspace = true }
+wiremock   = "0.6"
 
 [lints]
 workspace = true

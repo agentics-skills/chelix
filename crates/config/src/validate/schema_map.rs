@@ -693,9 +693,10 @@ pub(crate) fn check_unknown_fields(
                     };
                     diagnostics.push(Diagnostic {
                         severity: Severity::Error,
-                        category: "unknown-field",
+                        category: DiagnosticCategory::UnknownField,
                         path,
                         message: msg.trim().to_string(),
+                        summary_message: None,
                     });
                 }
             }

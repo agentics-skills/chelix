@@ -11,14 +11,14 @@ use {
     serde_json::{Value, json},
 };
 
-fn state() -> Arc<GatewayState> {
+fn state(configuration: chelix_config_service::ConfigService) -> Arc<GatewayState> {
     GatewayState::new(
         ResolvedAuth {
             mode: AuthMode::Token,
             token: None,
             password: None,
         },
-        GatewayServices::noop(),
+        GatewayServices::noop(configuration),
     )
 }
 
@@ -45,6 +45,7 @@ async fn receive(receiver: &mut mpsc::Receiver<String>) -> Value {
 
 #[tokio::test]
 async fn late_baseline_and_slow_queue_preserve_the_complete_tool_input() {
+    let fixture = crate::test_config::ConfigFixture::new().await;
     let directory = tempfile::tempdir().unwrap();
     let store = SessionStore::new(directory.path().into());
     let session = store.ui_history.session("t:1").await.unwrap();
@@ -86,7 +87,7 @@ async fn late_baseline_and_slow_queue_preserve_the_complete_tool_input() {
     let delivery_session = Arc::clone(&session);
     let delivery = tokio::spawn(async move {
         deliver(
-            &state(),
+            &state(fixture.service.clone()),
             delivery_session,
             sender,
             changes,
@@ -124,6 +125,7 @@ async fn late_baseline_and_slow_queue_preserve_the_complete_tool_input() {
 
 #[tokio::test]
 async fn lag_recovers_the_selected_window_and_clear_replaces_its_generation() {
+    let fixture = crate::test_config::ConfigFixture::new().await;
     let directory = tempfile::tempdir().unwrap();
     let store = SessionStore::new(directory.path().into());
     for index in 0..8 {
@@ -150,7 +152,7 @@ async fn lag_recovers_the_selected_window_and_clear_replaces_its_generation() {
     let delivery_session = Arc::clone(&session);
     let delivery = tokio::spawn(async move {
         deliver(
-            &state(),
+            &state(fixture.service.clone()),
             delivery_session,
             sender,
             changes,

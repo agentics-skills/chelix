@@ -1204,13 +1204,14 @@ mod tests {
 
     #[tokio::test]
     async fn chat_auxiliary_rpc_parsers_reject_invalid_payloads_before_session_lookup() {
+        let fixture = crate::test_config::ConfigFixture::new().await;
         let state = GatewayState::new(
             ResolvedAuth {
                 mode: AuthMode::Token,
                 token: None,
                 password: None,
             },
-            GatewayServices::noop(),
+            GatewayServices::noop(fixture.service.clone()),
         );
         let registry = MethodRegistry::new();
 
@@ -1255,20 +1256,18 @@ mod tests {
         }
     }
 
-    #[test]
-    fn stateless_http_session_switch_is_rejected_without_mutating_connection_state() {
+    #[tokio::test]
+    async fn stateless_http_session_switch_is_rejected_without_mutating_connection_state() {
+        let fixture = crate::test_config::ConfigFixture::new().await;
         let state = GatewayState::new(
             ResolvedAuth {
                 mode: AuthMode::Token,
                 token: None,
                 password: None,
             },
-            GatewayServices::noop(),
+            GatewayServices::noop(fixture.service.clone()),
         );
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .build()
-            .unwrap_or_else(|error| panic!("failed to build runtime: {error}"));
-        runtime.block_on(async {
+        {
             let mut registry = state.client_registry.write().await;
             registry
                 .active_sessions
@@ -1276,7 +1275,7 @@ mod tests {
             registry
                 .active_projects
                 .insert("http-rpc".into(), "project:existing".into());
-        });
+        }
 
         let context = MethodContext {
             request_id: "switch".into(),
@@ -1294,14 +1293,14 @@ mod tests {
             state: Arc::clone(&state),
             channel: None,
         };
-        let response = runtime.block_on(MethodRegistry::new().dispatch(context));
+        let response = MethodRegistry::new().dispatch(context).await;
 
         assert!(!response.ok);
         assert_eq!(
             response.error.as_ref().map(|error| error.code.as_str()),
             Some(chelix_protocol::error_codes::INVALID_REQUEST)
         );
-        runtime.block_on(async {
+        {
             let registry = state.client_registry.read().await;
             assert_eq!(
                 registry.active_sessions.get("http-rpc").map(String::as_str),
@@ -1311,6 +1310,6 @@ mod tests {
                 registry.active_projects.get("http-rpc").map(String::as_str),
                 Some("project:existing")
             );
-        });
+        }
     }
 }

@@ -39,23 +39,30 @@ pub enum DataAction {
     },
 }
 
-pub async fn handle_data(action: DataAction) -> anyhow::Result<()> {
+pub async fn handle_data(
+    action: DataAction,
+    config_service: chelix_config_service::ConfigService,
+) -> anyhow::Result<()> {
     match action {
         DataAction::Export {
             output,
             include_media,
-        } => handle_export(output, include_media).await,
+        } => handle_export(output, include_media, config_service).await,
         DataAction::Import {
             archive,
             dry_run,
             conflict,
             json,
-        } => handle_import(archive, dry_run, &conflict, json).await,
+        } => handle_import(archive, dry_run, &conflict, json, config_service).await,
         DataAction::Inspect { archive, json } => handle_inspect(archive, json),
     }
 }
 
-async fn handle_export(output: Option<PathBuf>, include_media: bool) -> anyhow::Result<()> {
+async fn handle_export(
+    output: Option<PathBuf>,
+    include_media: bool,
+    config_service: chelix_config_service::ConfigService,
+) -> anyhow::Result<()> {
     let config_dir = chelix_config::config_dir()?;
     let data_dir = chelix_config::data_dir();
 
@@ -75,7 +82,9 @@ async fn handle_export(output: Option<PathBuf>, include_media: bool) -> anyhow::
     });
 
     let file = std::fs::File::create(&output_path)?;
-    let manifest = chelix_portable::export_archive(&config_dir, &data_dir, &opts, file).await?;
+    let manifest =
+        chelix_portable::export_archive(&config_service, &config_dir, &data_dir, &opts, file)
+            .await?;
 
     println!("Export complete: {}", output_path.display());
     println!("  Config files: {}", manifest.inventory.config_files.len());
@@ -98,6 +107,7 @@ async fn handle_import(
     dry_run: bool,
     conflict: &str,
     json: bool,
+    config_service: chelix_config_service::ConfigService,
 ) -> anyhow::Result<()> {
     let config_dir = chelix_config::config_dir()?;
     let data_dir = chelix_config::data_dir();
@@ -130,7 +140,9 @@ async fn handle_import(
     };
 
     let file = std::fs::File::open(&archive)?;
-    let imported = chelix_portable::import_archive(&config_dir, &data_dir, &opts, file).await?;
+    let imported =
+        chelix_portable::import_archive(&config_service, &config_dir, &data_dir, &opts, file)
+            .await?;
     let mut result = imported.result;
     if let Some(snapshot) = imported.journal_snapshot {
         let conflict = match conflict_strategy {

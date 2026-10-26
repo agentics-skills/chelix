@@ -274,7 +274,7 @@ pub struct ChannelsConfig {
 
 impl ChannelsConfig {
     /// Paths and names of channel types outside the supported set.
-    pub(crate) fn invalid_channel_types(&self) -> Vec<(String, String)> {
+    pub fn invalid_channel_types(&self) -> Vec<(String, String)> {
         let mut invalid: Vec<_> = self
             .offered
             .iter()

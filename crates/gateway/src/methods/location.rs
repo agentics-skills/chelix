@@ -27,17 +27,15 @@ pub(super) fn register(registry: &mut MethodRegistry) {
                         context.state.inner.write().await.cached_location =
                             Some(geolocation.clone());
 
-                        let write_mode = chelix_config::discover_and_load()
+                        let configuration = context.state.services.configuration().clone();
+                        let config = crate::config_document::read_config(&configuration)
+                            .await
                             .map_err(|error| {
                                 ErrorShape::new(error_codes::INTERNAL, error.to_string())
-                            })?
-                            .memory
-                            .user_profile_write_mode;
+                            })?;
+                        let write_mode = config.memory.user_profile_write_mode;
                         if write_mode.allows_auto_write() {
-                            let mut user =
-                                chelix_config::resolve_user_profile().map_err(|error| {
-                                    ErrorShape::new(error_codes::INTERNAL, error.to_string())
-                                })?;
+                            let mut user = chelix_config::resolve_user_profile_from_config(&config);
                             user.location = Some(geolocation);
                             if let Err(error) =
                                 chelix_config::save_user_with_mode(&user, write_mode)

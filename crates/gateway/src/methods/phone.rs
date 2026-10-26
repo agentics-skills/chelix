@@ -230,30 +230,48 @@ pub(super) fn apply_phone_provider_settings(
     }
 }
 
-/// Toggle a phone provider on/off.
-pub(super) fn toggle_phone_provider(provider: &str, enabled: bool) -> anyhow::Result<()> {
-    chelix_config::update_config(|cfg| {
-        if enabled {
-            cfg.phone.enabled = true;
-            cfg.phone.provider = provider.to_string();
-        } else if cfg.phone.provider == provider {
-            cfg.phone.enabled = false;
-            cfg.phone.provider = String::new();
-        }
-    })?;
+/// Toggle a phone provider on/off through the config service.
+pub(super) async fn toggle_phone_provider(
+    config_service: &chelix_config_service::ConfigService,
+    provider: &str,
+    enabled: bool,
+) -> anyhow::Result<()> {
+    let provider = provider.to_string();
+    config_service
+        .update(move |cfg| {
+            if enabled {
+                cfg.phone.enabled = true;
+                cfg.phone.provider = provider;
+            } else if cfg.phone.provider == provider {
+                cfg.phone.enabled = false;
+                cfg.phone.provider = String::new();
+            }
+            Ok(())
+        })
+        .await?;
     Ok(())
+}
+
+/// Write phone secret strings on the stored document.
+pub(super) async fn patch_phone_config_strings(
+    config_service: &chelix_config_service::ConfigService,
+    updates: Vec<(Vec<String>, Option<String>)>,
+) -> anyhow::Result<()> {
+    crate::config_document::edit_string_paths(config_service, updates)
+        .await
+        .map_err(anyhow::Error::from)
 }
 
 /// Reconcile the in-memory telephony account with the persisted `[phone]`
 /// config after an RPC mutation.
 ///
-/// `GatewayState::config` is a startup snapshot, so this reloads `chelix.toml`
-/// before restarting the internal telephony account.
+/// `GatewayState::config` stays the startup snapshot. This reads the config
+/// service before restarting the internal telephony account.
 #[cfg(feature = "telephony")]
 pub(super) async fn reload_running_phone_account(
     state: &crate::state::GatewayState,
 ) -> anyhow::Result<()> {
-    let config = chelix_config::discover_and_load()?;
+    let config = crate::config_document::read_config(state.services.configuration()).await?;
 
     match phone_channel_account(&config) {
         Some((account_id, account_config)) => {
@@ -299,38 +317,6 @@ mod tests {
         chelix_config::schema::ChelixConfig,
         secrecy::Secret,
     };
-
-    struct PhoneConfigTestGuard {
-        _lock: std::sync::MutexGuard<'static, ()>,
-        _config_dir: tempfile::TempDir,
-        _data_dir: tempfile::TempDir,
-    }
-
-    impl PhoneConfigTestGuard {
-        fn new() -> Self {
-            let lock = crate::config_override_test_lock();
-            let config_dir = tempfile::tempdir()
-                .unwrap_or_else(|error| panic!("config tempdir should be created: {error}"));
-            let data_dir = tempfile::tempdir()
-                .unwrap_or_else(|error| panic!("data tempdir should be created: {error}"));
-            chelix_config::set_config_dir(config_dir.path().to_path_buf());
-            chelix_config::set_data_dir(data_dir.path().to_path_buf());
-            chelix_config::initialize_config()
-                .unwrap_or_else(|error| panic!("test config should be initialized: {error}"));
-            Self {
-                _lock: lock,
-                _config_dir: config_dir,
-                _data_dir: data_dir,
-            }
-        }
-    }
-
-    impl Drop for PhoneConfigTestGuard {
-        fn drop(&mut self) {
-            chelix_config::clear_config_dir();
-            chelix_config::clear_data_dir();
-        }
-    }
 
     #[test]
     fn detect_phone_providers_returns_all() {
@@ -451,7 +437,8 @@ mod tests {
             tokio::sync::RwLock,
         };
 
-        let _guard = PhoneConfigTestGuard::new();
+        let guard = crate::test_config::ConfigFixture::new().await;
+        let config_service = guard.service.clone();
         let telephony_plugin = Arc::new(RwLock::new(chelix_telephony::TelephonyPlugin::new()));
         let mut registry = ChannelRegistry::new();
         registry
@@ -460,7 +447,7 @@ mod tests {
             )
             .await;
         let registry = Arc::new(registry);
-        let services = GatewayServices::noop()
+        let services = GatewayServices::noop(config_service.clone())
             .with_channel_registry(Arc::clone(&registry))
             .with_telephony_plugin(Arc::clone(&telephony_plugin));
         let state = GatewayState::new(
@@ -472,14 +459,17 @@ mod tests {
             services,
         );
 
-        chelix_config::update_config(|cfg| {
-            cfg.phone.enabled = true;
-            cfg.phone.provider = "twilio".to_string();
-            cfg.phone.twilio.from_number = Some("+15550000001".to_string());
-            cfg.phone.twilio.account_sid = Some(Secret::new("AC_old".to_string()));
-            cfg.phone.twilio.auth_token = Some(Secret::new("old_token".to_string()));
-        })
-        .unwrap_or_else(|error| panic!("phone config should be stored: {error}"));
+        config_service
+            .update(|cfg| {
+                cfg.phone.enabled = true;
+                cfg.phone.provider = "twilio".to_string();
+                cfg.phone.twilio.from_number = Some("+15550000001".to_string());
+                cfg.phone.twilio.account_sid = Some(Secret::new("AC_old".to_string()));
+                cfg.phone.twilio.auth_token = Some(Secret::new("old_token".to_string()));
+                Ok(())
+            })
+            .await
+            .unwrap_or_else(|error| panic!("phone config should be stored: {error}"));
 
         reload_running_phone_account(&state)
             .await
@@ -494,12 +484,15 @@ mod tests {
             Some("telephony")
         );
 
-        chelix_config::update_config(|cfg| {
-            cfg.phone.twilio.from_number = Some("+15550000002".to_string());
-            cfg.phone.twilio.account_sid = Some(Secret::new("AC_new".to_string()));
-            cfg.phone.twilio.auth_token = Some(Secret::new("new_token".to_string()));
-        })
-        .unwrap_or_else(|error| panic!("phone config should be updated: {error}"));
+        config_service
+            .update(|cfg| {
+                cfg.phone.twilio.from_number = Some("+15550000002".to_string());
+                cfg.phone.twilio.account_sid = Some(Secret::new("AC_new".to_string()));
+                cfg.phone.twilio.auth_token = Some(Secret::new("new_token".to_string()));
+                Ok(())
+            })
+            .await
+            .unwrap_or_else(|error| panic!("phone config should be updated: {error}"));
 
         reload_running_phone_account(&state)
             .await
