@@ -1,14 +1,11 @@
-use std::sync::Arc;
-
 use {
-    chelix_config::{AgentConfig, AgentsConfig, ChelixConfig, schema::ReasoningEffort},
-    chelix_providers::ProviderRegistry,
-    chelix_service_traits::{ModelService, ResolvedModelReasoning, ServiceError, ServiceResult},
+    chelix_config::{AgentConfig, AgentsConfig, schema::ReasoningEffort},
+    chelix_service_traits::{ModelResolver, ResolvedModelReasoning, ServiceError, ServiceResult},
 };
 
 /// Resolve one explicit model/reasoning pair through the canonical model service.
 pub async fn resolve_model_reasoning(
-    model_service: &dyn ModelService,
+    model_service: &dyn ModelResolver,
     model: &str,
     reasoning_effort: &ReasoningEffort,
 ) -> ServiceResult<ResolvedModelReasoning> {
@@ -19,7 +16,7 @@ pub async fn resolve_model_reasoning(
 
 /// Validate one complete agent configuration without mutating state.
 pub async fn validate_agent_config(
-    model_service: &dyn ModelService,
+    model_service: &dyn ModelResolver,
     agent_id: &str,
     agent: &AgentConfig,
 ) -> ServiceResult<ResolvedModelReasoning> {
@@ -34,7 +31,7 @@ pub async fn validate_agent_config(
 
 /// Validate the exact agents registry state and every configured pair.
 pub async fn validate_agents_config(
-    model_service: &dyn ModelService,
+    model_service: &dyn ModelResolver,
     agents: &AgentsConfig,
 ) -> ServiceResult<()> {
     agents
@@ -57,19 +54,6 @@ pub async fn validate_agents_config(
     Ok(())
 }
 
-/// Validate candidate agent pairs against the registry that the candidate config will start with.
-pub async fn validate_candidate_agents_config(config: &ChelixConfig) -> ServiceResult<()> {
-    let registry = ProviderRegistry::from_config(&config.providers, &config.env)
-        .map_err(ServiceError::message)?;
-    let disabled = crate::chat::DisabledModelsStore::from_config(config);
-    let model_service = crate::chat::LiveModelService::new(
-        Arc::new(tokio::sync::RwLock::new(registry)),
-        Arc::new(tokio::sync::RwLock::new(disabled)),
-        config.chat.priority_models.clone(),
-    );
-    validate_agents_config(&model_service, &config.agents).await
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -77,15 +61,7 @@ mod tests {
     struct ExactModelService;
 
     #[async_trait::async_trait]
-    impl ModelService for ExactModelService {
-        async fn list(&self) -> ServiceResult {
-            Ok(serde_json::json!([]))
-        }
-
-        async fn list_all(&self) -> ServiceResult {
-            Ok(serde_json::json!([]))
-        }
-
+    impl ModelResolver for ExactModelService {
         async fn resolve_model_reasoning(
             &self,
             model: &str,
@@ -105,22 +81,6 @@ mod tests {
             }
             ResolvedModelReasoning::try_new(model.to_string(), effort.clone())
                 .map_err(|error| ServiceError::message(error.to_string()))
-        }
-
-        async fn disable(&self, _params: serde_json::Value) -> ServiceResult {
-            Ok(serde_json::json!({}))
-        }
-
-        async fn enable(&self, _params: serde_json::Value) -> ServiceResult {
-            Ok(serde_json::json!({}))
-        }
-
-        async fn forget_disabled(&self, _model_ids: &[String]) -> ServiceResult {
-            Ok(serde_json::json!({}))
-        }
-
-        async fn rename_disabled(&self, _pairs: &[(String, String)]) -> ServiceResult {
-            Ok(serde_json::json!({}))
         }
     }
 

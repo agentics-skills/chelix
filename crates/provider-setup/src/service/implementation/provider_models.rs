@@ -1,5 +1,7 @@
 //! Add, replace, and delete provider model records.
 
+use std::{collections::HashSet, sync::Arc};
+
 use {
     chelix_config::schema::{AgentConfig, PartialModelMetadata, ProviderEntry},
     chelix_providers::{ProviderRegistry, model_id::namespaced_model_id},
@@ -7,7 +9,13 @@ use {
     serde_json::Value,
 };
 
-use super::service::{LiveProviderSetupService, ProviderConfigPersistence};
+use {
+    super::{
+        config_error::writer_error,
+        service::{LiveProviderSetupService, ProviderConfigPersistence},
+    },
+    crate::model_document::edit_provider_models,
+};
 
 struct ModelWrite {
     provider: String,
@@ -54,54 +62,55 @@ impl LiveProviderSetupService {
                 write.provider
             )));
         }
-        let agents = self.agent_entries().await;
         let removed_model_id = removed_canonical_id(&write);
-        let mut registry = self.registry.write().await;
-        let models = if self.config_persistence == ProviderConfigPersistence::Filesystem {
-            let base = self.config_snapshot();
-            let env_overrides = self.env_overrides.clone();
-            let provider_name = write.provider.clone();
-            chelix_config::update_provider_model_toml(
-                &write.provider,
-                write.previous_model_id.as_deref(),
-                &write.model_id,
-                write.metadata.as_ref(),
-                removed_model_id.as_deref(),
-                |file_models| {
-                    let mut candidate_config = base.clone();
-                    candidate_config
-                        .providers
-                        .entry(provider_name.clone())
-                        .or_default()
-                        .models = file_models.clone();
-                    let candidate =
-                        ProviderRegistry::from_config(&candidate_config, &env_overrides)
-                            .map_err(|error| chelix_config::Error::message(error.to_string()))?;
-                    let blocked = blocked_agents(&candidate, &agents);
-                    if !blocked.is_empty() {
-                        return Err(chelix_config::Error::message(format!(
-                            "model change breaks configured agents: {}",
-                            blocked.join(", ")
-                        )));
-                    }
-                    Ok(())
-                },
-            )
-            .map_err(ServiceError::message)?
+        let memory_agents = if let ProviderConfigPersistence::MemoryOnly = &self.config_persistence
+        {
+            self.agent_entries().await
         } else {
-            let mut base = self.config_snapshot();
-            mutate_provider_models(&mut base, &write)?;
-            let candidate = self.build_registry(&base)?;
-            let blocked = blocked_agents(&candidate, &agents);
-            if !blocked.is_empty() {
-                return Err(ServiceError::message(format!(
-                    "model change breaks configured agents: {}",
-                    blocked.join(", ")
-                )));
-            }
-            base.get(&write.provider)
-                .map(|entry| entry.models.clone())
-                .unwrap_or_default()
+            Vec::new()
+        };
+        let mut registry = self.registry.write().await;
+        let models = match &self.config_persistence {
+            ProviderConfigPersistence::Service(service) => {
+                let service = service.clone();
+                let provider = write.provider.clone();
+                let previous_id = write.previous_model_id.clone();
+                let model_id = write.model_id.clone();
+                let metadata = write.metadata.clone();
+                let priority_id = removed_model_id.clone();
+                let validator = agent_candidate_validator("model");
+                service
+                    .edit_document_checked(
+                        move |document| {
+                            edit_provider_models(
+                                document,
+                                &provider,
+                                previous_id.as_deref(),
+                                &model_id,
+                                metadata.as_ref(),
+                                priority_id.as_deref(),
+                            )
+                        },
+                        validator,
+                    )
+                    .await
+                    .map_err(writer_error)?
+            },
+            ProviderConfigPersistence::MemoryOnly => {
+                let mut base = self.config_snapshot();
+                mutate_provider_models(&mut base, &write)?;
+                let candidate = self.build_registry(&base)?;
+                let blocked = blocked_agents(&candidate, &memory_agents);
+                if !blocked.is_empty() {
+                    return Err(ServiceError::message(format!(
+                        "model change breaks configured agents: {}",
+                        blocked.join(", ")
+                    )));
+                }
+                base.get(&write.provider)
+                    .map(|entry| entry.models.clone())
+                    .unwrap_or_default()
+            },
         };
         let mut base = self.config_snapshot();
         base.providers
@@ -280,6 +289,97 @@ fn canonical_model_id(provider: &str, model_id: &str) -> String {
     namespaced_model_id(provider, model_id)
 }
 
+/// Checks the queued candidate registry against that candidate's configured agents.
+pub(super) fn agent_candidate_validator(
+    change: &'static str,
+) -> Arc<dyn chelix_config_service::ConfigValidator> {
+    Arc::new(AgentCandidateValidator { change })
+}
+
+struct AgentCandidateValidator {
+    change: &'static str,
+}
+
+#[async_trait::async_trait]
+impl chelix_config_service::ConfigValidator for AgentCandidateValidator {
+    async fn validate(
+        &self,
+        candidate: Arc<chelix_config::ChelixConfig>,
+    ) -> Vec<chelix_config::Diagnostic> {
+        let agents = candidate
+            .agents
+            .entries
+            .iter()
+            .map(|(agent_id, agent)| (agent_id.clone(), agent.clone()))
+            .collect::<Vec<_>>();
+        let registry = match ProviderRegistry::from_config(&candidate.providers, &candidate.env) {
+            Ok(registry) => registry,
+            Err(error) => return vec![candidate_diagnostic(error.to_string())],
+        };
+        let blocked = blocked_agents(&registry, &agents);
+        if blocked.is_empty() {
+            Vec::new()
+        } else {
+            vec![candidate_diagnostic(format!(
+                "{} change breaks configured agents: {}",
+                self.change,
+                blocked.join(", ")
+            ))]
+        }
+    }
+}
+
+pub(super) fn removed_model_agent_validator(
+    provider_name: String,
+    removed_model_ids: HashSet<String>,
+) -> Arc<dyn chelix_config_service::ConfigValidator> {
+    Arc::new(RemovedModelAgentValidator {
+        provider_name,
+        removed_model_ids,
+    })
+}
+
+struct RemovedModelAgentValidator {
+    provider_name: String,
+    removed_model_ids: HashSet<String>,
+}
+
+#[async_trait::async_trait]
+impl chelix_config_service::ConfigValidator for RemovedModelAgentValidator {
+    async fn validate(
+        &self,
+        candidate: Arc<chelix_config::ChelixConfig>,
+    ) -> Vec<chelix_config::Diagnostic> {
+        let mut agent_ids = candidate
+            .agents
+            .entries
+            .iter()
+            .filter(|(_, agent)| self.removed_model_ids.contains(&agent.model))
+            .map(|(agent_id, _)| agent_id.clone())
+            .collect::<Vec<_>>();
+        agent_ids.sort_unstable();
+        if agent_ids.is_empty() {
+            Vec::new()
+        } else {
+            vec![candidate_diagnostic(format!(
+                "provider '{}' supplies models configured for agents: {}",
+                self.provider_name,
+                agent_ids.join(", ")
+            ))]
+        }
+    }
+}
+
+fn candidate_diagnostic(message: String) -> chelix_config::Diagnostic {
+    chelix_config::Diagnostic {
+        severity: chelix_config::Severity::Error,
+        category: chelix_config::DiagnosticCategory::InvalidValue,
+        path: String::new(),
+        message,
+        summary_message: None,
+    }
+}
+
 pub(super) fn blocked_agents(
     registry: &ProviderRegistry,
     agents: &[(String, AgentConfig)],
@@ -292,16 +392,82 @@ pub(super) fn blocked_agents(
 }
 
 fn agent_model_ok(registry: &ProviderRegistry, agent: &AgentConfig) -> bool {
-    registry
-        .list_models()
-        .iter()
-        .find(|model| model.id == agent.model)
-        .is_some_and(|model| {
-            model.supports_text_chat()
-                && model
-                    .metadata
-                    .reasoning_supported_efforts
-                    .iter()
-                    .any(|effort| effort.as_str() == agent.reasoning_effort.as_str())
-        })
+    registry.supports_chat_model_assignment(&agent.model, &agent.reasoning_effort)
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        chelix_config::{ChelixConfig, DiagnosticCategory, Severity},
+        chelix_config_service::ConfigValidator,
+    };
+
+    use super::*;
+
+    fn agent(model: &str) -> AgentConfig {
+        AgentConfig::new(
+            "Agent",
+            model,
+            chelix_config::schema::ReasoningEffort::from("off"),
+        )
+    }
+
+    fn assert_rejection(diagnostics: &[chelix_config::Diagnostic], message: &str) {
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].severity, Severity::Error);
+        assert_eq!(diagnostics[0].category, DiagnosticCategory::InvalidValue);
+        assert_eq!(diagnostics[0].path, "");
+        assert_eq!(diagnostics[0].message, message);
+    }
+
+    #[tokio::test]
+    async fn candidate_validator_checks_configured_agent_assignments() {
+        let validator = AgentCandidateValidator { change: "model" };
+        let mut config = ChelixConfig::default();
+        assert!(
+            validator
+                .validate(Arc::new(config.clone()))
+                .await
+                .is_empty()
+        );
+        config
+            .agents
+            .entries
+            .insert("main".into(), agent("test::missing"));
+        assert_rejection(
+            &validator.validate(Arc::new(config)).await,
+            "model change breaks configured agents: main",
+        );
+    }
+
+    #[tokio::test]
+    async fn removal_validator_rejects_only_removed_models_in_sorted_agent_order() {
+        let validator = RemovedModelAgentValidator {
+            provider_name: "test".into(),
+            removed_model_ids: HashSet::from(["test::removed".into()]),
+        };
+        let mut config = ChelixConfig::default();
+        config
+            .agents
+            .entries
+            .insert("kept".into(), agent("test::kept"));
+        assert!(
+            validator
+                .validate(Arc::new(config.clone()))
+                .await
+                .is_empty()
+        );
+        config
+            .agents
+            .entries
+            .insert("zulu".into(), agent("test::removed"));
+        config
+            .agents
+            .entries
+            .insert("alpha".into(), agent("test::removed"));
+        assert_rejection(
+            &validator.validate(Arc::new(config)).await,
+            "provider 'test' supplies models configured for agents: alpha, zulu",
+        );
+    }
 }

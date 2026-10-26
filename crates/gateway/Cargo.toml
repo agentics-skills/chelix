@@ -16,14 +16,15 @@ chelix-chat             = { workspace = true }
 chelix-code-index       = { workspace = true }
 chelix-common           = { workspace = true }
 chelix-config           = { workspace = true }
-chelix-context7         = { optional = true, workspace = true }
+chelix-config-service   = { workspace = true }
+chelix-context7         = { workspace = true }
 chelix-cron             = { workspace = true }
-chelix-duckduckgo       = { optional = true, workspace = true }
-chelix-exa              = { optional = true, workspace = true }
-chelix-felo             = { optional = true, workspace = true }
-chelix-github           = { optional = true, workspace = true }
-chelix-google           = { optional = true, workspace = true }
-chelix-linkup           = { optional = true, workspace = true }
+chelix-duckduckgo       = { workspace = true }
+chelix-exa              = { workspace = true }
+chelix-felo             = { workspace = true }
+chelix-github           = { workspace = true }
+chelix-google           = { workspace = true }
+chelix-linkup           = { workspace = true }
 chelix-mcp              = { workspace = true }
 chelix-mcp-agent-bridge = { workspace = true }
 chelix-media            = { workspace = true }
@@ -41,9 +42,10 @@ chelix-sessions         = { workspace = true }
 chelix-skills           = { workspace = true }
 chelix-telegram         = { optional = true, workspace = true }
 chelix-telephony        = { optional = true, workspace = true }
+chelix-tls              = { workspace = true }
 chelix-tools            = { workspace = true }
 chelix-vault            = { optional = true, workspace = true }
-chelix-voice            = { optional = true, workspace = true }
+chelix-voice            = { workspace = true }
 chelix-webhooks         = { workspace = true }
 chrono                  = { features = ["serde"], optional = true, workspace = true }
 flate2                  = { workspace = true }
@@ -67,6 +69,7 @@ time                    = { workspace = true }
 tokio                   = { workspace = true }
 tokio-util              = { workspace = true }
 toml                    = { workspace = true }
+toml_edit               = { workspace = true }
 tracing                 = { workspace = true }
 tracing-subscriber      = { workspace = true }
 url                     = { workspace = true }
@@ -82,7 +85,7 @@ bundled-skills = [
   "chelix-tools/bundled-skills",
 ]
 code-index-builtin = ["chelix-code-index/builtin"]
-context7 = ["dep:chelix-context7"]
+context7 = ["chelix-context7/runtime", "chelix-context7/tracing"]
 default = [
   "agent",
   "bundled-skills",
@@ -107,28 +110,29 @@ default = [
   "voice",
   "web-ui",
 ]
-duckduckgo = ["dep:chelix-duckduckgo"]
-exa = ["dep:chelix-exa"]
-felo = ["dep:chelix-felo"]
+duckduckgo = ["chelix-duckduckgo/runtime", "chelix-duckduckgo/tracing"]
+exa = ["chelix-exa/runtime", "chelix-exa/tracing"]
+felo = ["chelix-felo/runtime", "chelix-felo/tracing"]
 file-watcher = [
   "chelix-code-index/file-watcher",
   "chelix-memory/file-watcher",
   "chelix-skills/file-watcher",
 ]
 firecrawl = ["chelix-tools/firecrawl"]
-github = ["dep:chelix-github"]
-google = ["dep:chelix-google"]
-linkup = ["dep:chelix-linkup"]
+github = ["chelix-github/runtime", "chelix-github/tracing"]
+google = ["chelix-google/runtime", "chelix-google/tracing"]
+linkup = ["chelix-linkup/runtime", "chelix-linkup/tracing"]
 mdns = ["dep:mdns-sd"]
 metrics = [
   "chelix-chat/metrics",
-  "chelix-context7?/metrics",
-  "chelix-duckduckgo?/metrics",
-  "chelix-exa?/metrics",
-  "chelix-felo?/metrics",
-  "chelix-github?/metrics",
-  "chelix-google?/metrics",
-  "chelix-linkup?/metrics",
+  "chelix-config-service/metrics",
+  "chelix-context7/metrics",
+  "chelix-duckduckgo/metrics",
+  "chelix-exa/metrics",
+  "chelix-felo/metrics",
+  "chelix-github/metrics",
+  "chelix-google/metrics",
+  "chelix-linkup/metrics",
   "chelix-metrics/sqlite",
   "dep:chelix-metrics",
 ]
@@ -136,9 +140,9 @@ prometheus = ["chelix-metrics/prometheus", "metrics"]
 push-notifications = ["chelix-chat/push-notifications", "dep:chrono", "dep:p256", "dep:web-push"]
 telegram = ["chelix-chat/telegram", "dep:chelix-telegram"]
 telephony = ["dep:chelix-telephony"]
-tls = []
+tls = ["chelix-tls/runtime"]
 vault = ["chelix-auth/vault", "chelix-secret-store/vault", "dep:chelix-vault"]
-voice = ["dep:chelix-voice"]
+voice = ["chelix-voice/runtime"]
 web-ui = ["chelix-chat/web-ui"]
 
 [dev-dependencies]

@@ -1,25 +1,5 @@
-use std::sync::MutexGuard;
-
+pub(crate) use crate::test_config::ConfigDirGuard as LocalModelConfigTestGuard;
 use {async_trait::async_trait, chelix_common::types::ReplyPayload, tokio::sync::Mutex};
-
-pub(crate) struct LocalModelConfigTestGuard {
-    _lock: MutexGuard<'static, ()>,
-}
-
-impl LocalModelConfigTestGuard {
-    pub(crate) fn new() -> Self {
-        Self {
-            _lock: crate::config_override_test_lock(),
-        }
-    }
-}
-
-impl Drop for LocalModelConfigTestGuard {
-    fn drop(&mut self) {
-        chelix_config::clear_config_dir();
-        chelix_config::clear_data_dir();
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DeliveredMessage {

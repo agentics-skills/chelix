@@ -441,23 +441,6 @@ fn validate_agent_id(id: &str) -> Result<(), ErrorShape> {
 }
 
 #[cfg(feature = "agent")]
-fn validate_agent_shape(agent: &chelix_config::AgentConfig) -> Result<(), ErrorShape> {
-    if agent.name.trim().is_empty() {
-        return Err(ErrorShape::new(
-            error_codes::INVALID_REQUEST,
-            "agent name must not be empty",
-        ));
-    }
-    if agent.max_tools_threshold == 0 {
-        return Err(ErrorShape::new(
-            error_codes::INVALID_REQUEST,
-            "max_tools_threshold must be at least 1",
-        ));
-    }
-    Ok(())
-}
-
-#[cfg(feature = "agent")]
 async fn resolved_agent_pair(
     ctx: &MethodContext,
     agent_id: &str,
@@ -465,7 +448,7 @@ async fn resolved_agent_pair(
     let (model, reasoning_effort) = agent_defaults_for_agent(&ctx.state, Some(agent_id))
         .await
         .map_err(|error| ErrorShape::new(error_codes::INVALID_REQUEST, error.to_string()))?;
-    crate::model_reasoning::resolve_model_reasoning(
+    chelix_agents::model_validation::resolve_model_reasoning(
         ctx.state.services.model.as_ref(),
         &model,
         &reasoning_effort,
@@ -480,8 +463,19 @@ async fn validate_agent_config(
     agent_id: &str,
     agent: &chelix_config::AgentConfig,
 ) -> Result<(), ErrorShape> {
-    validate_agent_shape(agent)?;
-    crate::model_reasoning::validate_agent_config(
+    if chelix_agents::config_validation::agent_name_is_empty(agent) {
+        return Err(ErrorShape::new(
+            error_codes::INVALID_REQUEST,
+            "agent name must not be empty",
+        ));
+    }
+    if chelix_agents::config_validation::agent_max_tools_threshold_is_zero(agent) {
+        return Err(ErrorShape::new(
+            error_codes::INVALID_REQUEST,
+            "max_tools_threshold must be at least 1",
+        ));
+    }
+    chelix_agents::model_validation::validate_agent_config(
         ctx.state.services.model.as_ref(),
         agent_id,
         agent,
@@ -569,14 +563,19 @@ fn agents_config_for_ctx(
 #[cfg(feature = "agent")]
 async fn persist_agents_config(
     ctx: &MethodContext,
-    update: impl FnOnce(&mut chelix_config::ChelixConfig) -> chelix_config::Result<()>,
+    update: impl FnOnce(&mut chelix_config::ChelixConfig) -> chelix_config::Result<()> + Send + 'static,
 ) -> Result<(), ErrorShape> {
-    chelix_config::update_config_checked(update)
+    let configuration = ctx.state.services.configuration().clone();
+    configuration
+        .update_checked(update)
+        .await
         .map_err(|error| ErrorShape::new(error_codes::INVALID_REQUEST, error.to_string()))?;
-    let fresh = chelix_config::discover_and_load()
+    let fresh = configuration
+        .read(|config| config.agents.clone())
+        .await
         .map_err(|error| ErrorShape::new(error_codes::INTERNAL, error.to_string()))?;
     let agents = agents_config_for_ctx(ctx)?;
-    *agents.write().await = fresh.agents;
+    *agents.write().await = fresh;
     Ok(())
 }
 
@@ -590,16 +589,6 @@ mod tests {
         assert!(validate_agent_id("default").is_err());
         assert!(validate_agent_id("QA").is_err());
         assert!(validate_agent_id("-qa").is_err());
-    }
-
-    #[test]
-    fn rejects_empty_agent_name() {
-        let agent = chelix_config::AgentConfig::new(
-            "",
-            "test::model",
-            chelix_config::schema::ReasoningEffort::from("off"),
-        );
-        assert!(validate_agent_shape(&agent).is_err());
     }
 
     #[test]

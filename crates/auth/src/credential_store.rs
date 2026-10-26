@@ -4,7 +4,7 @@ use std::sync::atomic::AtomicBool;
 
 #[cfg(feature = "vault")]
 use chelix_vault::Vault;
-use sqlx::SqlitePool;
+use {chelix_config_service::ConfigService, sqlx::SqlitePool};
 
 mod api_keys;
 mod env_vars;
@@ -29,9 +29,9 @@ pub use {
 #[cfg(feature = "vault")]
 pub use sessions::{PasswordVaultChangeError, VaultInitializeError, VaultInitializeOutcome};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum AuthConfigPersistence {
-    Filesystem,
+    Service(ConfigService),
     MemoryOnly,
 }
 

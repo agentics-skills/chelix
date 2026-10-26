@@ -5,7 +5,7 @@ Chelix stores settings in `chelix.toml`.
 On first run the file is created in `~/.config/chelix/` with the
 installation-specific port, `tools.execute_command.terminal_size`, and
 `sandbox.archived_session_retention_days`. Every other setting is part of the
-same file. Reads and writes use `chelix.toml`.
+same file. `chelix-config-service` owns access to `chelix.toml`.
 
 ## Configuration File Location
 
@@ -25,6 +25,34 @@ Malformed values, type errors, and unknown fields in `chelix.toml`
 cause startup or the requested config operation to fail. Config updates and
 onboarding also refuse to overwrite an invalid existing file; correct the
 reported error in that file and retry.
+
+## Configuration Service
+
+Startup resolves `CHELIX_CONFIG_DIR`, followed by `~/.config/chelix/`, and loads
+a snapshot validated by the owners' loading checks. An empty `CHELIX_CONFIG_DIR`
+is treated as unset; a relative value is an error.
+
+Reads have a dedicated queue. Each read selects its requested data from the
+current snapshot when that request executes. The snapshot contains the raw
+TOML for the configuration editor and the parsed configuration for consumers.
+
+Writes have a separate queue. Each transaction reads the current file, applies
+its patch in memory, and validates the candidate through callbacks supplied by
+the owning services. Ordinary transactions use the loading checks. Agent
+configuration updates and saves from the TOML editor use the full owner checks.
+The editor save and the pre-restart check also validate agent models.
+A successful transaction replaces the file, publishes the snapshot, and then
+acknowledges that transaction. Sequential writes to the same
+key each receive their own result; the last successful write determines the
+stored value. A rejected candidate leaves the published snapshot unchanged.
+
+A temporary scheduler queues a file refresh approximately every 60 seconds.
+The refresh validates the current file with the loading checks and publishes
+its changes to the snapshot. Rejected refreshes are logged, and readers continue using the last
+accepted snapshot. The scheduler skips accumulated timer ticks.
+
+Consumers retain their existing application points: explicit runtime updates,
+per-operation reads, and settings that require a restart.
 
 ## Checking Config
 

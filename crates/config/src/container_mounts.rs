@@ -49,14 +49,14 @@ pub struct SandboxMount {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum MountViolationKind {
+pub enum MountViolationKind {
     Host,
     Guest,
     Mode,
 }
 
 impl MountViolationKind {
-    pub(crate) const fn field(self) -> &'static str {
+    pub const fn field(self) -> &'static str {
         match self {
             Self::Host => "host",
             Self::Guest => "guest",
@@ -89,20 +89,27 @@ impl MountViolationReason {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct MountViolation {
+pub struct MountViolation {
     pub kind: MountViolationKind,
     reason: MountViolationReason,
     pub message: String,
 }
 
+impl MountViolation {
+    #[must_use]
+    pub const fn safe_description(&self) -> &'static str {
+        self.reason.safe_description()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct RejectedSandboxMount {
+pub struct RejectedSandboxMount {
     pub index: usize,
     pub violation: MountViolation,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SandboxMountValidation {
+pub struct SandboxMountValidation {
     pub data_mount_exposes_config: bool,
     pub shared_home_exposes_config: bool,
     pub managed_guest_mounts_conflict: bool,
@@ -314,9 +321,7 @@ fn data_mount_exposes_config_with_context(context: &MountPlanContext) -> bool {
         || host_paths_overlap(&context.host_data_dir, &context.config_dir)
 }
 
-pub(crate) fn sandbox_mount_validation(
-    cfg: &SandboxConfig,
-) -> crate::Result<SandboxMountValidation> {
+pub fn sandbox_mount_validation(cfg: &SandboxConfig) -> crate::Result<SandboxMountValidation> {
     Ok(sandbox_mount_analysis_with_context(cfg, &MountPlanContext::active(cfg)?).validation)
 }
 

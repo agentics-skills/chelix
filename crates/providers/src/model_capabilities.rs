@@ -14,6 +14,11 @@ pub struct ModelInfo {
 
 impl ModelInfo {
     #[must_use]
+    pub fn supports_reasoning(&self, effort: &chelix_common::ReasoningEffort) -> bool {
+        self.metadata.reasoning_supported_efforts.contains(effort)
+    }
+
+    #[must_use]
     pub fn supports_text_chat(&self) -> bool {
         self.metadata.supports_input(ModelModality::Text)
             && self.metadata.supports_output(ModelModality::Text)

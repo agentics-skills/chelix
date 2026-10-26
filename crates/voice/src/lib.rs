@@ -4,7 +4,9 @@
 //! with implementations for popular providers like ElevenLabs, OpenAI, and Whisper.
 
 pub mod config;
+pub mod config_validation;
 pub mod stt;
+pub mod text;
 pub mod tts;
 
 pub use {
@@ -15,13 +17,18 @@ pub use {
         VoicePersonaPrompt, VoicePersonaProviderBinding, VoxtralLocalConfig, WhisperCliConfig,
         WhisperConfig, WhisperLocalConfig,
     },
+    stt::{SttProvider, TranscribeRequest, Transcript},
+    text::{
+        TtsDirectives, contains_ssml, parse_tts_directives, sanitize_text_for_tts, strip_ssml_tags,
+    },
+    tts::{AudioFormat, AudioOutput, SynthesizeRequest, TtsProvider, Voice},
+};
+
+#[cfg(feature = "runtime")]
+pub use {
     stt::{
-        DeepgramStt, ElevenLabsStt, GoogleStt, SherpaOnnxStt, SttProvider, TranscribeRequest,
-        Transcript, VoxtralLocalStt, WhisperCliStt, WhisperLocalStt, WhisperStt,
+        DeepgramStt, ElevenLabsStt, GoogleStt, SherpaOnnxStt, VoxtralLocalStt, WhisperCliStt,
+        WhisperLocalStt, WhisperStt,
     },
-    tts::{
-        AudioFormat, AudioOutput, CoquiTts, ElevenLabsTts, GoogleTts, OpenAiTts, PiperTts,
-        SynthesizeRequest, TtsDirectives, TtsProvider, Voice, contains_ssml, parse_tts_directives,
-        sanitize_text_for_tts, strip_ssml_tags,
-    },
+    tts::{CoquiTts, ElevenLabsTts, GoogleTts, OpenAiTts, PiperTts},
 };

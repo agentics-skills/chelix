@@ -7,6 +7,7 @@ use {
 
 #[tokio::test]
 async fn sync_runtime_webauthn_host_registers_new_origin() {
+    let fixture = crate::test_config::ConfigFixture::new().await;
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
     let mut config = chelix_config::ChelixConfig::default();
     config.sandbox.mode = chelix_config::schema::SandboxMode::Off;
@@ -21,7 +22,7 @@ async fn sync_runtime_webauthn_host_registers_new_origin() {
             token: None,
             password: None,
         },
-        crate::services::GatewayServices::noop(),
+        crate::services::GatewayServices::noop(fixture.service.clone()),
         config,
         Arc::new(chelix_tools::sandbox::SandboxRouter::disabled()),
         Some(Arc::clone(&credential_store)),
@@ -67,13 +68,14 @@ async fn sync_runtime_webauthn_host_registers_new_origin() {
 
 #[tokio::test]
 async fn sync_runtime_webauthn_host_rejects_invalid_origin() {
+    let fixture = crate::test_config::ConfigFixture::new().await;
     let gateway = crate::state::GatewayState::new(
         ResolvedAuth {
             mode: AuthMode::Token,
             token: None,
             password: None,
         },
-        crate::services::GatewayServices::noop(),
+        crate::services::GatewayServices::noop(fixture.service.clone()),
     );
     let registry = Arc::new(tokio::sync::RwLock::new(
         crate::auth_webauthn::WebAuthnRegistry::new(),
@@ -94,13 +96,14 @@ async fn sync_runtime_webauthn_host_rejects_invalid_origin() {
 
 #[tokio::test]
 async fn sync_runtime_webauthn_host_skips_insecure_http_origin() {
+    let fixture = crate::test_config::ConfigFixture::new().await;
     let gateway = crate::state::GatewayState::new(
         ResolvedAuth {
             mode: AuthMode::Token,
             token: None,
             password: None,
         },
-        crate::services::GatewayServices::noop(),
+        crate::services::GatewayServices::noop(fixture.service.clone()),
     );
     let registry = Arc::new(tokio::sync::RwLock::new(
         crate::auth_webauthn::WebAuthnRegistry::new(),

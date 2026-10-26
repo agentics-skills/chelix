@@ -28,7 +28,7 @@ fn auxiliary_title_pair_requires_both_fields() {
         assert!(
             result.diagnostics.iter().any(|diagnostic| {
                 diagnostic.severity == Severity::Error
-                    && diagnostic.category == "type-error"
+                    && diagnostic.category == DiagnosticCategory::TypeError
                     && diagnostic.message.contains(missing_field)
             }),
             "{:?}",
@@ -55,7 +55,7 @@ fn auxiliary_rejects_arbitrary_extra_key_at_each_level() {
         assert!(
             result.diagnostics.iter().any(|diagnostic| {
                 diagnostic.severity == Severity::Error
-                    && diagnostic.category == "unknown-field"
+                    && diagnostic.category == DiagnosticCategory::UnknownField
                     && diagnostic.path == path
             }),
             "{:?}",

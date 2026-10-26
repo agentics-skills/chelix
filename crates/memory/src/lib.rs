@@ -3,6 +3,7 @@
 pub mod allowlist;
 pub mod chunker;
 pub mod config;
+pub mod config_validation;
 #[cfg(test)]
 pub mod contract;
 mod embed_payload;

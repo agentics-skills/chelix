@@ -11,6 +11,7 @@ default-members = [
   "crates/code-index",
   "crates/common",
   "crates/config",
+  "crates/config-service",
   "crates/context7",
   "crates/cron",
   "crates/duckduckgo",
@@ -61,6 +62,7 @@ members = [
   "crates/code-index",
   "crates/common",
   "crates/config",
+  "crates/config-service",
   "crates/context7",
   "crates/cron",
   "crates/duckduckgo",
@@ -151,6 +153,7 @@ reqwest = { features = ["form", "json", "multipart", "query", "socks", "stream"]
 # UUID
 uuid = { features = ["v4"], version = "1" }
 # Async
+arc-swap     = "1.9"
 async-stream = "0.3"
 async-trait  = "0.1"
 directories  = "6"
@@ -268,16 +271,17 @@ chelix-chat             = { path = "crates/chat" }
 chelix-code-index       = { path = "crates/code-index" }
 chelix-common           = { path = "crates/common" }
 chelix-config           = { path = "crates/config" }
-chelix-context7         = { path = "crates/context7" }
+chelix-config-service   = { path = "crates/config-service" }
+chelix-context7         = { default-features = false, path = "crates/context7" }
 chelix-cron             = { path = "crates/cron" }
-chelix-duckduckgo       = { path = "crates/duckduckgo" }
-chelix-exa              = { path = "crates/exa" }
-chelix-felo             = { path = "crates/felo" }
+chelix-duckduckgo       = { default-features = false, path = "crates/duckduckgo" }
+chelix-exa              = { default-features = false, path = "crates/exa" }
+chelix-felo             = { default-features = false, path = "crates/felo" }
 chelix-gateway          = { default-features = false, path = "crates/gateway" }
-chelix-github           = { path = "crates/github" }
-chelix-google           = { path = "crates/google" }
+chelix-github           = { default-features = false, path = "crates/github" }
+chelix-google           = { default-features = false, path = "crates/google" }
 chelix-httpd            = { default-features = false, path = "crates/httpd" }
-chelix-linkup           = { path = "crates/linkup" }
+chelix-linkup           = { default-features = false, path = "crates/linkup" }
 chelix-mcp              = { path = "crates/mcp" }
 chelix-mcp-agent-bridge = { path = "crates/mcp-agent-bridge" }
 chelix-media            = { path = "crates/media" }
@@ -298,10 +302,10 @@ chelix-skills           = { path = "crates/skills" }
 chelix-splitter         = { path = "crates/splitter" }
 chelix-telegram         = { path = "crates/telegram" }
 chelix-telephony        = { path = "crates/telephony" }
-chelix-tls              = { path = "crates/tls" }
+chelix-tls              = { default-features = false, path = "crates/tls" }
 chelix-tools            = { path = "crates/tools" }
 chelix-vault            = { path = "crates/vault" }
-chelix-voice            = { path = "crates/voice" }
+chelix-voice            = { default-features = false, path = "crates/voice" }
 chelix-web              = { default-features = false, path = "crates/web" }
 chelix-webhooks         = { path = "crates/webhooks" }
 

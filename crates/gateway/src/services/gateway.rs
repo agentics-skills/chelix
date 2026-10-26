@@ -8,6 +8,8 @@ pub struct GatewayServices {
     pub session: Arc<dyn SessionService>,
     pub channel: Arc<dyn ChannelService>,
     pub config: Arc<dyn ConfigService>,
+    /// Handle for the queued `chelix.toml` configuration service.
+    pub configuration: chelix_config_service::ConfigService,
     pub cron: Arc<dyn CronService>,
     pub webhooks: Arc<dyn WebhooksService>,
     pub chat: Arc<dyn ChatService>,
@@ -133,12 +135,13 @@ impl GatewayServices {
     }
 
     /// Create a service bundle with all noop implementations.
-    pub fn noop() -> Self {
+    pub fn noop(configuration: chelix_config_service::ConfigService) -> Self {
         Self {
             agent: Arc::new(NoopAgentService),
             session: Arc::new(NoopSessionService),
             channel: Arc::new(NoopChannelService),
             config: Arc::new(NoopConfigService),
+            configuration,
             cron: Arc::new(NoopCronService),
             webhooks: Arc::new(NoopWebhooksService),
             chat: Arc::new(NoopChatService),
@@ -223,5 +226,9 @@ impl GatewayServices {
     pub fn with_stt(mut self, stt: Arc<dyn SttService>) -> Self {
         self.stt = stt;
         self
+    }
+
+    pub fn configuration(&self) -> &chelix_config_service::ConfigService {
+        &self.configuration
     }
 }

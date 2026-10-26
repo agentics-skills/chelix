@@ -9,7 +9,7 @@ mod stt_service;
 mod tts_service;
 
 #[cfg(feature = "voice")]
-pub use stt_service::{LiveSttService, SttServiceConfig};
+pub use stt_service::LiveSttService;
 #[cfg(feature = "voice")]
 pub use tts_service::LiveTtsService;
 
@@ -24,10 +24,25 @@ use secrecy::Secret;
 // VoiceSttProvider) and re-exported through chelix-voice as TtsProviderId /
 // SttProviderId. Same type everywhere — no conversion needed.
 
-/// Load voice settings from `chelix.toml`.
+/// Load voice settings from the config service.
 #[cfg(feature = "voice")]
-pub(crate) fn load_voice_config() -> anyhow::Result<chelix_config::ChelixConfig> {
-    Ok(chelix_config::discover_and_load()?)
+pub(crate) async fn load_voice_config(
+    config_service: &chelix_config_service::ConfigService,
+) -> anyhow::Result<std::sync::Arc<chelix_config::ChelixConfig>> {
+    crate::config_document::read_config(config_service)
+        .await
+        .map_err(anyhow::Error::from)
+}
+
+/// Write voice secret strings on the stored document.
+#[cfg(feature = "voice")]
+pub(crate) async fn patch_voice_config_strings(
+    config_service: &chelix_config_service::ConfigService,
+    updates: Vec<(Vec<String>, Option<String>)>,
+) -> anyhow::Result<()> {
+    crate::config_document::edit_string_paths(config_service, updates)
+        .await
+        .map_err(anyhow::Error::from)
 }
 
 #[cfg(feature = "voice")]

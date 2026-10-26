@@ -1,6 +1,8 @@
 pub mod error;
 
+mod config_document;
 mod config_helpers;
+mod model_document;
 mod provider_base_url;
 mod service;
 

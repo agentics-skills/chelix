@@ -184,9 +184,11 @@ pub(super) async fn vault_disable_handler(
         }
     }
 
+    let config_service = state.gateway_state.services.configuration();
     match chelix_gateway::vault_lifecycle::disable_vault_and_decrypt_all(
         vault,
         state.credential_store.db_pool(),
+        config_service,
     )
     .await
     {
@@ -719,7 +721,12 @@ mod vault_unseal_tests {
 
     #[tokio::test]
     async fn returns_early_when_channel_registry_is_none() {
-        let services = chelix_gateway::services::GatewayServices::noop();
+        let _config_guard = crate::test_config::ConfigDirGuard::install("").await;
+        let config_service =
+            chelix_config_service::ConfigService::open(Default::default(), Default::default())
+                .await
+                .unwrap();
+        let services = chelix_gateway::services::GatewayServices::noop(config_service.clone());
         let state = build_auth_state(services).await;
         // noop() has no channel_registry — should return without panicking
         start_stored_channels_on_vault_unseal(&state).await;
@@ -727,9 +734,14 @@ mod vault_unseal_tests {
 
     #[tokio::test]
     async fn returns_early_when_channel_store_is_none() {
+        let _config_guard = crate::test_config::ConfigDirGuard::install("").await;
+        let config_service =
+            chelix_config_service::ConfigService::open(Default::default(), Default::default())
+                .await
+                .unwrap();
         let registry = Arc::new(ChannelRegistry::new());
-        let services =
-            chelix_gateway::services::GatewayServices::noop().with_channel_registry(registry);
+        let services = chelix_gateway::services::GatewayServices::noop(config_service.clone())
+            .with_channel_registry(registry);
         // No channel_store set — should return without panicking
         let state = build_auth_state(services).await;
         start_stored_channels_on_vault_unseal(&state).await;
@@ -737,9 +749,14 @@ mod vault_unseal_tests {
 
     #[tokio::test]
     async fn logs_warning_when_store_list_fails() {
+        let _config_guard = crate::test_config::ConfigDirGuard::install("").await;
+        let config_service =
+            chelix_config_service::ConfigService::open(Default::default(), Default::default())
+                .await
+                .unwrap();
         let registry = Arc::new(ChannelRegistry::new());
         let store: Arc<dyn ChannelStore> = Arc::new(MockChannelStore::failing());
-        let services = chelix_gateway::services::GatewayServices::noop()
+        let services = chelix_gateway::services::GatewayServices::noop(config_service.clone())
             .with_channel_registry(registry)
             .with_channel_store(store);
         let state = build_auth_state(services).await;
@@ -749,9 +766,14 @@ mod vault_unseal_tests {
 
     #[tokio::test]
     async fn returns_when_store_is_empty() {
+        let _config_guard = crate::test_config::ConfigDirGuard::install("").await;
+        let config_service =
+            chelix_config_service::ConfigService::open(Default::default(), Default::default())
+                .await
+                .unwrap();
         let registry = Arc::new(ChannelRegistry::new());
         let store: Arc<dyn ChannelStore> = Arc::new(MockChannelStore::new(vec![]));
-        let services = chelix_gateway::services::GatewayServices::noop()
+        let services = chelix_gateway::services::GatewayServices::noop(config_service.clone())
             .with_channel_registry(registry)
             .with_channel_store(store);
         let state = build_auth_state(services).await;
@@ -760,6 +782,11 @@ mod vault_unseal_tests {
 
     #[tokio::test]
     async fn skips_channels_with_unsupported_type() {
+        let _config_guard = crate::test_config::ConfigDirGuard::install("").await;
+        let config_service =
+            chelix_config_service::ConfigService::open(Default::default(), Default::default())
+                .await
+                .unwrap();
         let registry = Arc::new(ChannelRegistry::new());
         let store: Arc<dyn ChannelStore> = Arc::new(MockChannelStore::new(vec![StoredChannel {
             account_id: "acct1".to_string(),
@@ -768,7 +795,7 @@ mod vault_unseal_tests {
             created_at: 0,
             updated_at: 0,
         }]));
-        let services = chelix_gateway::services::GatewayServices::noop()
+        let services = chelix_gateway::services::GatewayServices::noop(config_service.clone())
             .with_channel_registry(registry)
             .with_channel_store(store);
         let state = build_auth_state(services).await;
@@ -778,6 +805,11 @@ mod vault_unseal_tests {
 
     #[tokio::test]
     async fn skips_channels_already_running() {
+        let _config_guard = crate::test_config::ConfigDirGuard::install("").await;
+        let config_service =
+            chelix_config_service::ConfigService::open(Default::default(), Default::default())
+                .await
+                .unwrap();
         let started = Arc::new(Mutex::new(Vec::new()));
         let plugin = RecordingPlugin::new("telegram");
         let started_clone = Arc::clone(&started);
@@ -805,7 +837,7 @@ mod vault_unseal_tests {
             created_at: 0,
             updated_at: 0,
         }]));
-        let services = chelix_gateway::services::GatewayServices::noop()
+        let services = chelix_gateway::services::GatewayServices::noop(config_service.clone())
             .with_channel_registry(registry)
             .with_channel_store(store);
         let state = build_auth_state(services).await;
@@ -826,6 +858,11 @@ mod vault_unseal_tests {
 
     #[tokio::test]
     async fn starts_channels_successfully() {
+        let _config_guard = crate::test_config::ConfigDirGuard::install("").await;
+        let config_service =
+            chelix_config_service::ConfigService::open(Default::default(), Default::default())
+                .await
+                .unwrap();
         let plugin = RecordingPlugin::new("telegram");
         let started_accounts = Arc::clone(&plugin.started_accounts);
 
@@ -849,7 +886,7 @@ mod vault_unseal_tests {
                 updated_at: 2001,
             },
         ]));
-        let services = chelix_gateway::services::GatewayServices::noop()
+        let services = chelix_gateway::services::GatewayServices::noop(config_service.clone())
             .with_channel_registry(registry)
             .with_channel_store(store);
         let state = build_auth_state(services).await;
@@ -866,6 +903,11 @@ mod vault_unseal_tests {
 
     #[tokio::test]
     async fn logs_warning_and_continues_when_start_account_fails() {
+        let _config_guard = crate::test_config::ConfigDirGuard::install("").await;
+        let config_service =
+            chelix_config_service::ConfigService::open(Default::default(), Default::default())
+                .await
+                .unwrap();
         let plugin = RecordingPlugin::failing("telegram");
         let started_accounts = Arc::clone(&plugin.started_accounts);
 
@@ -880,7 +922,7 @@ mod vault_unseal_tests {
             created_at: 0,
             updated_at: 0,
         }]));
-        let services = chelix_gateway::services::GatewayServices::noop()
+        let services = chelix_gateway::services::GatewayServices::noop(config_service.clone())
             .with_channel_registry(registry)
             .with_channel_store(store);
         let state = build_auth_state(services).await;
@@ -899,6 +941,11 @@ mod vault_unseal_tests {
 
     #[tokio::test]
     async fn mixed_channels_skips_unsupported_and_starts_supported() {
+        let _config_guard = crate::test_config::ConfigDirGuard::install("").await;
+        let config_service =
+            chelix_config_service::ConfigService::open(Default::default(), Default::default())
+                .await
+                .unwrap();
         let plugin = RecordingPlugin::new("telegram");
         let started_accounts = Arc::clone(&plugin.started_accounts);
 
@@ -922,7 +969,7 @@ mod vault_unseal_tests {
                 updated_at: 0,
             },
         ]));
-        let services = chelix_gateway::services::GatewayServices::noop()
+        let services = chelix_gateway::services::GatewayServices::noop(config_service.clone())
             .with_channel_registry(registry)
             .with_channel_store(store);
         let state = build_auth_state(services).await;

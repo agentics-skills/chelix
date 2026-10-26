@@ -3,10 +3,9 @@ use std::sync::atomic::Ordering;
 #[cfg(feature = "vault")]
 use std::sync::Arc;
 
-use sqlx::SqlitePool;
-
 #[cfg(feature = "vault")]
 use chelix_vault::Vault;
+use {chelix_config_service::ConfigService, sqlx::SqlitePool};
 
 use crate::{
     Error, Result,
@@ -70,21 +69,24 @@ impl CredentialStore {
     const MAX_SESSIONS: i64 = 10;
 
     /// Open a database at the given path, reset all auth, and close it.
-    pub async fn reset_from_db_path(db_path: &std::path::Path) -> Result<()> {
+    pub async fn reset_from_db_path(
+        db_path: &std::path::Path,
+        config: ConfigService,
+    ) -> Result<()> {
         let db_url = format!("sqlite:{}", db_path.display());
         let pool = SqlitePool::connect(&db_url).await?;
-        let store = Self::new(pool).await?;
+        let store = Self::new(pool, config).await?;
         store.reset_all().await
     }
 
     /// Create a new store and initialize tables.
-    /// Reads `auth.disabled` from the discovered config file.
-    pub async fn new(pool: SqlitePool) -> Result<Self> {
-        let config = chelix_config::discover_and_load()?;
-        Self::with_config(pool, &config.auth, AuthConfigPersistence::Filesystem).await
+    /// Reads `auth` through the configuration service.
+    pub async fn new(pool: SqlitePool, config: ConfigService) -> Result<Self> {
+        let auth = config.read(|config| config.auth.clone()).await?;
+        Self::with_config(pool, &auth, AuthConfigPersistence::Service(config)).await
     }
 
-    /// Create a new store with explicit auth config (avoids reading from disk).
+    /// Create a new store with explicit auth config instead of reading the configuration service.
     pub async fn with_config(
         pool: SqlitePool,
         auth_config: &chelix_config::AuthConfig,
@@ -309,14 +311,20 @@ impl CredentialStore {
         })
         .execute(&self.pool)
         .await?;
-        self.persist_auth_disabled_to_config(disabled)?;
+        self.persist_auth_disabled_to_config(disabled).await?;
         Ok(())
     }
 
-    fn persist_auth_disabled_to_config(&self, disabled: bool) -> Result<()> {
-        if self.config_persistence == AuthConfigPersistence::Filesystem {
-            chelix_config::update_config(|config| config.auth.disabled = disabled)?;
-        }
+    async fn persist_auth_disabled_to_config(&self, disabled: bool) -> Result<()> {
+        let AuthConfigPersistence::Service(config) = &self.config_persistence else {
+            return Ok(());
+        };
+        config
+            .update(move |config| {
+                config.auth.disabled = disabled;
+                Ok(())
+            })
+            .await?;
         Ok(())
     }
 
@@ -446,7 +454,7 @@ impl CredentialStore {
         }
         self.setup_complete.store(true, Ordering::Relaxed);
         self.auth_disabled.store(false, Ordering::Relaxed);
-        self.persist_auth_disabled_to_config(false)?;
+        self.persist_auth_disabled_to_config(false).await?;
         Ok(recovery_key)
     }
 

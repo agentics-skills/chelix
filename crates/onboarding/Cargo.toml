@@ -4,13 +4,15 @@ name              = "chelix-onboarding"
 version.workspace = true
 
 [dependencies]
-chelix-common  = { workspace = true }
-chelix-config  = { workspace = true }
-chelix-metrics = { optional = true, workspace = true }
-serde          = { workspace = true }
-serde_json     = { workspace = true }
-thiserror      = { workspace = true }
-tracing        = { workspace = true }
+chelix-common         = { workspace = true }
+chelix-config         = { workspace = true }
+chelix-config-service = { workspace = true }
+chelix-metrics        = { optional = true, workspace = true }
+serde                 = { workspace = true }
+serde_json            = { workspace = true }
+thiserror             = { workspace = true }
+tokio                 = { workspace = true }
+tracing               = { workspace = true }
 
 [features]
 default = []

@@ -1118,7 +1118,10 @@ mod tests {
             .unwrap();
     }
 
-    fn patch_model_service(disabled_models: &[&str]) -> Arc<dyn ModelService> {
+    fn patch_model_service(
+        configuration: chelix_config_service::ConfigService,
+        disabled_models: &[&str],
+    ) -> Arc<dyn ModelService> {
         let config: chelix_config::ChelixConfig = toml::from_str(
             r#"
 [providers.example-patch]
@@ -1162,6 +1165,7 @@ reasoning_supported_efforts = ["off"]
             Arc::new(tokio::sync::RwLock::new(registry)),
             Arc::new(tokio::sync::RwLock::new(disabled)),
             Vec::new(),
+            configuration,
         ))
     }
 
@@ -1297,6 +1301,7 @@ reasoning_supported_efforts = ["off"]
 
     #[tokio::test]
     async fn clear_all_propagates_failed_delete_after_attempting_other_sessions() {
+        let fixture = crate::test_config::ConfigFixture::new().await;
         const FAILED_KEY: &str = "session:clear-all-failed";
         const DELETED_KEY: &str = "session:clear-all-deleted";
         let dir = tempfile::tempdir().unwrap();
@@ -1330,8 +1335,10 @@ reasoning_supported_efforts = ["off"]
         .execute(&pool)
         .await
         .unwrap();
-        let service = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata))
-            .with_chat(Arc::new(chelix_service_traits::NoopChatService));
+        let service = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata)).with_chat(
+            fixture.service.clone(),
+            Arc::new(chelix_service_traits::NoopChatService),
+        );
 
         let error = service
             .clear_all()
@@ -1349,6 +1356,7 @@ reasoning_supported_efforts = ["off"]
 
     #[tokio::test]
     async fn patch_model_reasoning_persists_validated_pair_atomically() {
+        let fixture = crate::test_config::ConfigFixture::new().await;
         const KEY: &str = "session:model-patch";
         const REASONING_MODEL: &str = "example-patch::reasoning";
         const OFF_MODEL: &str = "example-patch::off";
@@ -1359,7 +1367,7 @@ reasoning_supported_efforts = ["off"]
         let metadata = Arc::new(SqliteSessionMetadata::new(pool));
         create_test_session(&metadata, KEY, None).await;
         let service = LiveSessionService::new(store, Arc::clone(&metadata))
-            .with_model_service(patch_model_service(&[]));
+            .with_model_service(patch_model_service(fixture.service.clone(), &[]));
 
         let before = metadata.get(KEY).await.unwrap().unwrap();
         let response = service
@@ -1409,6 +1417,7 @@ reasoning_supported_efforts = ["off"]
 
     #[tokio::test]
     async fn patch_late_foreign_key_error_rolls_back_the_complete_entry() {
+        let fixture = crate::test_config::ConfigFixture::new().await;
         const KEY: &str = "session:atomic-patch";
         const REASONING_MODEL: &str = "example-patch::reasoning";
 
@@ -1418,7 +1427,7 @@ reasoning_supported_efforts = ["off"]
         let metadata = Arc::new(SqliteSessionMetadata::new(pool));
         create_test_session(&metadata, KEY, Some("Original")).await;
         let service = LiveSessionService::new(store, Arc::clone(&metadata))
-            .with_model_service(patch_model_service(&[]));
+            .with_model_service(patch_model_service(fixture.service.clone(), &[]));
         let before = metadata.get(KEY).await.unwrap().unwrap();
 
         let result = service
@@ -1460,6 +1469,7 @@ reasoning_supported_efforts = ["off"]
 
     #[tokio::test]
     async fn patch_model_reasoning_rejects_invalid_pair_without_mutation() {
+        let fixture = crate::test_config::ConfigFixture::new().await;
         const KEY: &str = "session:model-patch-errors";
         const REASONING_MODEL: &str = "example-patch::reasoning";
         const OFF_MODEL: &str = "example-patch::off";
@@ -1470,7 +1480,7 @@ reasoning_supported_efforts = ["off"]
         let metadata = Arc::new(SqliteSessionMetadata::new(pool));
         create_test_session(&metadata, KEY, None).await;
         let service = LiveSessionService::new(store, Arc::clone(&metadata))
-            .with_model_service(patch_model_service(&[OFF_MODEL]));
+            .with_model_service(patch_model_service(fixture.service.clone(), &[OFF_MODEL]));
 
         let cases = [
             (
@@ -1561,14 +1571,17 @@ reasoning_supported_efforts = ["off"]
 
     #[tokio::test]
     async fn patch_archived_updates_metadata() {
+        let fixture = crate::test_config::ConfigFixture::new().await;
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let pool = sqlite_pool().await;
         let metadata = Arc::new(SqliteSessionMetadata::new(pool));
         create_test_session(&metadata, "session:archive-me", Some("Test")).await;
 
-        let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata))
-            .with_chat(Arc::new(chelix_service_traits::NoopChatService));
+        let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata)).with_chat(
+            fixture.service.clone(),
+            Arc::new(chelix_service_traits::NoopChatService),
+        );
 
         let result = svc
             .patch(serde_json::json!({ "key": "session:archive-me", "archived": true }))
@@ -1587,6 +1600,7 @@ reasoning_supported_efforts = ["off"]
 
     #[tokio::test]
     async fn patch_label_archive_unarchive_completes_during_active_turn() {
+        let fixture = crate::test_config::ConfigFixture::new().await;
         const KEY: &str = "session:rename-during-turn";
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
@@ -1596,7 +1610,10 @@ reasoning_supported_efforts = ["off"]
 
         let mutations = Arc::new(chelix_service_traits::SessionMutationCoordinator::default());
         let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata))
-            .with_chat(Arc::new(chelix_service_traits::NoopChatService))
+            .with_chat(
+                fixture.service.clone(),
+                Arc::new(chelix_service_traits::NoopChatService),
+            )
             .with_session_mutations(Arc::clone(&mutations));
         let turn = mutations
             .try_acquire_turn(KEY)
@@ -1841,6 +1858,7 @@ reasoning_supported_efforts = ["off"]
 
     #[tokio::test]
     async fn patch_archived_allows_noncurrent_channel_session() {
+        let fixture = crate::test_config::ConfigFixture::new().await;
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let pool = sqlite_pool().await;
@@ -1862,8 +1880,10 @@ reasoning_supported_efforts = ["off"]
             .await
             .unwrap();
 
-        let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata))
-            .with_chat(Arc::new(chelix_service_traits::NoopChatService));
+        let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata)).with_chat(
+            fixture.service.clone(),
+            Arc::new(chelix_service_traits::NoopChatService),
+        );
 
         let result = svc
             .patch(serde_json::json!({ "key": "session:telegram-archive", "archived": true }))
@@ -1882,14 +1902,17 @@ reasoning_supported_efforts = ["off"]
 
     #[tokio::test]
     async fn patch_archived_allows_cron_session() {
+        let fixture = crate::test_config::ConfigFixture::new().await;
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let pool = sqlite_pool().await;
         let metadata = Arc::new(SqliteSessionMetadata::new(pool));
         create_test_session(&metadata, "cron:archive-me", Some("Cron archive")).await;
 
-        let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata))
-            .with_chat(Arc::new(chelix_service_traits::NoopChatService));
+        let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata)).with_chat(
+            fixture.service.clone(),
+            Arc::new(chelix_service_traits::NoopChatService),
+        );
 
         let result = svc
             .patch(serde_json::json!({ "key": "cron:archive-me", "archived": true }))
@@ -1911,6 +1934,7 @@ reasoning_supported_efforts = ["off"]
 
     #[tokio::test]
     async fn delete_sql_failure_preserves_metadata_history_media_and_tool_results() {
+        let fixture = crate::test_config::ConfigFixture::new().await;
         const KEY: &str = "session:delete-rollback";
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
@@ -1949,8 +1973,10 @@ reasoning_supported_efforts = ["off"]
         .await
         .unwrap();
 
-        let service = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata))
-            .with_chat(Arc::new(chelix_service_traits::NoopChatService));
+        let service = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata)).with_chat(
+            fixture.service.clone(),
+            Arc::new(chelix_service_traits::NoopChatService),
+        );
         assert!(
             service
                 .delete(serde_json::json!({ "key": KEY }))
@@ -1982,6 +2008,7 @@ reasoning_supported_efforts = ["off"]
 
     #[tokio::test]
     async fn delete_cascades_child_sessions() {
+        let fixture = crate::test_config::ConfigFixture::new().await;
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let pool = sqlite_pool().await;
@@ -1998,8 +2025,10 @@ reasoning_supported_efforts = ["off"]
             .await
             .unwrap();
 
-        let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata))
-            .with_chat(Arc::new(chelix_service_traits::NoopChatService));
+        let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata)).with_chat(
+            fixture.service.clone(),
+            Arc::new(chelix_service_traits::NoopChatService),
+        );
 
         svc.delete(serde_json::json!({ "key": "session:root" }))
             .await
@@ -2012,6 +2041,7 @@ reasoning_supported_efforts = ["off"]
 
     #[tokio::test]
     async fn delete_clears_channel_session_mappings_for_cascade() {
+        let fixture = crate::test_config::ConfigFixture::new().await;
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let pool = sqlite_pool().await;
@@ -2031,8 +2061,10 @@ reasoning_supported_efforts = ["off"]
             .await
             .unwrap();
 
-        let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata))
-            .with_chat(Arc::new(chelix_service_traits::NoopChatService));
+        let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata)).with_chat(
+            fixture.service.clone(),
+            Arc::new(chelix_service_traits::NoopChatService),
+        );
 
         svc.delete(serde_json::json!({ "key": "session:root" }))
             .await
@@ -2140,6 +2172,7 @@ reasoning_supported_efforts = ["off"]
     }
 
     fn session_service_with_recording_sandbox(
+        configuration: chelix_config_service::ConfigService,
         store: Arc<SessionStore>,
         metadata: Arc<SqliteSessionMetadata>,
         backend: Arc<RecordingSandbox>,
@@ -2156,7 +2189,10 @@ reasoning_supported_efforts = ["off"]
         let watch = router.watch_background_stops();
         (
             LiveSessionService::new(store, metadata)
-                .with_chat(Arc::new(chelix_service_traits::NoopChatService))
+                .with_chat(
+                    configuration,
+                    Arc::new(chelix_service_traits::NoopChatService),
+                )
                 .with_sandbox_router(Arc::new(router)),
             watch,
         )
@@ -2164,6 +2200,7 @@ reasoning_supported_efforts = ["off"]
 
     #[tokio::test]
     async fn delete_cleans_owner_sandbox_without_resolving_deleted_metadata() {
+        let fixture = crate::test_config::ConfigFixture::new().await;
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let pool = sqlite_pool().await;
@@ -2172,6 +2209,7 @@ reasoning_supported_efforts = ["off"]
 
         let backend = Arc::new(RecordingSandbox::new());
         let (svc, watch) = session_service_with_recording_sandbox(
+            fixture.service.clone(),
             Arc::clone(&store),
             Arc::clone(&metadata),
             Arc::clone(&backend),
@@ -2188,6 +2226,7 @@ reasoning_supported_efforts = ["off"]
 
     #[tokio::test]
     async fn delete_skips_sandbox_cleanup_for_non_owner_child() {
+        let fixture = crate::test_config::ConfigFixture::new().await;
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let pool = sqlite_pool().await;
@@ -2205,6 +2244,7 @@ reasoning_supported_efforts = ["off"]
 
         let backend = Arc::new(RecordingSandbox::new());
         let (svc, watch) = session_service_with_recording_sandbox(
+            fixture.service.clone(),
             Arc::clone(&store),
             Arc::clone(&metadata),
             Arc::clone(&backend),
@@ -2222,6 +2262,7 @@ reasoning_supported_efforts = ["off"]
 
     #[tokio::test]
     async fn delete_cascades_sandbox_cleanup_only_for_owner() {
+        let fixture = crate::test_config::ConfigFixture::new().await;
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let pool = sqlite_pool().await;
@@ -2239,6 +2280,7 @@ reasoning_supported_efforts = ["off"]
 
         let backend = Arc::new(RecordingSandbox::new());
         let (svc, watch) = session_service_with_recording_sandbox(
+            fixture.service.clone(),
             Arc::clone(&store),
             Arc::clone(&metadata),
             Arc::clone(&backend),

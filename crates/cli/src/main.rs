@@ -342,21 +342,29 @@ async fn main() -> anyhow::Result<()> {
     // Read-only diagnostics must remain reachable when the effective config is
     // invalid. They validate and report the existing config without creating,
     // compacting, or replacing it.
+    let validators = chelix_gateway::config_wiring::validators();
     if let Some(diagnostic) = read_only_diagnostic(cli.command.as_ref()) {
         return match diagnostic {
-            ReadOnlyDiagnostic::ConfigCheck { verbose } => config_commands::check(verbose),
+            ReadOnlyDiagnostic::ConfigCheck { verbose } => {
+                config_commands::check(verbose, &validators).await
+            },
         };
     }
 
-    // Initialize config directory once for all service and mutation commands
-    // (write chelix.toml on first run, persist random port).
-    let config = chelix_config::initialize_config()?;
+    // Open the config service once for every mutation command. It creates
+    // chelix.toml on first run and is the only reader of that file.
+    let config_service = chelix_config_service::ConfigService::open(
+        validators,
+        chelix_gateway::config_wiring::initializers(),
+    )
+    .await?;
+    let config = config_service.read(|config| config.clone()).await?;
 
     match cli.command {
         // Default: start gateway when no subcommand is provided
         None | Some(Commands::Gateway) => {
             // CLI args override config values
-            let bind = cli.bind.unwrap_or(config.server.bind);
+            let bind = cli.bind.unwrap_or_else(|| config.server.bind.clone());
             let port = cli.port.unwrap_or(config.server.port);
 
             #[cfg(feature = "tls")]
@@ -368,17 +376,27 @@ async fn main() -> anyhow::Result<()> {
             #[cfg(not(feature = "web-ui"))]
             let extra_routes: Option<chelix_httpd::RouteEnhancer> = None;
 
-            chelix_httpd::start_gateway(&bind, port, no_tls, log_buffer, cli.data_dir, extra_routes)
-                .await
-                .map_err(Into::into)
+            chelix_httpd::start_gateway(
+                config_service,
+                &bind,
+                port,
+                no_tls,
+                log_buffer,
+                cli.data_dir,
+                extra_routes,
+            )
+            .await
+            .map_err(Into::into)
         },
         Some(Commands::Onboard) => {
-            chelix_onboarding::wizard::run_onboarding().await?;
+            chelix_onboarding::wizard::run_onboarding(config_service).await?;
             Ok(())
         },
-        Some(Commands::Auth { action }) => auth_commands::handle_auth(action).await,
-        Some(Commands::Sandbox { action }) => sandbox_commands::handle_sandbox(action).await,
-        Some(Commands::Data { action }) => data_commands::handle_data(action).await,
+        Some(Commands::Auth { action }) => auth_commands::handle_auth(action, config_service).await,
+        Some(Commands::Sandbox { action }) => {
+            sandbox_commands::handle_sandbox(action, config_service).await
+        },
+        Some(Commands::Data { action }) => data_commands::handle_data(action, config_service).await,
         Some(Commands::Db { action }) => db_commands::handle_db(action).await,
         Some(Commands::Memory { action }) => memory_commands::handle_memory(action).await,
         Some(Commands::Skills { action }) => handle_skills(action).await,

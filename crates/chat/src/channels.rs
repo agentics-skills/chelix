@@ -715,7 +715,7 @@ pub(crate) async fn generate_tts_audio(
     }
 
     // Layer 2: strip markdown/URLs the LLM may have included despite the prompt.
-    let text = chelix_voice::tts::sanitize_text_for_tts(text);
+    let text = chelix_voice::sanitize_text_for_tts(text);
     let text = text.trim();
     if text.is_empty() {
         return Err(error::Error::message("response has no speakable text"));
@@ -762,7 +762,7 @@ async fn build_tts_payload(
 
     // Strip markdown/URLs the LLM may have included — use sanitized text
     // only for TTS conversion, but keep the original for the caption.
-    let sanitized = chelix_voice::tts::sanitize_text_for_tts(text);
+    let sanitized = chelix_voice::sanitize_text_for_tts(text);
 
     let channel_key = format!("{}:{}", target.channel_type.as_str(), target.account_id);
     let (channel_override, session_override) = state.tts_overrides(session_key, &channel_key).await;

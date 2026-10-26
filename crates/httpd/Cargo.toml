@@ -5,49 +5,50 @@ repository.workspace = true
 version.workspace    = true
 
 [dependencies]
-anyhow           = { workspace = true }
-async-trait      = { workspace = true }
-axum             = { workspace = true }
-chelix-auth      = { workspace = true }
-chelix-channels  = { workspace = true }
-chelix-common    = { workspace = true }
-chelix-config    = { workspace = true }
-chelix-cron      = { workspace = true }
-chelix-gateway   = { workspace = true }
-chelix-metrics   = { optional = true, workspace = true }
-chelix-portable  = { workspace = true }
-chelix-protocol  = { workspace = true }
-chelix-sessions  = { workspace = true }
-chelix-skills    = { workspace = true }
-chelix-telephony = { optional = true, workspace = true }
-chelix-tls       = { optional = true, workspace = true }
-chelix-tools     = { workspace = true }
-chelix-vault     = { optional = true, workspace = true }
-chelix-webhooks  = { workspace = true }
-chrono           = { features = ["serde"], optional = true, workspace = true }
-chrono-tz        = { workspace = true }
-dashmap          = { workspace = true }
-futures          = { workspace = true }
-hostname         = { optional = true, workspace = true }
-ipnet            = { workspace = true }
-reqwest          = { workspace = true }
-rustls           = { optional = true, workspace = true }
-secrecy          = { workspace = true }
-serde            = { workspace = true }
-serde_json       = { workspace = true }
-sysinfo          = { workspace = true }
-tempfile         = { workspace = true }
-thiserror        = { workspace = true }
-time             = { workspace = true }
-tokio            = { workspace = true }
-tokio-util       = { workspace = true }
-toml             = { workspace = true }
-tower-http       = { features = ["catch-panic", "compression-gzip", "compression-zstd", "cors", "limit", "request-id", "sensitive-headers", "set-header", "trace"], workspace = true }
-tracing          = { workspace = true }
-url              = { workspace = true }
-urlencoding      = { workspace = true }
-uuid             = { workspace = true }
-webauthn-rs      = { features = ["danger-allow-state-serialisation"], workspace = true }
+anyhow                = { workspace = true }
+async-trait           = { workspace = true }
+axum                  = { workspace = true }
+chelix-auth           = { workspace = true }
+chelix-channels       = { workspace = true }
+chelix-common         = { workspace = true }
+chelix-config         = { workspace = true }
+chelix-config-service = { workspace = true }
+chelix-cron           = { workspace = true }
+chelix-gateway        = { workspace = true }
+chelix-metrics        = { optional = true, workspace = true }
+chelix-portable       = { workspace = true }
+chelix-protocol       = { workspace = true }
+chelix-providers      = { workspace = true }
+chelix-sessions       = { workspace = true }
+chelix-skills         = { workspace = true }
+chelix-telephony      = { optional = true, workspace = true }
+chelix-tls            = { features = ["runtime"], optional = true, workspace = true }
+chelix-tools          = { workspace = true }
+chelix-vault          = { optional = true, workspace = true }
+chelix-webhooks       = { workspace = true }
+chrono                = { features = ["serde"], optional = true, workspace = true }
+chrono-tz             = { workspace = true }
+dashmap               = { workspace = true }
+futures               = { workspace = true }
+hostname              = { optional = true, workspace = true }
+ipnet                 = { workspace = true }
+reqwest               = { workspace = true }
+rustls                = { optional = true, workspace = true }
+secrecy               = { workspace = true }
+serde                 = { workspace = true }
+serde_json            = { workspace = true }
+sysinfo               = { workspace = true }
+tempfile              = { workspace = true }
+thiserror             = { workspace = true }
+time                  = { workspace = true }
+tokio                 = { workspace = true }
+tokio-util            = { workspace = true }
+tower-http            = { features = ["catch-panic", "compression-gzip", "compression-zstd", "cors", "limit", "request-id", "sensitive-headers", "set-header", "trace"], workspace = true }
+tracing               = { workspace = true }
+url                   = { workspace = true }
+urlencoding           = { workspace = true }
+uuid                  = { workspace = true }
+webauthn-rs           = { features = ["danger-allow-state-serialisation"], workspace = true }
 
 [features]
 default = [
@@ -74,7 +75,6 @@ web-ui = ["chelix-gateway/web-ui"]
 [dev-dependencies]
 chelix-code-index     = { workspace = true }
 chelix-projects       = { workspace = true }
-chelix-providers      = { workspace = true }
 chelix-service-traits = { workspace = true }
 chelix-web            = { workspace = true }
 sqlx                  = { workspace = true }

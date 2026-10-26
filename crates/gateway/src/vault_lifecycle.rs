@@ -183,6 +183,7 @@ pub struct VaultDisableReport {
 pub async fn disable_vault_and_decrypt_all(
     vault: &chelix_vault::Vault,
     pool: &sqlx::SqlitePool,
+    config_service: &chelix_config_service::ConfigService,
 ) -> anyhow::Result<VaultDisableReport> {
     if !vault.is_unsealed().await {
         anyhow::bail!("vault must be unlocked before disabling encryption at rest");
@@ -195,10 +196,13 @@ pub async fn disable_vault_and_decrypt_all(
         webhooks: decrypt_webhooks(vault, pool).await?,
     };
 
-    chelix_config::update_config(|config| {
-        config.auth.vault_enabled = false;
-    })
-    .context("failed to persist auth.vault_enabled=false")?;
+    config_service
+        .update(|config| {
+            config.auth.vault_enabled = false;
+            Ok(())
+        })
+        .await
+        .context("failed to persist auth.vault_enabled=false")?;
     set_vault_encryption_runtime_enabled(false);
 
     tracing::info!(?report, "vault disabled after decrypting stored secrets");
@@ -519,30 +523,7 @@ mod tests {
         }
     }
 
-    struct ConfigDirGuard {
-        _lock: std::sync::MutexGuard<'static, ()>,
-        _config_dir: tempfile::TempDir,
-    }
-
-    impl ConfigDirGuard {
-        fn new() -> Self {
-            let lock = crate::config_override_test_lock();
-            let config_dir = tempfile::tempdir().unwrap();
-            chelix_config::set_config_dir(config_dir.path().to_path_buf());
-            chelix_config::initialize_config()
-                .unwrap_or_else(|error| panic!("test config should be initialized: {error}"));
-            Self {
-                _lock: lock,
-                _config_dir: config_dir,
-            }
-        }
-    }
-
-    impl Drop for ConfigDirGuard {
-        fn drop(&mut self) {
-            chelix_config::clear_config_dir();
-        }
-    }
+    use crate::test_config::ConfigFixture as ConfigDirGuard;
 
     fn test_password() -> String {
         format!(
@@ -632,7 +613,7 @@ mod tests {
     #[serial_test::serial(vault_runtime)]
     async fn disable_vault_decrypts_stored_secrets_before_flipping_config() {
         let _runtime_flag = VaultRuntimeFlagGuard::enabled();
-        let _config_dir = ConfigDirGuard::new();
+        let config_dir = ConfigDirGuard::new().await;
         let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
         chelix_vault::run_migrations(&pool).await.unwrap();
         create_disable_test_tables(&pool).await;
@@ -690,7 +671,9 @@ mod tests {
             .unwrap();
 
         set_vault_encryption_runtime_enabled(true);
-        let report = disable_vault_and_decrypt_all(&vault, &pool).await.unwrap();
+        let report = disable_vault_and_decrypt_all(&vault, &pool, &config_dir.service)
+            .await
+            .unwrap();
         assert_eq!(report.env_vars, 1);
         assert_eq!(report.ssh_keys, 1);
         assert_eq!(report.channels, 1);
@@ -715,7 +698,7 @@ mod tests {
     #[serial_test::serial(vault_runtime)]
     async fn disable_vault_fails_on_unknown_channel_with_encrypted_secret() {
         let _runtime_flag = VaultRuntimeFlagGuard::enabled();
-        let _config_dir = ConfigDirGuard::new();
+        let config_dir = ConfigDirGuard::new().await;
         let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
         chelix_vault::run_migrations(&pool).await.unwrap();
         create_disable_test_tables(&pool).await;
@@ -735,7 +718,7 @@ mod tests {
             .unwrap();
 
         set_vault_encryption_runtime_enabled(true);
-        let error = disable_vault_and_decrypt_all(&vault, &pool)
+        let error = disable_vault_and_decrypt_all(&vault, &pool, &config_dir.service)
             .await
             .unwrap_err();
 

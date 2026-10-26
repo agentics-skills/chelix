@@ -249,35 +249,20 @@ pub(crate) fn log_directory_write_probe(dir: &FsPath) {
 
 // ── Config / storage startup logging ─────────────────────────────────────────
 
-pub(crate) fn log_startup_config_storage_diagnostics() -> anyhow::Result<()> {
+pub(crate) fn log_startup_config_storage_diagnostics(
+    config_path: &std::path::Path,
+) -> anyhow::Result<()> {
     let config_dir = chelix_config::config_dir()?;
-    let discovered_config = chelix_config::loader::find_config_file()?;
-    let expected_config = chelix_config::find_or_default_config_path()?;
-
-    let discovered_display = discovered_config
-        .as_ref()
-        .map(|path| path.display().to_string())
-        .unwrap_or_else(|| "<none>".to_string());
     info!(
         user = %env_var_or_unset("USER"),
         home = %env_var_or_unset("HOME"),
         config_dir = %config_dir.display(),
-        discovered_config = %discovered_display,
-        expected_config = %expected_config.display(),
+        config_path = %config_path.display(),
         "startup configuration storage diagnostics"
     );
 
     log_path_diagnostics("config-dir", &config_dir);
     log_directory_write_probe(&config_dir);
-
-    if let Some(path) = discovered_config {
-        log_path_diagnostics("config-file", &path);
-    } else {
-        warn!(
-            path = %expected_config.display(),
-            "no config file detected on startup; Chelix is running with in-memory defaults until config is persisted"
-        );
-    }
     Ok(())
 }
 

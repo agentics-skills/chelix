@@ -1,9 +1,10 @@
 //! Live STT service implementation.
 
+use std::sync::Arc;
+
 use {
     async_trait::async_trait,
     base64::Engine,
-    secrecy::Secret,
     serde_json::{Value, json},
     tracing::{debug, warn},
 };
@@ -18,9 +19,9 @@ use crate::services::{ServiceResult, SttService};
 use super::{load_voice_config, resolve_openai_whisper_base_url};
 
 /// Live STT service that delegates to voice providers.
-/// Reads fresh config on each operation to pick up changes.
+/// Reads the config service on each operation so later edits are visible.
 pub struct LiveSttService {
-    _marker: std::marker::PhantomData<()>,
+    config_service: chelix_config_service::ConfigService,
 }
 
 impl std::fmt::Debug for LiveSttService {
@@ -29,70 +30,24 @@ impl std::fmt::Debug for LiveSttService {
     }
 }
 
-/// Configuration for constructing LiveSttService.
-pub struct SttServiceConfig {
-    pub provider: String,
-    pub openai_key: Option<Secret<String>>,
-    pub deepgram_key: Option<Secret<String>>,
-    pub deepgram_model: Option<String>,
-    pub deepgram_language: Option<String>,
-    pub deepgram_smart_format: bool,
-    pub google_key: Option<Secret<String>>,
-    pub google_language: Option<String>,
-    pub google_model: Option<String>,
-    pub voxtral_local_endpoint: Option<String>,
-    pub voxtral_local_model: Option<String>,
-    pub voxtral_local_language: Option<String>,
-    pub whisper_cli_binary: Option<String>,
-    pub whisper_cli_model: Option<String>,
-    pub whisper_cli_language: Option<String>,
-    pub sherpa_onnx_binary: Option<String>,
-    pub sherpa_onnx_model_dir: Option<String>,
-    pub sherpa_onnx_language: Option<String>,
-    pub elevenlabs_key: Option<Secret<String>>,
-    pub elevenlabs_model: Option<String>,
-    pub elevenlabs_language: Option<String>,
-}
-
-impl Default for SttServiceConfig {
-    fn default() -> Self {
-        Self {
-            provider: "whisper".into(),
-            openai_key: None,
-            deepgram_key: None,
-            deepgram_model: None,
-            deepgram_language: None,
-            deepgram_smart_format: true,
-            google_key: None,
-            google_language: None,
-            google_model: None,
-            voxtral_local_endpoint: None,
-            voxtral_local_model: None,
-            voxtral_local_language: None,
-            whisper_cli_binary: None,
-            whisper_cli_model: None,
-            whisper_cli_language: None,
-            sherpa_onnx_binary: None,
-            sherpa_onnx_model_dir: None,
-            sherpa_onnx_language: None,
-            elevenlabs_key: None,
-            elevenlabs_model: None,
-            elevenlabs_language: None,
-        }
-    }
-}
-
 impl LiveSttService {
-    /// Create a new STT service. Config is read fresh on each operation.
-    #[allow(unused_variables)]
-    pub fn new(config: SttServiceConfig) -> Self {
-        Self {
-            _marker: std::marker::PhantomData,
-        }
+    pub fn new(config_service: chelix_config_service::ConfigService) -> Self {
+        Self { config_service }
     }
 
-    /// Load fresh STT config from disk.
-    /// create provider on demand.
+    fn config_service(&self) -> &chelix_config_service::ConfigService {
+        &self.config_service
+    }
+
+    async fn load_config(
+        &self,
+    ) -> Result<Arc<chelix_config::ChelixConfig>, crate::services::ServiceError> {
+        load_voice_config(self.config_service())
+            .await
+            .map_err(crate::services::ServiceError::message)
+    }
+
+    /// Create a provider on demand.
     fn create_provider(
         cfg: &chelix_config::ChelixConfig,
         provider_id: SttProviderId,
@@ -261,7 +216,7 @@ impl LiveSttService {
 #[async_trait]
 impl SttService for LiveSttService {
     async fn status(&self) -> ServiceResult {
-        let cfg = load_voice_config().map_err(crate::services::ServiceError::message)?;
+        let cfg = self.load_config().await?;
         let providers = Self::list_providers(&cfg);
         let any_configured = providers.iter().any(|(_, configured)| *configured);
         let resolved = Self::resolve_provider(&cfg, cfg.voice.stt.provider);
@@ -274,7 +229,7 @@ impl SttService for LiveSttService {
     }
 
     async fn providers(&self) -> ServiceResult {
-        let cfg = load_voice_config().map_err(crate::services::ServiceError::message)?;
+        let cfg = self.load_config().await?;
         let providers: Vec<_> = Self::list_providers(&cfg)
             .into_iter()
             .map(|(id, configured)| {
@@ -322,7 +277,7 @@ impl SttService for LiveSttService {
         language: Option<&str>,
         prompt: Option<&str>,
     ) -> ServiceResult {
-        let cfg = load_voice_config().map_err(crate::services::ServiceError::message)?;
+        let cfg = self.load_config().await?;
         let audio_len = audio.len();
 
         let provider_id = match provider {
@@ -382,16 +337,18 @@ impl SttService for LiveSttService {
         let provider_id = SttProviderId::parse(provider_str)
             .ok_or_else(|| format!("unknown STT provider '{}'", provider_str))?;
 
-        let cfg = load_voice_config().map_err(crate::services::ServiceError::message)?;
+        let cfg = self.load_config().await?;
         if Self::create_provider(&cfg, provider_id).is_none() {
             return Err(format!("provider '{}' not configured", provider_id).into());
         }
 
-        // Update config file
-        chelix_config::update_config(|cfg| {
-            cfg.voice.stt.provider = Some(provider_id);
-        })
-        .map_err(|e| format!("failed to update config: {}", e))?;
+        self.config_service()
+            .update(move |cfg| {
+                cfg.voice.stt.provider = Some(provider_id);
+                Ok(())
+            })
+            .await
+            .map_err(|e| format!("failed to update config: {e}"))?;
 
         debug!("STT provider set to: {}", provider_id);
 
@@ -404,39 +361,9 @@ impl SttService for LiveSttService {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::services::NoopSttService, serde_json::json, tempfile::TempDir};
+    use {super::*, crate::services::NoopSttService, serde_json::json};
 
-    struct VoiceConfigTestGuard {
-        _lock: std::sync::MutexGuard<'static, ()>,
-        _config_dir: TempDir,
-        _data_dir: TempDir,
-    }
-
-    impl VoiceConfigTestGuard {
-        fn with_config(config_toml: &str) -> Self {
-            let lock = crate::config_override_test_lock();
-            let config_dir = tempfile::tempdir()
-                .unwrap_or_else(|error| panic!("config tempdir should be created: {error}"));
-            let data_dir = tempfile::tempdir()
-                .unwrap_or_else(|error| panic!("data tempdir should be created: {error}"));
-            std::fs::write(config_dir.path().join("chelix.toml"), config_toml)
-                .unwrap_or_else(|error| panic!("config should be written: {error}"));
-            chelix_config::set_config_dir(config_dir.path().to_path_buf());
-            chelix_config::set_data_dir(data_dir.path().to_path_buf());
-            Self {
-                _lock: lock,
-                _config_dir: config_dir,
-                _data_dir: data_dir,
-            }
-        }
-    }
-
-    impl Drop for VoiceConfigTestGuard {
-        fn drop(&mut self) {
-            chelix_config::clear_config_dir();
-            chelix_config::clear_data_dir();
-        }
-    }
+    use crate::test_config::ConfigFixture as VoiceConfigTestGuard;
 
     #[test]
     fn test_live_stt_resolve_provider_handles_explicit_and_auto_selection() {
@@ -451,9 +378,9 @@ mod tests {
         assert!(LiveSttService::resolve_provider(&config, None).is_some());
     }
 
-    #[test]
-    fn test_live_stt_whisper_base_url_counts_as_configured() {
-        let _guard = VoiceConfigTestGuard::with_config(
+    #[tokio::test]
+    async fn test_live_stt_whisper_base_url_counts_as_configured() {
+        let guard = VoiceConfigTestGuard::with_config(
             r#"
 [server]
 port = 18080
@@ -467,9 +394,12 @@ terminal_size = "115x58"
 [sandbox]
 archived_session_retention_days = 3
 "#,
-        );
+        )
+        .await;
 
-        let config = load_voice_config().expect("load voice config");
+        let config = load_voice_config(&guard.service)
+            .await
+            .expect("load voice config");
         let providers = LiveSttService::list_providers(&config);
         let whisper = providers
             .into_iter()
@@ -486,9 +416,9 @@ archived_session_retention_days = 3
         );
     }
 
-    #[test]
-    fn test_live_stt_local_provider_config_status_uses_provider_rules() {
-        let _guard = VoiceConfigTestGuard::with_config(
+    #[tokio::test]
+    async fn test_live_stt_local_provider_config_status_uses_provider_rules() {
+        let guard = VoiceConfigTestGuard::with_config(
             r#"
 [server]
 port = 18080
@@ -505,9 +435,12 @@ terminal_size = "115x58"
 [sandbox]
 archived_session_retention_days = 3
 "#,
-        );
+        )
+        .await;
 
-        let config = load_voice_config().expect("load voice config");
+        let config = load_voice_config(&guard.service)
+            .await
+            .expect("load voice config");
         let providers = LiveSttService::list_providers(&config);
         let voxtral_local = providers
             .iter()
@@ -522,10 +455,11 @@ archived_session_retention_days = 3
 
     #[tokio::test]
     async fn test_live_stt_service_status() {
-        let _guard = VoiceConfigTestGuard::with_config(
+        let guard = VoiceConfigTestGuard::with_config(
             "[tools.execute_command]\nterminal_size = \"115x58\"\n\n[sandbox]\narchived_session_retention_days = 3\n",
-        );
-        let service = LiveSttService::new(SttServiceConfig::default());
+        )
+        .await;
+        let service = LiveSttService::new(guard.service.clone());
         let status = service.status().await.unwrap();
 
         // Status should always contain these fields
@@ -539,10 +473,11 @@ archived_session_retention_days = 3
 
     #[tokio::test]
     async fn test_live_stt_service_providers() {
-        let _guard = VoiceConfigTestGuard::with_config(
+        let guard = VoiceConfigTestGuard::with_config(
             "[tools.execute_command]\nterminal_size = \"115x58\"\n\n[sandbox]\narchived_session_retention_days = 3\n",
-        );
-        let service = LiveSttService::new(SttServiceConfig::default());
+        )
+        .await;
+        let service = LiveSttService::new(guard.service.clone());
         let providers = service.providers().await.unwrap();
 
         let providers_arr = providers.as_array().unwrap();
@@ -561,21 +496,6 @@ archived_session_retention_days = 3
         assert!(ids.contains(&"whisper-cli"));
         assert!(ids.contains(&"sherpa-onnx"));
         assert!(ids.contains(&"elevenlabs-stt"));
-    }
-
-    #[tokio::test]
-    async fn test_live_stt_service_transcribe() {
-        let service = LiveSttService::new(SttServiceConfig::default());
-        let result = service
-            .transcribe(json!({
-                "audio": base64::engine::general_purpose::STANDARD.encode(b"fake audio"),
-                "format": "mp3"
-            }))
-            .await;
-
-        // Result depends on whether an STT provider is configured
-        // We just verify it returns a proper result (ok or error)
-        let _ = result;
     }
 
     #[tokio::test]

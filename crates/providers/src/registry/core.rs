@@ -272,11 +272,7 @@ impl ProviderRegistry {
                     }
                 },
             })?;
-        if !model
-            .metadata
-            .reasoning_supported_efforts
-            .contains(model_reasoning.reasoning_effort())
-        {
+        if !model.supports_reasoning(model_reasoning.reasoning_effort()) {
             return Err(ModelResolutionError::UnsupportedReasoningEffort {
                 model_id: model.id.clone(),
                 reasoning_effort: model_reasoning.reasoning_effort().as_str().to_string(),
@@ -293,6 +289,37 @@ impl ProviderRegistry {
             model_reasoning,
             provider,
         })
+    }
+
+    #[must_use]
+    pub fn supports_chat_model_assignment(&self, model: &str, effort: &ReasoningEffort) -> bool {
+        self.models
+            .iter()
+            .find(|entry| entry.id == model)
+            .is_some_and(|entry| entry.supports_text_chat() && entry.supports_reasoning(effort))
+    }
+
+    pub fn resolve_chat_model(
+        &self,
+        model: &str,
+        reasoning_effort: Option<&ReasoningEffort>,
+        disabled_ids: &HashSet<String>,
+    ) -> chelix_service_traits::ServiceResult<ResolvedModelReasoning> {
+        let resolved = self
+            .resolve_model_reasoning(Some(model), reasoning_effort)
+            .map_err(chelix_service_traits::ServiceError::message)?;
+        let selection = resolved.model_reasoning();
+        let visible = self.models.iter().any(|entry| {
+            entry.id == selection.model_id()
+                && entry.supports_text_chat()
+                && !disabled_ids.contains(&entry.id)
+        });
+        if !visible {
+            return Err(chelix_service_traits::ServiceError::message(format!(
+                "model '{model}' not found in chat model registry"
+            )));
+        }
+        Ok(selection.clone())
     }
 
     pub fn list_models(&self) -> &[ModelInfo] {

@@ -101,15 +101,7 @@ mod tests {
     struct ExactModelService;
 
     #[async_trait]
-    impl ModelService for ExactModelService {
-        async fn list(&self) -> ServiceResult {
-            Ok(serde_json::json!([]))
-        }
-
-        async fn list_all(&self) -> ServiceResult {
-            Ok(serde_json::json!([]))
-        }
-
+    impl chelix_service_traits::ModelResolver for ExactModelService {
         async fn resolve_model_reasoning(
             &self,
             model: &str,
@@ -128,6 +120,17 @@ mod tests {
             }
             ResolvedModelReasoning::try_new(model.to_string(), effort.clone())
                 .map_err(ServiceError::message)
+        }
+    }
+
+    #[async_trait]
+    impl ModelService for ExactModelService {
+        async fn list(&self) -> ServiceResult {
+            Ok(serde_json::json!([]))
+        }
+
+        async fn list_all(&self) -> ServiceResult {
+            Ok(serde_json::json!([]))
         }
 
         async fn disable(&self, _params: serde_json::Value) -> ServiceResult {
@@ -184,8 +187,11 @@ mod tests {
         agents
     }
 
-    fn test_services(metadata: Arc<SqliteSessionMetadata>) -> GatewayServices {
-        GatewayServices::noop()
+    fn test_services(
+        metadata: Arc<SqliteSessionMetadata>,
+        configuration: chelix_config_service::ConfigService,
+    ) -> GatewayServices {
+        GatewayServices::noop(configuration)
             .with_session_metadata(metadata)
             .with_agents_config(Arc::new(RwLock::new(test_agents())))
             .with_model(Arc::new(ExactModelService))
@@ -198,6 +204,7 @@ mod tests {
 
     #[tokio::test]
     async fn initializes_only_missing_sessions() {
+        let fixture = crate::test_config::ConfigFixture::new().await;
         let cases = [
             InitializationCase {
                 name: "missing uses default agent",
@@ -234,7 +241,7 @@ mod tests {
                         .unwrap();
                 },
             }
-            let services = test_services(Arc::clone(&metadata));
+            let services = test_services(Arc::clone(&metadata), fixture.service.clone());
 
             ensure_chat_session(
                 &services,
@@ -261,8 +268,10 @@ mod tests {
 
     #[tokio::test]
     async fn complete_request_override_does_not_initialize_session() {
+        let fixture = crate::test_config::ConfigFixture::new().await;
         let metadata = sqlite_metadata().await;
-        let services = GatewayServices::noop().with_session_metadata(Arc::clone(&metadata));
+        let services = GatewayServices::noop(fixture.service.clone())
+            .with_session_metadata(Arc::clone(&metadata));
         let session_key = SessionKey::new("session:override");
         let model_override = ModelOverride {
             model: "test::override".to_string(),

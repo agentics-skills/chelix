@@ -44,7 +44,7 @@ pub(in crate::channel_events) async fn handle_new(
         .or(channel_defaults.agent_id.as_deref());
     let target_agent = resolve_channel_agent_id(state, session_key, requested_agent).await?;
     let model_reasoning = if let Some(model_override) = channel_defaults.model_override {
-        crate::model_reasoning::resolve_model_reasoning(
+        chelix_agents::model_validation::resolve_model_reasoning(
             state.services.model.as_ref(),
             &model_override.model,
             &model_override.reasoning_effort,
@@ -56,7 +56,7 @@ pub(in crate::channel_events) async fn handle_new(
             crate::session_reasoning::agent_defaults_for_agent(state, Some(&target_agent))
                 .await
                 .map_err(ChannelError::unavailable)?;
-        crate::model_reasoning::resolve_model_reasoning(
+        chelix_agents::model_validation::resolve_model_reasoning(
             state.services.model.as_ref(),
             &agent_model,
             &agent_reasoning_effort,

@@ -13,8 +13,9 @@ use {
     tracing::{debug, info, warn},
 };
 
-use super::{
-    AudioFormat, AudioOutput, SynthesizeRequest, TtsProvider, Voice, audio, contains_ssml,
+use {
+    super::{AudioFormat, AudioOutput, SynthesizeRequest, TtsProvider, Voice, audio},
+    crate::contains_ssml,
 };
 
 /// ElevenLabs API base URL.

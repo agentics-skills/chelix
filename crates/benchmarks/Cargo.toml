@@ -6,19 +6,20 @@ repository.workspace = true
 version.workspace    = true
 
 [dev-dependencies]
-chelix-agents     = { workspace = true }
-chelix-code-index = { workspace = true }
-chelix-common     = { workspace = true }
-chelix-config     = { workspace = true }
-chelix-providers  = { workspace = true }
-chelix-sessions   = { workspace = true }
-divan             = { package = "codspeed-divan-compat", version = "4.3" }
-grep-regex        = { workspace = true }
-grep-searcher     = { workspace = true }
-serde_json        = { workspace = true }
-tempfile          = { workspace = true }
-tokio             = { workspace = true }
-toml              = { workspace = true }
+chelix-agents         = { workspace = true }
+chelix-code-index     = { workspace = true }
+chelix-common         = { workspace = true }
+chelix-config         = { workspace = true }
+chelix-config-service = { workspace = true }
+chelix-providers      = { workspace = true }
+chelix-sessions       = { workspace = true }
+divan                 = { package = "codspeed-divan-compat", version = "4.3" }
+grep-regex            = { workspace = true }
+grep-searcher         = { workspace = true }
+serde_json            = { workspace = true }
+tempfile              = { workspace = true }
+tokio                 = { workspace = true }
+toml                  = { workspace = true }
 
 [[bench]]
 harness = false

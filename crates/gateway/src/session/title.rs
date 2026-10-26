@@ -259,6 +259,7 @@ mod tests {
     }
 
     async fn test_state(
+        configuration: chelix_config_service::ConfigService,
         provider: Arc<dyn LlmProvider>,
         title_config: Option<ConfigModelOverride>,
         supported_effort: &str,
@@ -269,7 +270,7 @@ mod tests {
         chelix_projects::run_migrations(&pool).await.unwrap();
         SqliteSessionMetadata::init(&pool).await.unwrap();
         let session_metadata = Arc::new(SqliteSessionMetadata::new(pool));
-        let services = GatewayServices::noop()
+        let services = GatewayServices::noop(configuration)
             .with_session_store(Arc::clone(&session_store))
             .with_session_metadata(Arc::clone(&session_metadata));
         let mut config = chelix_config::ChelixConfig::default();
@@ -352,8 +353,14 @@ mod tests {
     async fn generate_title_for_session_applies_auxiliary_effort_and_persists_label() {
         for effort in ["low", "off"] {
             let provider = Arc::new(MockTitleProvider::new(Ok("Docker Deployment"), effort));
-            let (state, _dir) =
-                test_state(provider.clone(), Some(title_config(effort)), effort).await;
+            let fixture = crate::test_config::ConfigFixture::new().await;
+            let (state, _dir) = test_state(
+                fixture.service.clone(),
+                provider.clone(),
+                Some(title_config(effort)),
+                effort,
+            )
+            .await;
 
             let title = generate_title_for_session(&state, "session:test")
                 .await
@@ -407,7 +414,9 @@ mod tests {
         ];
         for (pair, expected_error) in cases {
             let provider = Arc::new(MockTitleProvider::new(Ok("Unused Title"), "low"));
-            let (state, _dir) = test_state(provider.clone(), pair, "low").await;
+            let fixture = crate::test_config::ConfigFixture::new().await;
+            let (state, _dir) =
+                test_state(fixture.service.clone(), provider.clone(), pair, "low").await;
             let metadata = state.services.session_metadata.as_ref().unwrap();
             let before = metadata
                 .update_label("session:test", Some("Existing Label"))
@@ -429,7 +438,14 @@ mod tests {
     #[tokio::test]
     async fn generate_title_for_session_returns_provider_errors() {
         let provider = Arc::new(MockTitleProvider::new(Err("provider unavailable"), "low"));
-        let (state, _dir) = test_state(provider.clone(), Some(title_config("low")), "low").await;
+        let fixture = crate::test_config::ConfigFixture::new().await;
+        let (state, _dir) = test_state(
+            fixture.service.clone(),
+            provider.clone(),
+            Some(title_config("low")),
+            "low",
+        )
+        .await;
 
         let err = generate_title_for_session(&state, "session:test")
             .await
@@ -441,7 +457,9 @@ mod tests {
 
     #[tokio::test]
     async fn generate_title_for_session_skip_keeps_existing_label() {
+        let fixture = crate::test_config::ConfigFixture::new().await;
         let (state, _dir) = test_state(
+            fixture.service.clone(),
             Arc::new(MockTitleProvider::new(Ok("Should Not Be Used"), "low")),
             Some(title_config("low")),
             "low",

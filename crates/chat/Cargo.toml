@@ -12,6 +12,7 @@ chelix-agents         = { workspace = true }
 chelix-channels       = { workspace = true }
 chelix-common         = { workspace = true }
 chelix-config         = { workspace = true }
+chelix-config-service = { workspace = true }
 chelix-memory         = { workspace = true }
 chelix-metrics        = { optional = true, workspace = true }
 chelix-projects       = { workspace = true }
@@ -30,6 +31,7 @@ thiserror             = { workspace = true }
 tokio                 = { workspace = true }
 tokio-stream          = { workspace = true }
 tokio-util            = { workspace = true }
+toml_edit             = { workspace = true }
 tracing               = { workspace = true }
 uuid                  = { workspace = true }
 

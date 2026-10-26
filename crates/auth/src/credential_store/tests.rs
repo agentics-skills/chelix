@@ -5,12 +5,15 @@ use {
         AuthConfigPersistence, CredentialStore, SshAuthMode,
         util::{generate_token, hash_password, is_loopback, sha256_hex, verify_password},
     },
+    chelix_config_service::{ConfigService, ConfigValidation},
     secrecy::ExposeSecret,
     sqlx::SqlitePool,
+    std::{
+        path::Path,
+        sync::{Arc, OnceLock},
+    },
+    tokio::sync::{Mutex, OwnedMutexGuard},
 };
-
-#[cfg(feature = "vault")]
-use std::sync::Arc;
 
 #[cfg(feature = "vault")]
 use chelix_vault::Vault;
@@ -896,4 +899,85 @@ async fn test_env_var_decrypt_round_trip() {
     );
     assert!(entries[0].encrypted);
     assert!(entries[1].encrypted);
+}
+
+fn dir_lock() -> &'static Arc<Mutex<Option<tempfile::TempDir>>> {
+    static LOCK: OnceLock<Arc<Mutex<Option<tempfile::TempDir>>>> = OnceLock::new();
+    LOCK.get_or_init(|| Arc::new(Mutex::new(None)))
+}
+
+struct DirGuard {
+    guard: OwnedMutexGuard<Option<tempfile::TempDir>>,
+}
+
+impl DirGuard {
+    async fn enter(dir: tempfile::TempDir) -> Self {
+        let mut guard = dir_lock().clone().lock_owned().await;
+        *guard = Some(dir);
+        let state = Self { guard };
+        chelix_config::set_config_dir(state.path().to_path_buf());
+        chelix_config::set_data_dir(state.path().to_path_buf());
+        state
+    }
+
+    fn path(&self) -> &Path {
+        self.guard
+            .as_ref()
+            .expect("fixture directory is owned by guard")
+            .path()
+    }
+}
+
+impl Drop for DirGuard {
+    fn drop(&mut self) {
+        chelix_config::clear_config_dir();
+        chelix_config::clear_data_dir();
+        *self.guard = None;
+    }
+}
+
+#[tokio::test]
+async fn service_persistence_patches_auth_disabled_and_memory_only_does_not() {
+    let dir = tempfile::tempdir().unwrap();
+    let guard = DirGuard::enter(dir).await;
+    std::fs::write(
+        guard.path().join("chelix.toml"),
+        "\
+[tools.execute_command]
+terminal_size = \"115x58\"
+
+[sandbox]
+archived_session_retention_days = 3
+",
+    )
+    .unwrap();
+    let config = ConfigService::open(
+        ConfigValidation::default(),
+        chelix_config_service::ConfigInitialization::default(),
+    )
+    .await
+    .unwrap();
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    let store = CredentialStore::new(pool, config.clone()).await.unwrap();
+    assert!(!store.is_auth_disabled());
+
+    store.reset_all().await.unwrap();
+    assert!(store.is_auth_disabled());
+    assert!(config.read(|config| config.auth.disabled).await.unwrap());
+
+    store.clear_auth_disabled().await.unwrap();
+    assert!(!store.is_auth_disabled());
+    assert!(!config.read(|config| config.auth.disabled).await.unwrap());
+
+    let memory_pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    let memory = CredentialStore::with_config(
+        memory_pool,
+        &chelix_config::AuthConfig::default(),
+        AuthConfigPersistence::MemoryOnly,
+    )
+    .await
+    .unwrap();
+    memory.reset_all().await.unwrap();
+    assert!(memory.is_auth_disabled());
+    assert!(!config.read(|config| config.auth.disabled).await.unwrap());
 }

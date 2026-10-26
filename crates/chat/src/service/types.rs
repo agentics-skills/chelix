@@ -374,7 +374,7 @@ pub struct LiveChatService {
     /// Live agent registry shared with agent CRUD and chat runs.
     pub(in crate::service) agents_config: Arc<RwLock<chelix_config::AgentsConfig>>,
     /// Source used to reload `[tools]` before each new agent run.
-    pub(in crate::service) tools_config_source: chelix_config::ToolsConfigSource,
+    pub(in crate::service) tools_config_source: crate::ToolsConfigSource,
     /// Minimal wait signal for the current session execution. Never stores answers.
     pub(in crate::service) session_gates: Arc<super::session_gate::SessionGateRegistry>,
     /// Ephemeral operator permission waits for moderated tool calls.
@@ -399,10 +399,11 @@ pub(in crate::service) struct TestGate {
 async fn runtime_config_for_agent_run(
     base: &chelix_config::ChelixConfig,
     agents_config: &RwLock<chelix_config::AgentsConfig>,
-    tools_config_source: &chelix_config::ToolsConfigSource,
+    tools_config_source: &crate::ToolsConfigSource,
 ) -> error::Result<chelix_config::ChelixConfig> {
     let tools = tools_config_source
         .load()
+        .await
         .map_err(|error| error::Error::message(format!("reload tools config: {error}")))?;
     let agents = agents_config.read().await.clone();
     let mut config = base.clone();
@@ -420,7 +421,7 @@ impl LiveChatService {
         queued_prompts: Arc<QueuedPrompts>,
         config: chelix_config::ChelixConfig,
         agents_config: Arc<RwLock<chelix_config::AgentsConfig>>,
-        tools_config_source: chelix_config::ToolsConfigSource,
+        tools_config_source: crate::ToolsConfigSource,
         skill_files: Arc<chelix_skills::skill_file::SkillFiles>,
     ) -> Self {
         Self {
@@ -833,9 +834,8 @@ mod tests {
         );
         let live = RwLock::new(initial);
         let base = chelix_config::ChelixConfig::default();
-        let tools = chelix_config::ToolsConfigSource::snapshot(
-            chelix_config::schema::ToolsConfig::default(),
-        );
+        let tools =
+            crate::ToolsConfigSource::snapshot(chelix_config::schema::ToolsConfig::default());
 
         let first = runtime_config_for_agent_run(&base, &live, &tools).await?;
         assert!(first.agents.get("main").is_some());

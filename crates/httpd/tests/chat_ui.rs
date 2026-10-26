@@ -13,7 +13,7 @@ use {
     async_trait::async_trait,
     chelix_gateway::{
         auth,
-        chat::{DisabledModelsStore, LiveChatService, LiveModelService},
+        chat::{DisabledModelsStore, LiveChatService, LiveModelService, ToolsConfigSource},
         methods::MethodRegistry,
         services::{GatewayServices, OnboardingService, ServiceResult},
         state::GatewayState,
@@ -35,6 +35,7 @@ model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 128
 compaction_reminder = true
+prepend_sender_badge = true
 
 [tools.execute_command]
 terminal_size = "115x58"
@@ -94,20 +95,47 @@ impl OnboardingService for TestOnboardingService {
 
 struct TestServer {
     addr: SocketAddr,
+}
+
+struct ConfigFixture {
     _config_dir: tempfile::TempDir,
     _data_dir: tempfile::TempDir,
+    service: chelix_config_service::ConfigService,
+}
+
+impl Drop for ConfigFixture {
+    fn drop(&mut self) {
+        chelix_config::clear_config_dir();
+        chelix_config::clear_data_dir();
+    }
+}
+
+impl ConfigFixture {
+    async fn new() -> Self {
+        let config_dir = tempfile::tempdir().unwrap();
+        let data_dir = tempfile::tempdir().unwrap();
+        std::fs::write(config_dir.path().join("chelix.toml"), TEST_CONFIG_TOML).unwrap();
+        chelix_config::set_config_dir(config_dir.path().to_path_buf());
+        chelix_config::set_data_dir(data_dir.path().to_path_buf());
+        let config_service = chelix_config_service::ConfigService::open(
+            chelix_config_service::ConfigValidation::default(),
+            chelix_config_service::ConfigInitialization::default(),
+        )
+        .await
+        .unwrap();
+        Self {
+            _config_dir: config_dir,
+            _data_dir: data_dir,
+            service: config_service,
+        }
+    }
 }
 
 /// Spin up a test gateway on an ephemeral port.
 async fn start_test_server() -> TestServer {
-    let config_dir = tempfile::tempdir().unwrap();
-    let data_dir = tempfile::tempdir().unwrap();
-    std::fs::write(config_dir.path().join("chelix.toml"), TEST_CONFIG_TOML).unwrap();
-    chelix_config::set_config_dir(config_dir.path().to_path_buf());
-    chelix_config::set_data_dir(data_dir.path().to_path_buf());
-
+    let fixture = ConfigFixture::new().await;
     let resolved_auth = auth::resolve_auth(None, None);
-    let services = GatewayServices::noop()
+    let services = GatewayServices::noop(fixture.service.clone())
         .with_agents_config(Arc::new(tokio::sync::RwLock::new(test_agents())))
         .with_onboarding(Arc::new(TestOnboardingService));
     let state = GatewayState::new(resolved_auth, services);
@@ -123,6 +151,7 @@ async fn start_test_server() -> TestServer {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
+        let _fixture = fixture;
         axum::serve(
             listener,
             app.into_make_service_with_connect_info::<SocketAddr>(),
@@ -130,11 +159,7 @@ async fn start_test_server() -> TestServer {
         .await
         .unwrap();
     });
-    TestServer {
-        addr,
-        _config_dir: config_dir,
-        _data_dir: data_dir,
-    }
+    TestServer { addr }
 }
 
 #[cfg(feature = "web-ui")]
@@ -312,15 +337,17 @@ async fn ws_system_presence_shows_connected_client() {
 /// thread from within a runtime" that only surface at run time.
 #[tokio::test]
 async fn gateway_startup_with_llm_wiring_does_not_block() {
+    let fixture = ConfigFixture::new().await;
     let resolved_auth = auth::resolve_auth(None, None);
     let registry = Arc::new(tokio::sync::RwLock::new(ProviderRegistry::empty()));
 
-    let mut services = GatewayServices::noop();
+    let mut services = GatewayServices::noop(fixture.service.clone());
     if !registry.read().await.is_empty() {
         services = services.with_model(Arc::new(LiveModelService::new(
             Arc::clone(&registry),
             Arc::new(tokio::sync::RwLock::new(DisabledModelsStore::default())),
             Vec::new(),
+            fixture.service.clone(),
         )));
     }
 
@@ -354,9 +381,7 @@ async fn gateway_startup_with_llm_wiring_does_not_block() {
             Arc::new(tokio::sync::RwLock::new(
                 chelix_config::AgentsConfig::default(),
             )),
-            chelix_config::ToolsConfigSource::snapshot(
-                chelix_config::schema::ToolsConfig::default(),
-            ),
+            ToolsConfigSource::snapshot(chelix_config::schema::ToolsConfig::default()),
             chelix_skills::skill_file::SkillFiles::new()
                 .unwrap_or_else(|error| panic!("skill files: {error}")),
         )));
@@ -366,7 +391,10 @@ async fn gateway_startup_with_llm_wiring_does_not_block() {
     // Force it with an empty registry to exercise set_chat unconditionally.
     let resolved_auth2 = auth::resolve_auth(None, None);
     let registry2 = Arc::new(tokio::sync::RwLock::new(ProviderRegistry::empty()));
-    let state2 = GatewayState::new(resolved_auth2, GatewayServices::noop());
+    let state2 = GatewayState::new(
+        resolved_auth2,
+        GatewayServices::noop(fixture.service.clone()),
+    );
     let tmp2 = tempfile::tempdir().unwrap();
     let session_store2 = Arc::new(chelix_sessions::store::SessionStore::new(
         tmp2.path().to_path_buf(),
@@ -393,7 +421,7 @@ async fn gateway_startup_with_llm_wiring_does_not_block() {
         Arc::new(tokio::sync::RwLock::new(
             chelix_config::AgentsConfig::default(),
         )),
-        chelix_config::ToolsConfigSource::snapshot(chelix_config::schema::ToolsConfig::default()),
+        ToolsConfigSource::snapshot(chelix_config::schema::ToolsConfig::default()),
         chelix_skills::skill_file::SkillFiles::new()
             .unwrap_or_else(|error| panic!("skill files: {error}")),
     )));

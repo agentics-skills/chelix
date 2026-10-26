@@ -13,8 +13,15 @@ use {
 };
 
 use {
-    super::{LiveProviderSetupService, support::ProviderSetupTiming},
-    crate::provider_base_url::validate_provider_base_url,
+    super::{
+        LiveProviderSetupService, config_error::writer_error,
+        provider_models::removed_model_agent_validator, service::ProviderConfigPersistence,
+        support::ProviderSetupTiming,
+    },
+    crate::{
+        config_document::{clear_provider_api_key, write_provider_api_key},
+        provider_base_url::validate_provider_base_url,
+    },
 };
 
 impl LiveProviderSetupService {
@@ -64,20 +71,32 @@ impl LiveProviderSetupService {
         )?;
         let new_registry = self.build_registry(&candidate)?;
 
-        if self.config_persistence == super::service::ProviderConfigPersistence::Filesystem
-            && let Err(error) = chelix_config::write_provider_api_key(
-                provider_name,
-                api_key,
-                normalized_base_url.as_deref(),
-                normalized_base_url.is_some(),
-            )
-        {
-            warn!(
-                provider = provider_name,
-                error = %error,
-                "failed to persist provider config"
-            );
-            return Err(ServiceError::message(error));
+        if let ProviderConfigPersistence::Service(service) = &self.config_persistence {
+            let service = service.clone();
+            let persisted_provider = provider_name.to_string();
+            let persisted_key = api_key.to_string();
+            let persisted_base_url = normalized_base_url.clone();
+            let write_base_url = normalized_base_url.is_some();
+            if let Err(error) = service
+                .edit_document(move |document| {
+                    write_provider_api_key(
+                        document,
+                        &persisted_provider,
+                        &persisted_key,
+                        persisted_base_url.as_deref(),
+                        write_base_url,
+                    )
+                })
+                .await
+            {
+                let error = writer_error(error);
+                warn!(
+                    provider = provider_name,
+                    error = %error,
+                    "failed to persist provider config"
+                );
+                return Err(error);
+            }
         }
         {
             let mut cfg = self
@@ -124,23 +143,25 @@ impl LiveProviderSetupService {
                 .map(|model| model.id.clone())
                 .collect::<HashSet<_>>()
         };
-        let mut agent_ids = if let Some(agents_config) = self.agents_config.as_ref() {
-            let agents = agents_config.read().await;
-            agents
-                .entries
-                .iter()
-                .filter(|(_, agent)| removed_model_ids.contains(&agent.model))
-                .map(|(agent_id, _)| agent_id.clone())
-                .collect::<Vec<_>>()
-        } else {
-            Vec::new()
-        };
-        agent_ids.sort_unstable();
-        if !agent_ids.is_empty() {
-            return Err(ServiceError::message(format!(
-                "provider '{provider_name}' supplies models configured for agents: {}",
-                agent_ids.join(", ")
-            )));
+        if let ProviderConfigPersistence::MemoryOnly = &self.config_persistence {
+            let mut agent_ids = if let Some(agents_config) = self.agents_config.as_ref() {
+                let agents = agents_config.read().await;
+                agents
+                    .entries
+                    .iter()
+                    .filter(|(_, agent)| removed_model_ids.contains(&agent.model))
+                    .map(|(agent_id, _)| agent_id.clone())
+                    .collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            };
+            agent_ids.sort_unstable();
+            if !agent_ids.is_empty() {
+                return Err(ServiceError::message(format!(
+                    "provider '{provider_name}' supplies models configured for agents: {}",
+                    agent_ids.join(", ")
+                )));
+            }
         }
 
         if let Some(error) =
@@ -148,8 +169,17 @@ impl LiveProviderSetupService {
         {
             return Err(ServiceError::message(error.to_string()));
         }
-        if self.config_persistence == super::service::ProviderConfigPersistence::Filesystem {
-            chelix_config::clear_provider_api_key(provider_name).map_err(ServiceError::message)?;
+        if let ProviderConfigPersistence::Service(service) = &self.config_persistence {
+            let service = service.clone();
+            let persisted_provider = provider_name.to_string();
+            let removed_model_ids = removed_model_ids.clone();
+            service
+                .edit_document_checked(
+                    move |document| clear_provider_api_key(document, &persisted_provider),
+                    removed_model_agent_validator(provider_name.to_string(), removed_model_ids),
+                )
+                .await
+                .map_err(writer_error)?;
         }
         {
             let mut cfg = self
@@ -253,12 +283,16 @@ impl LiveProviderSetupService {
             }
         }
 
-        if self.config_persistence == super::ProviderConfigPersistence::Filesystem {
+        if let ProviderConfigPersistence::Service(service) = &self.config_persistence {
+            let service = service.clone();
             let persisted = next.clone();
-            chelix_config::update_config(|config| {
-                config.chat.priority_models = persisted;
-            })
-            .map_err(ServiceError::message)?;
+            service
+                .update(move |config| {
+                    config.chat.priority_models = persisted;
+                    Ok(())
+                })
+                .await
+                .map_err(ServiceError::message)?;
         }
 
         *priority_models.write().await = next;

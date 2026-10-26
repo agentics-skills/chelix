@@ -562,7 +562,8 @@ mod tests {
             Arc::clone(&store),
             metadata,
         ));
-        let mut services = GatewayServices::noop();
+        let fixture = crate::test_config::ConfigFixture::new().await;
+        let mut services = GatewayServices::noop(fixture.service.clone());
         let mutations = Arc::clone(&services.session_mutations);
         services.session = session;
         let state = GatewayState::new(

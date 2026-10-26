@@ -1,6 +1,6 @@
 use {anyhow::Result, clap::Subcommand};
 
-use chelix_config::validate::{self, Severity};
+use chelix_config::validate::Severity;
 
 #[derive(Subcommand)]
 pub enum ConfigAction {
@@ -20,7 +20,10 @@ pub enum ConfigAction {
 
 pub async fn handle_config(action: ConfigAction) -> Result<()> {
     match action {
-        ConfigAction::Check { verbose } => check(verbose),
+        ConfigAction::Check { verbose } => {
+            let validation = chelix_gateway::config_wiring::validators();
+            check(verbose, &validation).await
+        },
         ConfigAction::Get { .. } | ConfigAction::Set { .. } | ConfigAction::Edit => {
             eprintln!("not yet implemented");
             Ok(())
@@ -35,8 +38,11 @@ const CYAN: &str = "\x1b[36m";
 const BOLD: &str = "\x1b[1m";
 const RESET: &str = "\x1b[0m";
 
-pub(crate) fn check(verbose: bool) -> Result<()> {
-    let result = validate::validate(None);
+pub(crate) async fn check(
+    verbose: bool,
+    validation: &chelix_config_service::ConfigValidation,
+) -> Result<()> {
+    let result = validation.diagnose_file().await;
 
     // Print which file we're checking
     if let Some(ref path) = result.config_path {

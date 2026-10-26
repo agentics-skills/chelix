@@ -16,6 +16,8 @@ pub mod login_guard;
 pub mod request_throttle;
 pub mod server;
 pub mod ssh_routes;
+#[cfg(test)]
+pub(crate) mod test_config;
 pub mod tools_routes;
 pub mod upload_routes;
 pub mod ws;

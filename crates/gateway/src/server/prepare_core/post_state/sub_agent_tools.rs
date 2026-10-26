@@ -154,7 +154,7 @@ impl SubAgentRuntime {
         let started = Instant::now();
         let agent = self.discoverable_agent(agent_id).await?;
         let sender_badge = self.sender_badge_prefix(sender_agent_id).await?;
-        let model_reasoning = crate::model_reasoning::resolve_model_reasoning(
+        let model_reasoning = chelix_agents::model_validation::resolve_model_reasoning(
             self.state.services.model.as_ref(),
             &agent.model,
             &agent.reasoning_effort,
@@ -1725,11 +1725,13 @@ mod tests {
     }
 
     async fn build_badge_runtime(
+        configuration: chelix_config_service::ConfigService,
         agents: Arc<RwLock<chelix_config::AgentsConfig>>,
         metadata: Arc<SqliteSessionMetadata>,
         store: Arc<SessionStore>,
     ) -> SubAgentRuntime {
-        let services = crate::services::GatewayServices::noop().with_agents_config(agents);
+        let services =
+            crate::services::GatewayServices::noop(configuration).with_agents_config(agents);
         let state = GatewayState::new(crate::auth::resolve_auth(None, None), services);
         SubAgentRuntime {
             state,
@@ -1739,11 +1741,12 @@ mod tests {
     }
 
     async fn build_chat_runtime(
+        configuration: chelix_config_service::ConfigService,
         chat: Arc<CapturingChat>,
         metadata: Arc<SqliteSessionMetadata>,
         store: Arc<SessionStore>,
     ) -> SubAgentRuntime {
-        let services = crate::services::GatewayServices::noop()
+        let services = crate::services::GatewayServices::noop(configuration)
             .with_agents_config(badge_test_agents())
             .with_chat(chat);
         let state = GatewayState::new(crate::auth::resolve_auth(None, None), services);
@@ -1756,10 +1759,17 @@ mod tests {
 
     #[tokio::test]
     async fn sender_badge_uses_sender_name_when_enabled() {
+        let fixture = crate::test_config::ConfigFixture::new().await;
         let metadata = Arc::new(sqlite_metadata().await);
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
-        let runtime = build_badge_runtime(badge_test_agents(), metadata, store).await;
+        let runtime = build_badge_runtime(
+            fixture.service.clone(),
+            badge_test_agents(),
+            metadata,
+            store,
+        )
+        .await;
         assert_eq!(
             runtime.sender_badge_prefix(Some("coder")).await.unwrap(),
             "[From the \"Coder\" agent]\n\n"
@@ -1768,10 +1778,17 @@ mod tests {
 
     #[tokio::test]
     async fn sender_badge_empty_when_disabled_or_absent() {
+        let fixture = crate::test_config::ConfigFixture::new().await;
         let metadata = Arc::new(sqlite_metadata().await);
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
-        let runtime = build_badge_runtime(badge_test_agents(), metadata, store).await;
+        let runtime = build_badge_runtime(
+            fixture.service.clone(),
+            badge_test_agents(),
+            metadata,
+            store,
+        )
+        .await;
         assert_eq!(
             runtime.sender_badge_prefix(Some("quiet")).await.unwrap(),
             ""
@@ -1781,10 +1798,17 @@ mod tests {
 
     #[tokio::test]
     async fn sender_badge_rejects_unknown_sender() {
+        let fixture = crate::test_config::ConfigFixture::new().await;
         let metadata = Arc::new(sqlite_metadata().await);
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
-        let runtime = build_badge_runtime(badge_test_agents(), metadata, store).await;
+        let runtime = build_badge_runtime(
+            fixture.service.clone(),
+            badge_test_agents(),
+            metadata,
+            store,
+        )
+        .await;
         let error = runtime
             .sender_badge_prefix(Some("missing"))
             .await
@@ -1926,15 +1950,7 @@ mod tests {
     struct AcceptProviderModel;
 
     #[async_trait]
-    impl chelix_service_traits::ModelService for AcceptProviderModel {
-        async fn list(&self) -> ServiceResult {
-            Ok(serde_json::json!([]))
-        }
-
-        async fn list_all(&self) -> ServiceResult {
-            Ok(serde_json::json!([]))
-        }
-
+    impl chelix_service_traits::ModelResolver for AcceptProviderModel {
         async fn resolve_model_reasoning(
             &self,
             model: &str,
@@ -1948,6 +1964,17 @@ mod tests {
             })?;
             chelix_common::ResolvedModelReasoning::try_new(model.to_string(), effort.clone())
                 .map_err(|error| chelix_service_traits::ServiceError::message(error.to_string()))
+        }
+    }
+
+    #[async_trait]
+    impl chelix_service_traits::ModelService for AcceptProviderModel {
+        async fn list(&self) -> ServiceResult {
+            Ok(serde_json::json!([]))
+        }
+
+        async fn list_all(&self) -> ServiceResult {
+            Ok(serde_json::json!([]))
         }
 
         async fn disable(&self, _params: Value) -> ServiceResult {
@@ -1967,33 +1994,12 @@ mod tests {
         }
     }
 
-    struct DataDirTestGuard {
-        _lock: std::sync::MutexGuard<'static, ()>,
-    }
-
-    impl DataDirTestGuard {
-        fn with_reviewer_prompt() -> (Self, tempfile::TempDir) {
-            let guard = Self {
-                _lock: crate::config_override_test_lock(),
-            };
-            let data_dir = tempfile::tempdir().unwrap();
-            let agent_dir = data_dir.path().join("agents").join("reviewer");
-            std::fs::create_dir_all(&agent_dir).unwrap();
-            std::fs::write(agent_dir.join("SUBAGENT.md"), "Review").unwrap();
-            chelix_config::set_data_dir(data_dir.path().to_path_buf());
-            (guard, data_dir)
-        }
-    }
-
-    impl Drop for DataDirTestGuard {
-        fn drop(&mut self) {
-            chelix_config::clear_data_dir();
-        }
-    }
-
     #[tokio::test]
     async fn sub_agent_run_sends_badged_task_in_both_modes() {
-        let (_guard, _data_dir) = DataDirTestGuard::with_reviewer_prompt();
+        let fixture = crate::test_config::ConfigFixture::new().await;
+        let agent_dir = fixture.directories.data_dir().join("agents/reviewer");
+        std::fs::create_dir_all(&agent_dir).unwrap();
+        std::fs::write(agent_dir.join("SUBAGENT.md"), "Review").unwrap();
         let metadata = Arc::new(sqlite_metadata().await);
         create_parent(&metadata, "session:parent").await;
         let store_dir = tempfile::tempdir().unwrap();
@@ -2001,7 +2007,7 @@ mod tests {
         let agents = badge_test_agents();
         let model: Arc<dyn chelix_service_traits::ModelService> = Arc::new(AcceptProviderModel);
         let chat = CapturingChat::new(false, Some(SessionTerminal::Completed));
-        let services = crate::services::GatewayServices::noop()
+        let services = crate::services::GatewayServices::noop(fixture.service.clone())
             .with_agents_config(Arc::clone(&agents))
             .with_model(model)
             .with_chat(chat.clone());
@@ -2092,6 +2098,7 @@ mod tests {
 
     #[tokio::test]
     async fn send_rejects_foreign_child() {
+        let fixture = crate::test_config::ConfigFixture::new().await;
         let metadata = Arc::new(sqlite_metadata().await);
         create_parent(&metadata, "session:parent").await;
         create_parent(&metadata, "session:other").await;
@@ -2099,7 +2106,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let chat = CapturingChat::new(false, Some(SessionTerminal::Completed));
-        let runtime = build_chat_runtime(Arc::clone(&chat), metadata, store).await;
+        let runtime =
+            build_chat_runtime(fixture.service.clone(), Arc::clone(&chat), metadata, store).await;
         let error = runtime
             .send(
                 "session:parent",
@@ -2116,13 +2124,15 @@ mod tests {
 
     #[tokio::test]
     async fn send_rejects_running_without_chat_send() {
+        let fixture = crate::test_config::ConfigFixture::new().await;
         let metadata = Arc::new(sqlite_metadata().await);
         create_parent(&metadata, "session:parent").await;
         configure_child(&metadata, "session:child", "session:parent").await;
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let chat = CapturingChat::new(true, None);
-        let runtime = build_chat_runtime(Arc::clone(&chat), metadata, store).await;
+        let runtime =
+            build_chat_runtime(fixture.service.clone(), Arc::clone(&chat), metadata, store).await;
         let error = runtime
             .send(
                 "session:parent",
@@ -2140,6 +2150,7 @@ mod tests {
 
     #[tokio::test]
     async fn send_starts_turn_when_not_running() {
+        let fixture = crate::test_config::ConfigFixture::new().await;
         let metadata = Arc::new(sqlite_metadata().await);
         create_parent(&metadata, "session:parent").await;
         configure_child(&metadata, "session:child", "session:parent").await;
@@ -2151,9 +2162,13 @@ mod tests {
             Some(SessionTerminal::Cancelled),
         ] {
             let chat = CapturingChat::new(false, last_terminal);
-            let runtime =
-                build_chat_runtime(Arc::clone(&chat), Arc::clone(&metadata), Arc::clone(&store))
-                    .await;
+            let runtime = build_chat_runtime(
+                fixture.service.clone(),
+                Arc::clone(&chat),
+                Arc::clone(&metadata),
+                Arc::clone(&store),
+            )
+            .await;
             chat.send_called.store(false, Ordering::SeqCst);
             runtime
                 .send(
@@ -2172,6 +2187,7 @@ mod tests {
 
     #[tokio::test]
     async fn send_applies_sender_badge_and_mode_shapes() {
+        let fixture = crate::test_config::ConfigFixture::new().await;
         let metadata = Arc::new(sqlite_metadata().await);
         create_parent(&metadata, "session:parent").await;
         configure_child(&metadata, "session:child", "session:parent").await;
@@ -2179,7 +2195,8 @@ mod tests {
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         append_completed_turn(&store, "session:child", "task", "done").await;
         let chat = CapturingChat::new(false, Some(SessionTerminal::Completed));
-        let runtime = build_chat_runtime(Arc::clone(&chat), metadata, store).await;
+        let runtime =
+            build_chat_runtime(fixture.service.clone(), Arc::clone(&chat), metadata, store).await;
 
         let background = runtime
             .send(

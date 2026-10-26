@@ -53,14 +53,33 @@ fn api_error_response(status: StatusCode, code: &str, error: impl Into<String>) 
     (status, Json(api_error(code, error))).into_response()
 }
 
-fn load_config_for_api() -> Result<chelix_config::ChelixConfig, Box<Response>> {
-    chelix_config::discover_and_load().map_err(|error| {
+async fn load_config_for_api(
+    state: &AppState,
+) -> Result<std::sync::Arc<chelix_config::ChelixConfig>, Box<Response>> {
+    let config = state.gateway.services.configuration();
+    config.read(|cfg| cfg.clone()).await.map_err(|error| {
         Box::new(api_error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
             CONFIG_LOAD_FAILED,
             error.to_string(),
         ))
     })
+}
+
+async fn update_sandbox_config(
+    state: &AppState,
+    error_code: &str,
+    update: impl FnOnce(&mut chelix_config::ChelixConfig) -> chelix_config::Result<()> + Send + 'static,
+) -> Result<String, Box<Response>> {
+    let config = state.gateway.services.configuration();
+    if let Err(error) = config.update(update).await {
+        return Err(Box::new(api_error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            error_code,
+            error.to_string(),
+        )));
+    }
+    Ok(config.location().display().to_string())
 }
 
 #[derive(serde::Deserialize)]
@@ -491,7 +510,7 @@ pub async fn api_hooks_handler(State(state): State<AppState>) -> impl IntoRespon
 // ── Skills ───────────────────────────────────────────────────────────────────
 
 pub async fn api_skills_handler(State(state): State<AppState>) -> impl IntoResponse {
-    let config = match load_config_for_api() {
+    let config = match load_config_for_api(&state).await {
         Ok(config) => config,
         Err(response) => return *response,
     };
@@ -560,8 +579,8 @@ pub async fn api_skills_handler(State(state): State<AppState>) -> impl IntoRespo
 
 // ── Images ───────────────────────────────────────────────────────────────────
 
-pub async fn api_cached_images_handler() -> impl IntoResponse {
-    let config = match load_config_for_api() {
+pub async fn api_cached_images_handler(State(state): State<AppState>) -> impl IntoResponse {
+    let config = match load_config_for_api(&state).await {
         Ok(config) => config,
         Err(response) => return *response,
     };
@@ -609,11 +628,14 @@ pub async fn api_cached_images_handler() -> impl IntoResponse {
     Json(serde_json::json!({ "images": images })).into_response()
 }
 
-pub async fn api_delete_cached_image_handler(Path(tag): Path<String>) -> impl IntoResponse {
+pub async fn api_delete_cached_image_handler(
+    State(state): State<AppState>,
+    Path(tag): Path<String>,
+) -> impl IntoResponse {
     let result = if tag.contains("-sandbox:") {
         chelix_tools::sandbox::remove_sandbox_image(&tag).await
     } else {
-        let cfg = match load_config_for_api() {
+        let cfg = match load_config_for_api(&state).await {
             Ok(config) => config,
             Err(response) => return *response,
         };
@@ -636,8 +658,8 @@ pub async fn api_delete_cached_image_handler(Path(tag): Path<String>) -> impl In
     }
 }
 
-pub async fn api_prune_cached_images_handler() -> impl IntoResponse {
-    let config = match load_config_for_api() {
+pub async fn api_prune_cached_images_handler(State(state): State<AppState>) -> impl IntoResponse {
+    let config = match load_config_for_api(&state).await {
         Ok(config) => config,
         Err(response) => return *response,
     };
@@ -665,7 +687,10 @@ pub async fn api_prune_cached_images_handler() -> impl IntoResponse {
     Json(serde_json::json!({ "pruned": count })).into_response()
 }
 
-pub async fn api_check_packages_handler(Json(body): Json<serde_json::Value>) -> impl IntoResponse {
+pub async fn api_check_packages_handler(
+    State(state): State<AppState>,
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
     let base = body
         .get("base")
         .and_then(|v| v.as_str())
@@ -698,7 +723,7 @@ pub async fn api_check_packages_handler(Json(body): Json<serde_json::Value>) -> 
         .collect();
     let script = checks.join("\n");
 
-    let config = match load_config_for_api() {
+    let config = match load_config_for_api(&state).await {
         Ok(config) => config,
         Err(response) => return *response,
     };
@@ -734,8 +759,8 @@ pub async fn api_get_default_image_handler(State(state): State<AppState>) -> imp
     Json(serde_json::json!({ "image": image }))
 }
 
-pub async fn api_get_shared_home_handler() -> impl IntoResponse {
-    let config = match load_config_for_api() {
+pub async fn api_get_shared_home_handler(State(state): State<AppState>) -> impl IntoResponse {
+    let config = match load_config_for_api(&state).await {
         Ok(config) => config,
         Err(response) => return *response,
     };
@@ -750,6 +775,7 @@ pub async fn api_get_shared_home_handler() -> impl IntoResponse {
 }
 
 pub async fn api_set_shared_home_handler(
+    State(state): State<AppState>,
     Json(body): Json<SandboxSharedHomeUpdateRequest>,
 ) -> impl IntoResponse {
     let path = body
@@ -758,49 +784,48 @@ pub async fn api_set_shared_home_handler(
         .map(str::trim)
         .filter(|p| !p.is_empty())
         .map(ToOwned::to_owned);
+    let enabled = body.enabled;
 
-    let update_result = chelix_config::update_config(|cfg| {
-        cfg.sandbox.shared_home_dir = path.clone();
-        if body.enabled {
-            cfg.sandbox.home_persistence = chelix_config::schema::HomePersistenceConfig::Shared;
-        } else if matches!(
-            cfg.sandbox.home_persistence,
-            chelix_config::schema::HomePersistenceConfig::Shared
-        ) {
-            cfg.sandbox.home_persistence = chelix_config::schema::HomePersistenceConfig::Off;
-        }
-    });
+    let saved_path =
+        match update_sandbox_config(&state, SANDBOX_SHARED_HOME_SAVE_FAILED, move |cfg| {
+            cfg.sandbox.shared_home_dir = path;
+            if enabled {
+                cfg.sandbox.home_persistence = chelix_config::schema::HomePersistenceConfig::Shared;
+            } else if matches!(
+                cfg.sandbox.home_persistence,
+                chelix_config::schema::HomePersistenceConfig::Shared
+            ) {
+                cfg.sandbox.home_persistence = chelix_config::schema::HomePersistenceConfig::Off;
+            }
+            Ok(())
+        })
+        .await
+        {
+            Ok(saved_path) => saved_path,
+            Err(response) => return *response,
+        };
 
-    match update_result {
-        Ok(saved_path) => {
-            let config = match load_config_for_api() {
-                Ok(config) => config,
-                Err(response) => return *response,
-            };
-            let payload = match shared_home_config_payload(&config) {
-                Ok(payload) => payload,
-                Err(error) => {
-                    return api_error_response(
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        SANDBOX_SHARED_HOME_SAVE_FAILED,
-                        error.to_string(),
-                    );
-                },
-            };
-            Json(serde_json::json!({
-                "ok": true,
-                "restart_required": true,
-                "config_path": saved_path.display().to_string(),
-                "config": payload,
-            }))
-            .into_response()
+    let config = match load_config_for_api(&state).await {
+        Ok(config) => config,
+        Err(response) => return *response,
+    };
+    let payload = match shared_home_config_payload(&config) {
+        Ok(payload) => payload,
+        Err(error) => {
+            return api_error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                SANDBOX_SHARED_HOME_SAVE_FAILED,
+                error.to_string(),
+            );
         },
-        Err(e) => api_error_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            SANDBOX_SHARED_HOME_SAVE_FAILED,
-            e.to_string(),
-        ),
-    }
+    };
+    Json(serde_json::json!({
+        "ok": true,
+        "restart_required": true,
+        "config_path": saved_path,
+        "config": payload,
+    }))
+    .into_response()
 }
 
 // ── Available sandbox backends ────────────────────────────────────────────────
@@ -864,8 +889,8 @@ fn available_backends_payload(
 
 /// Returns which sandbox backends are available/configured on this instance.
 /// Used by the UI to populate backend selectors.
-pub async fn api_available_backends_handler() -> impl IntoResponse {
-    let config = match load_config_for_api() {
+pub async fn api_available_backends_handler(State(state): State<AppState>) -> impl IntoResponse {
+    let config = match load_config_for_api(&state).await {
         Ok(config) => config,
         Err(response) => return *response,
     };
@@ -873,6 +898,7 @@ pub async fn api_available_backends_handler() -> impl IntoResponse {
 }
 
 pub async fn api_set_default_backend_handler(
+    State(state): State<AppState>,
     Json(body): Json<SandboxDefaultBackendUpdateRequest>,
 ) -> impl IntoResponse {
     let backend = body.backend;
@@ -888,27 +914,27 @@ pub async fn api_set_default_backend_handler(
         );
     }
 
-    let update_result = chelix_config::update_config(|cfg| {
+    match update_sandbox_config(&state, SANDBOX_BACKEND_SAVE_FAILED, move |cfg| {
         cfg.sandbox.backend = backend;
-    });
-
-    match update_result {
+        Ok(())
+    })
+    .await
+    {
         Ok(saved_path) => Json(serde_json::json!({
             "ok": true,
             "restart_required": true,
-            "config_path": saved_path.display().to_string(),
+            "config_path": saved_path,
             "config": available_backends_payload(backend),
         }))
         .into_response(),
-        Err(e) => api_error_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            SANDBOX_BACKEND_SAVE_FAILED,
-            e.to_string(),
-        ),
+        Err(response) => *response,
     }
 }
 
-pub async fn api_build_image_handler(Json(body): Json<serde_json::Value>) -> impl IntoResponse {
+pub async fn api_build_image_handler(
+    State(state): State<AppState>,
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
     let name = body
         .get("name")
         .and_then(|v| v.as_str())
@@ -984,7 +1010,7 @@ WORKDIR /home/sandbox\n"
         );
     }
 
-    let config = match load_config_for_api() {
+    let config = match load_config_for_api(&state).await {
         Ok(config) => config,
         Err(response) => return *response,
     };

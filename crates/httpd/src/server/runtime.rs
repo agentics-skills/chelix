@@ -645,6 +645,7 @@ pub(super) async fn finalize_prepared_gateway(
 /// using a feature-stable argument list.
 #[allow(clippy::expect_used)]
 pub async fn prepare_gateway_embedded(
+    config_service: chelix_config_service::ConfigService,
     bind: &str,
     port: u16,
     no_tls: bool,
@@ -654,6 +655,7 @@ pub async fn prepare_gateway_embedded(
     session_event_bus: Option<SessionEventBus>,
 ) -> crate::error::Result<PreparedGateway> {
     let prepared = prepare_gateway(
+        config_service,
         bind,
         port,
         no_tls,
@@ -675,6 +677,7 @@ pub use prepare_gateway_embedded as prepare_httpd_embedded;
 /// ctrl-c handler, TLS termination, and blocks on `axum::serve`.
 #[allow(clippy::expect_used)]
 pub async fn start_gateway(
+    config_service: chelix_config_service::ConfigService,
     bind: &str,
     port: u16,
     no_tls: bool,
@@ -682,7 +685,9 @@ pub async fn start_gateway(
     data_dir: Option<PathBuf>,
     extra_routes: Option<RouteEnhancer>,
 ) -> crate::error::Result<()> {
+    let config_path = config_service.location().display().to_string();
     let prepared = prepare_gateway(
+        config_service,
         bind,
         port,
         no_tls,
@@ -851,12 +856,7 @@ pub async fn start_gateway(
             }
         ),
         format!("sandbox: {} backend", banner.sandbox_backend),
-        format!(
-            "config: {}",
-            chelix_config::find_or_default_config_path()
-                .map_err(|error| crate::Error::Config(error.to_string()))?
-                .display()
-        ),
+        format!("config: {config_path}"),
         format!("data: {}", banner.data_dir.display()),
     ];
     lines.extend(startup_passkey_origin_lines(&passkey_origins));

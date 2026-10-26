@@ -10,6 +10,8 @@ pub mod approval;
 pub mod branch_session;
 mod client;
 pub mod command;
+pub mod config_initialization;
+pub mod config_validation;
 #[cfg(test)]
 pub mod contract;
 pub mod cron_tool;

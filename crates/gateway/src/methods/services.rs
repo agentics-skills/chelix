@@ -331,9 +331,11 @@ pub(super) fn register(reg: &mut MethodRegistry) {
 }
 async fn reload_hooks(state: &Arc<crate::state::GatewayState>) -> Result<(), ErrorShape> {
     let disabled = state.inner.read().await.disabled_hooks.clone();
-    let (new_registry, new_info) = crate::server::discover_and_build_hooks(&disabled)
-        .await
-        .map_err(|error| ErrorShape::new(error_codes::INTERNAL, error.to_string()))?;
+    let configuration = state.services.configuration().clone();
+    let (new_registry, new_info) =
+        crate::server::discover_and_build_hooks(&configuration, &disabled)
+            .await
+            .map_err(|error| ErrorShape::new(error_codes::INTERNAL, error.to_string()))?;
 
     {
         let mut inner = state.inner.write().await;
@@ -371,7 +373,6 @@ mod tests {
             services::GatewayServices,
             state::GatewayState,
         },
-        tempfile::TempDir,
     };
 
     #[cfg(feature = "agent")]
@@ -385,39 +386,13 @@ mod tests {
         )));
     }
 
-    struct MemoryConfigTestGuard {
-        _lock: std::sync::MutexGuard<'static, ()>,
-        _config_dir: TempDir,
-        _data_dir: TempDir,
-    }
+    use crate::test_config::ConfigFixture as MemoryConfigTestGuard;
 
-    impl MemoryConfigTestGuard {
-        fn new() -> Self {
-            let lock = crate::config_override_test_lock();
-            let config_dir = tempfile::tempdir()
-                .unwrap_or_else(|error| panic!("config tempdir should be created: {error}"));
-            let data_dir = tempfile::tempdir()
-                .unwrap_or_else(|error| panic!("data tempdir should be created: {error}"));
-            chelix_config::set_config_dir(config_dir.path().to_path_buf());
-            chelix_config::set_data_dir(data_dir.path().to_path_buf());
-            chelix_config::initialize_config()
-                .unwrap_or_else(|error| panic!("test config should be initialized: {error}"));
-            Self {
-                _lock: lock,
-                _config_dir: config_dir,
-                _data_dir: data_dir,
-            }
-        }
-    }
-
-    impl Drop for MemoryConfigTestGuard {
-        fn drop(&mut self) {
-            chelix_config::clear_config_dir();
-            chelix_config::clear_data_dir();
-        }
-    }
-
-    async fn dispatch_memory_method(method: &str, params: serde_json::Value) -> serde_json::Value {
+    async fn dispatch_memory_method(
+        service: &chelix_config_service::ConfigService,
+        method: &str,
+        params: serde_json::Value,
+    ) -> serde_json::Value {
         let mut reg = MethodRegistry::default();
         register(&mut reg);
         let response = reg
@@ -435,7 +410,7 @@ mod tests {
                         token: None,
                         password: None,
                     },
-                    GatewayServices::noop(),
+                    GatewayServices::noop(service.clone()),
                 ),
                 channel: None,
             })
@@ -449,6 +424,7 @@ mod tests {
     }
 
     async fn dispatch_memory_method_response(
+        service: &chelix_config_service::ConfigService,
         method: &str,
         params: serde_json::Value,
     ) -> chelix_protocol::ResponseFrame {
@@ -468,7 +444,7 @@ mod tests {
                     token: None,
                     password: None,
                 },
-                GatewayServices::noop(),
+                GatewayServices::noop(service.clone()),
             ),
             channel: None,
         })
@@ -477,23 +453,30 @@ mod tests {
 
     #[tokio::test]
     async fn memory_config_get_reports_typed_memory_fields() {
-        let _guard = MemoryConfigTestGuard::new();
-        let update_result = chelix_config::update_config(|cfg| {
-            cfg.memory.style = chelix_config::MemoryStyle::SearchOnly;
-            cfg.memory.agent_write_mode = chelix_config::AgentMemoryWriteMode::PromptOnly;
-            cfg.memory.user_profile_write_mode = chelix_config::UserProfileWriteMode::ExplicitOnly;
-            cfg.memory.url = Some("http://127.0.0.1:8080".into());
-            cfg.memory.api_key = Some(secrecy::Secret::new("secret".into()));
-            cfg.memory.dimensions = Some(3);
-            cfg.memory.citations = chelix_config::MemoryCitationsMode::Off;
-            cfg.memory.disable_rag = true;
-            cfg.memory.llm_reranking = true;
-            cfg.memory.search_merge_strategy = chelix_config::MemorySearchMergeStrategy::Linear;
-            cfg.chat.prompt_memory_mode = chelix_config::PromptMemoryMode::FrozenAtSessionStart;
-        });
+        let guard = MemoryConfigTestGuard::new().await;
+        let update_result = guard
+            .service
+            .update(|cfg| {
+                cfg.memory.style = chelix_config::MemoryStyle::SearchOnly;
+                cfg.memory.agent_write_mode = chelix_config::AgentMemoryWriteMode::PromptOnly;
+                cfg.memory.user_profile_write_mode =
+                    chelix_config::UserProfileWriteMode::ExplicitOnly;
+                cfg.memory.url = Some("http://127.0.0.1:8080".into());
+                cfg.memory.api_key = Some(secrecy::Secret::new("secret".into()));
+                cfg.memory.dimensions = Some(3);
+                cfg.memory.citations = chelix_config::MemoryCitationsMode::Off;
+                cfg.memory.disable_rag = true;
+                cfg.memory.llm_reranking = true;
+                cfg.memory.search_merge_strategy = chelix_config::MemorySearchMergeStrategy::Linear;
+                cfg.chat.prompt_memory_mode = chelix_config::PromptMemoryMode::FrozenAtSessionStart;
+                Ok(())
+            })
+            .await;
         assert!(update_result.is_ok(), "config update should succeed");
 
-        let payload = dispatch_memory_method("memory.config.get", serde_json::json!({})).await;
+        let payload =
+            dispatch_memory_method(&guard.service, "memory.config.get", serde_json::json!({}))
+                .await;
         assert_eq!(payload["style"], "search-only");
         assert_eq!(payload["agent_write_mode"], "prompt-only");
         assert_eq!(payload["user_profile_write_mode"], "explicit-only");
@@ -510,9 +493,10 @@ mod tests {
 
     #[tokio::test]
     async fn memory_config_update_persists_typed_memory_fields() {
-        let _guard = MemoryConfigTestGuard::new();
+        let guard = MemoryConfigTestGuard::new().await;
 
         let payload = dispatch_memory_method(
+            &guard.service,
             "memory.config.update",
             serde_json::json!({
                 "style": "prompt-only",
@@ -543,7 +527,10 @@ mod tests {
         assert_eq!(payload["search_merge_strategy"], "linear");
         assert_eq!(payload["prompt_memory_mode"], "frozen-at-session-start");
 
-        let config = chelix_config::discover_and_load()
+        let config = guard
+            .service
+            .read(|config| config.clone())
+            .await
             .unwrap_or_else(|error| panic!("load updated config: {error}"));
         assert_eq!(config.memory.style, chelix_config::MemoryStyle::PromptOnly);
         assert_eq!(
@@ -583,8 +570,9 @@ mod tests {
 
     #[tokio::test]
     async fn memory_config_update_rejects_unknown_enum_values() {
-        let _guard = MemoryConfigTestGuard::new();
+        let guard = MemoryConfigTestGuard::new().await;
         let response = dispatch_memory_method_response(
+            &guard.service,
             "memory.config.update",
             serde_json::json!({
                 "style": "surprise-mode",
@@ -606,8 +594,9 @@ mod tests {
 
     #[tokio::test]
     async fn memory_config_update_rejects_unknown_field() {
-        let _guard = MemoryConfigTestGuard::new();
+        let guard = MemoryConfigTestGuard::new().await;
         let response = dispatch_memory_method_response(
+            &guard.service,
             "memory.config.update",
             serde_json::json!({
                 "unexpected_field": true,
@@ -622,7 +611,10 @@ mod tests {
         };
         assert_eq!(error.code, error_codes::INVALID_REQUEST);
 
-        let config = chelix_config::discover_and_load()
+        let config = guard
+            .service
+            .read(|config| config.clone())
+            .await
             .unwrap_or_else(|error| panic!("load config: {error}"));
         assert_eq!(config.memory.url, None);
     }

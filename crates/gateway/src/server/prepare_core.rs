@@ -44,6 +44,7 @@ mod tool_registration;
 /// delegates to this and then adds the router + middleware.
 #[allow(clippy::expect_used)] // Startup fail-fast: DB, migrations, credential store must succeed.
 pub async fn prepare_gateway_core(
+    config_service: chelix_config_service::ConfigService,
     bind: &str,
     port: u16,
     no_tls: bool,
@@ -66,9 +67,10 @@ pub async fn prepare_gateway_core(
     let deploy_platform = std::env::var("CHELIX_DEPLOY_PLATFORM").ok();
     let resolved_auth = auth::resolve_auth(token, password.clone());
 
-    // Note: initialize_config() is called once at CLI startup (main.rs)
-    // before reaching here.
-    let mut config = chelix_config::discover_and_load()?;
+    // The CLI opens the config service before startup. `GatewayState.config`
+    // keeps this startup snapshot; later reads and writes use the service.
+    let snapshot = config_service.read(Arc::clone).await?;
+    let mut config = snapshot.as_ref().clone();
     info!(
         offered_channels = ?config.channels.offered,
         "loaded offered channels from config"
@@ -109,7 +111,7 @@ pub async fn prepare_gateway_core(
         (reg.provider_summary(), !reg.is_empty())
     };
     if !providers_available_at_startup {
-        let config_path = chelix_config::find_or_default_config_path()?;
+        let config_path = config_service.location();
         match config.agents.resolve_state() {
             Ok(chelix_config::AgentsConfigState::Setup) => warn!(
                 provider_summary = %provider_summary,
@@ -134,7 +136,7 @@ pub async fn prepare_gateway_core(
     // Create shared approval manager from config.
     let approval_manager = Arc::new(approval_manager_from_config(&config));
 
-    let mut services = GatewayServices::noop();
+    let mut services = GatewayServices::noop(config_service.clone());
     let session_mutations = Arc::clone(&services.session_mutations);
 
     // Wire live logs service if a log buffer is available.
@@ -146,17 +148,16 @@ pub async fn prepare_gateway_core(
         &approval_manager,
     )));
 
-    // Wire live onboarding service.
-    let onboarding_config_path = chelix_config::find_or_default_config_path()?;
+    // Wire live onboarding service from the config service handle.
     let live_onboarding =
-        chelix_onboarding::service::LiveOnboardingService::new(onboarding_config_path);
+        chelix_onboarding::service::LiveOnboardingService::new(config_service.clone());
 
     // Wire live voice services when the feature is enabled.
     #[cfg(feature = "voice")]
     {
-        use crate::voice::{LiveSttService, LiveTtsService, SttServiceConfig};
-        services.tts = Arc::new(LiveTtsService::new(chelix_voice::TtsConfig::default()));
-        services.stt = Arc::new(LiveSttService::new(SttServiceConfig::default()));
+        use crate::voice::{LiveSttService, LiveTtsService};
+        services.tts = Arc::new(LiveTtsService::new(config_service.clone()));
+        services.stt = Arc::new(LiveSttService::new(config_service.clone()));
     }
 
     let agents_config = Arc::new(tokio::sync::RwLock::new(config.agents.clone()));
@@ -169,19 +170,23 @@ pub async fn prepare_gateway_core(
             Arc::clone(&registry),
             Arc::clone(&model_store),
             config.chat.priority_models.clone(),
+            config_service.clone(),
         )
         .with_agents_config(Arc::clone(&agents_config)),
     );
-    crate::model_reasoning::validate_agents_config(live_model_service.as_ref(), &config.agents)
-        .await
-        .map_err(|error| anyhow::anyhow!("agent configuration validation failed: {error}"))?;
+    chelix_agents::model_validation::validate_agents_config(
+        live_model_service.as_ref(),
+        &config.agents,
+    )
+    .await
+    .map_err(|error| anyhow::anyhow!("agent configuration validation failed: {error}"))?;
     services = services
         .with_model(Arc::clone(&live_model_service) as Arc<dyn crate::services::ModelService>);
 
     let mut provider_setup = LiveProviderSetupService::new(
         Arc::clone(&registry),
         config.providers.clone(),
-        crate::provider_setup::ProviderConfigPersistence::Filesystem,
+        crate::provider_setup::ProviderConfigPersistence::Service(config_service.clone()),
     )
     .with_env_overrides(config_env_overrides.clone())
     .with_agents_config(Arc::clone(&agents_config))
@@ -268,7 +273,7 @@ pub async fn prepare_gateway_core(
             config_dir_resolved.display()
         )
     });
-    log_startup_config_storage_diagnostics()?;
+    log_startup_config_storage_diagnostics(config_service.location())?;
 
     log_persistence::spawn_startup_log_persistence(log_buffer.as_ref(), &data_dir);
     let db_path = data_dir.join("chelix.db");
@@ -362,7 +367,7 @@ pub async fn prepare_gateway_core(
             db_pool.clone(),
             &config.auth,
             vault.clone(),
-            auth::AuthConfigPersistence::Filesystem,
+            auth::AuthConfigPersistence::Service(config_service.clone()),
         )
         .await
         .expect("failed to init credential store"),
@@ -376,7 +381,7 @@ pub async fn prepare_gateway_core(
         auth::CredentialStore::with_config(
             db_pool.clone(),
             &config.auth,
-            auth::AuthConfigPersistence::Filesystem,
+            auth::AuthConfigPersistence::Service(config_service.clone()),
         )
         .await
         .expect("failed to init credential store"),
@@ -731,13 +736,14 @@ pub async fn prepare_gateway_core(
     warn_on_workspace_prompt_file_truncation(&config);
     let skill_files =
         chelix_skills::skill_file::SkillFiles::new().map_err(|error| anyhow::anyhow!(error))?;
-    services.skills = Arc::new(crate::services::NoopSkillsService::new(Arc::clone(
-        &skill_files,
-    )));
+    services.skills = Arc::new(crate::services::NoopSkillsService::new(
+        Arc::clone(&skill_files),
+        config_service.clone(),
+    ));
     super::hooks::seed_example_hook();
     let persisted_disabled = crate::methods::load_disabled_hooks();
     let (hook_registry, discovered_hooks_info) =
-        crate::server::discover_and_build_hooks(&persisted_disabled).await?;
+        crate::server::discover_and_build_hooks(&config_service, &persisted_disabled).await?;
 
     // ── Memory system initialization ─────────────────────────────────────
     let memory_manager =

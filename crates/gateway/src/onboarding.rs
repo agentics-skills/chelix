@@ -33,6 +33,7 @@ impl OnboardingService for GatewayOnboardingService {
             .unwrap_or(false);
         self.inner
             .wizard_start(force)
+            .await
             .map_err(ServiceError::message)
     }
 
@@ -41,6 +42,7 @@ impl OnboardingService for GatewayOnboardingService {
         let response = self
             .inner
             .wizard_next(input)
+            .await
             .map_err(ServiceError::message)?;
 
         if response.get("done").and_then(Value::as_bool) == Some(true)
@@ -66,22 +68,23 @@ impl OnboardingService for GatewayOnboardingService {
     }
 
     async fn wizard_cancel(&self) -> ServiceResult {
-        self.inner.wizard_cancel();
+        self.inner.wizard_cancel().await;
         Ok(serde_json::json!({}))
     }
 
     async fn wizard_status(&self) -> ServiceResult {
-        Ok(self.inner.wizard_status())
+        Ok(self.inner.wizard_status().await)
     }
 
     async fn user_get(&self) -> ServiceResult {
-        self.inner.user_get().map_err(ServiceError::message)
+        self.inner.user_get().await.map_err(ServiceError::message)
     }
 
     async fn user_update(&self, params: Value) -> ServiceResult {
         let response = self
             .inner
             .user_update(params)
+            .await
             .map_err(ServiceError::message)?;
 
         if let Some(state) = self.gateway_state.get() {

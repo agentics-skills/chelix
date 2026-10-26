@@ -42,12 +42,23 @@ impl SkillsService for UnwiredSkillsService {
 
 pub struct NoopSkillsService {
     files: Arc<chelix_skills::skill_file::SkillFiles>,
+    configuration: chelix_config_service::ConfigService,
 }
 
 impl NoopSkillsService {
     #[must_use]
-    pub fn new(files: Arc<chelix_skills::skill_file::SkillFiles>) -> Self {
-        Self { files }
+    pub fn new(
+        files: Arc<chelix_skills::skill_file::SkillFiles>,
+        configuration: chelix_config_service::ConfigService,
+    ) -> Self {
+        Self {
+            files,
+            configuration,
+        }
+    }
+
+    fn configuration(&self) -> &chelix_config_service::ConfigService {
+        &self.configuration
     }
 }
 
@@ -98,7 +109,7 @@ impl SkillsService for NoopSkillsService {
     async fn skill_enable(&self, params: Value) -> ServiceResult {
         let source = params.get("source").and_then(|v| v.as_str()).unwrap_or("");
         if source == "bundled" {
-            return toggle_bundled_skill(&self.files, &params, true).await;
+            return toggle_bundled_skill(&self.files, self.configuration(), &params, true).await;
         }
         Err(format!("unsupported skill source '{source}'").into())
     }
@@ -112,7 +123,7 @@ impl SkillsService for NoopSkillsService {
         }
 
         if source == "bundled" {
-            return toggle_bundled_skill(&self.files, &params, false).await;
+            return toggle_bundled_skill(&self.files, self.configuration(), &params, false).await;
         }
 
         Err(format!("unsupported skill source '{source}'").into())
@@ -124,7 +135,9 @@ impl SkillsService for NoopSkillsService {
         {
             let store = chelix_skills::bundled::BundledSkillStore::new(Arc::clone(&self.files));
             let skills = store.discover().await;
-            let config = chelix_config::discover_and_load().map_err(ServiceError::message)?;
+            let config = crate::config_document::read_config(self.configuration())
+                .await
+                .map_err(ServiceError::message)?;
             let disabled = &config.skills.disabled_bundled_categories;
 
             let mut cats: std::collections::BTreeMap<String, u32> =
@@ -164,23 +177,28 @@ impl SkillsService for NoopSkillsService {
 
         let category = category.to_string();
         let cat_clone = category.clone();
+        let configuration = self.configuration();
 
-        if let Err(e) = chelix_config::update_config(|cfg| {
-            if enabled {
-                cfg.skills
+        if let Err(e) = configuration
+            .update(move |cfg| {
+                if enabled {
+                    cfg.skills
+                        .disabled_bundled_categories
+                        .retain(|c| c != &cat_clone);
+                } else if !cfg
+                    .skills
                     .disabled_bundled_categories
-                    .retain(|c| c != &cat_clone);
-            } else if !cfg
-                .skills
-                .disabled_bundled_categories
-                .iter()
-                .any(|c| c == &cat_clone)
-            {
-                cfg.skills
-                    .disabled_bundled_categories
-                    .push(cat_clone.clone());
-            }
-        }) {
+                    .iter()
+                    .any(|c| c == &cat_clone)
+                {
+                    cfg.skills
+                        .disabled_bundled_categories
+                        .push(cat_clone.clone());
+                }
+                Ok(())
+            })
+            .await
+        {
             return Err(format!("failed to save config: {e}").into());
         }
 
@@ -205,7 +223,7 @@ impl SkillsService for NoopSkillsService {
         // Bundled skills: read from the embedded store.
         #[cfg(feature = "bundled-skills")]
         if source == "bundled" {
-            return skill_detail_bundled(&self.files, skill_name).await;
+            return skill_detail_bundled(&self.files, self.configuration(), skill_name).await;
         }
 
         Err(format!("unsupported skill source '{source}'").into())
@@ -260,36 +278,21 @@ impl SkillsService for NoopSkillsService {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
     use super::*;
-
-    struct SkillDataDirGuard {
-        _config: ConfigDirGuard,
-    }
-
-    impl Drop for SkillDataDirGuard {
-        fn drop(&mut self) {
-            chelix_config::clear_data_dir();
-        }
-    }
 
     #[tokio::test]
     async fn skill_save_publishes_and_preserves_access_lists() -> anyhow::Result<()> {
-        let dir = tempfile::tempdir()?;
-        let config = ConfigDirGuard::new(dir.path().to_path_buf());
-        chelix_config::set_data_dir(dir.path().to_path_buf());
-        let _guard = SkillDataDirGuard { _config: config };
+        let guard = crate::test_config::ConfigFixture::new().await;
         let files =
             chelix_skills::skill_file::SkillFiles::new().map_err(|error| anyhow::anyhow!(error))?;
-        let service = NoopSkillsService::new(Arc::clone(&files));
+        let service = NoopSkillsService::new(Arc::clone(&files), guard.service.clone());
         let params = serde_json::json!({
             "name": "demo",
             "description": "Use when: X\nNext step",
             "body": "body"
         });
         service.skill_save(params.clone()).await?;
-        let path = dir.path().join("skills/demo/SKILL.md");
+        let path = guard.directories.data_dir().join("skills/demo/SKILL.md");
         let content = std::fs::read_to_string(&path)?;
         assert!(content.contains("allowed_agents:\n"));
         assert!(content.contains("denied_agents:\n"));
@@ -314,35 +317,14 @@ mod tests {
         Ok(())
     }
 
-    struct ConfigDirGuard {
-        _lock: std::sync::MutexGuard<'static, ()>,
-    }
-
-    impl ConfigDirGuard {
-        fn new(config_dir: PathBuf) -> Self {
-            let lock = crate::config_override_test_lock();
-            chelix_config::set_config_dir(config_dir);
-            chelix_config::initialize_config()
-                .unwrap_or_else(|error| panic!("test config should be initialized: {error}"));
-            Self { _lock: lock }
-        }
-    }
-
-    impl Drop for ConfigDirGuard {
-        fn drop(&mut self) {
-            chelix_config::clear_config_dir();
-        }
-    }
-
     #[cfg(feature = "bundled-skills")]
     #[tokio::test]
     async fn disabling_one_bundled_skill_does_not_disable_category() -> anyhow::Result<()> {
-        let dir = tempfile::tempdir()?;
-        let _guard = ConfigDirGuard::new(dir.path().to_path_buf());
+        let guard = crate::test_config::ConfigFixture::new().await;
 
         let files =
             chelix_skills::skill_file::SkillFiles::new().map_err(|error| anyhow::anyhow!(error))?;
-        let service = NoopSkillsService::new(Arc::clone(&files));
+        let service = NoopSkillsService::new(Arc::clone(&files), guard.service.clone());
         let result = service
             .skill_disable(serde_json::json!({ "source": "bundled", "skill": "mcp-servers" }))
             .await?;
@@ -352,7 +334,7 @@ mod tests {
             Some("mcp-servers")
         );
 
-        let config = chelix_config::discover_and_load()?;
+        let config = guard.service.read(|config| config.clone()).await?;
         assert!(config.skills.disabled_bundled_categories.is_empty());
         assert_eq!(config.skills.disabled_bundled_skills, vec![
             "mcp-servers".to_string()
@@ -368,12 +350,11 @@ mod tests {
     #[cfg(feature = "bundled-skills")]
     #[tokio::test]
     async fn bundled_category_toggle_preserves_individual_disables() -> anyhow::Result<()> {
-        let dir = tempfile::tempdir()?;
-        let _guard = ConfigDirGuard::new(dir.path().to_path_buf());
+        let guard = crate::test_config::ConfigFixture::new().await;
 
         let files =
             chelix_skills::skill_file::SkillFiles::new().map_err(|error| anyhow::anyhow!(error))?;
-        let service = NoopSkillsService::new(Arc::clone(&files));
+        let service = NoopSkillsService::new(Arc::clone(&files), guard.service.clone());
         service
             .skill_disable(serde_json::json!({ "source": "bundled", "skill": "mcp-servers" }))
             .await?;
@@ -388,7 +369,7 @@ mod tests {
             Some(true)
         );
 
-        let config = chelix_config::discover_and_load()?;
+        let config = guard.service.read(|config| config.clone()).await?;
         assert!(config.skills.disabled_bundled_categories.is_empty());
         assert_eq!(config.skills.disabled_bundled_skills, vec![
             "mcp-servers".to_string()

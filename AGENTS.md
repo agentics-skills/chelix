@@ -104,8 +104,8 @@ Never add versions directly in crate `Cargo.toml`. Use latest stable crates.io v
 ## Config Schema and Validation
 
 When adding/renaming fields in `ChelixConfig` (`crates/config/src/schema.rs`), also update
-`build_schema_map()` in `crates/config/src/validate.rs`. New enum variants for string-typed
-fields need updates in `check_semantic_warnings()`.
+`build_schema_map()` in `crates/config/src/validate/schema_map.rs`. New enum variants for string-typed
+fields need updates in the owning crate's `config_validation` module.
 
 ## Rust Style and Idioms
 

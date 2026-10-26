@@ -102,6 +102,7 @@ fn telnyx_call_fields(body: &[u8]) -> (String, String, String) {
 /// (e.g. the web-UI) to merge before finalization.
 #[allow(clippy::expect_used)]
 pub async fn prepare_gateway(
+    config_service: chelix_config_service::ConfigService,
     bind: &str,
     port: u16,
     no_tls: bool,
@@ -118,9 +119,17 @@ pub async fn prepare_gateway(
     #[cfg(feature = "tls")]
     let _ = rustls::crypto::ring::default_provider().install_default();
 
-    let core = prepare_gateway_core(bind, port, no_tls, log_buffer, data_dir, session_event_bus)
-        .await
-        .map_err(|e| crate::Error::Config(e.to_string()))?;
+    let core = prepare_gateway_core(
+        config_service,
+        bind,
+        port,
+        no_tls,
+        log_buffer,
+        data_dir,
+        session_event_bus,
+    )
+    .await
+    .map_err(|e| crate::Error::Config(e.to_string()))?;
 
     let PreparedGatewayCore {
         state,

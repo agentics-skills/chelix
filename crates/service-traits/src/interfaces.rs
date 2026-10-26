@@ -805,14 +805,18 @@ impl UpdateService for NoopUpdateService {
 }
 
 #[async_trait]
-pub trait ModelService: Send + Sync {
-    async fn list(&self) -> ServiceResult;
-    async fn list_all(&self) -> ServiceResult;
+pub trait ModelResolver: Send + Sync {
     async fn resolve_model_reasoning(
         &self,
         model: &str,
         reasoning_effort: Option<&ReasoningEffort>,
     ) -> Result<ResolvedModelReasoning, ServiceError>;
+}
+
+#[async_trait]
+pub trait ModelService: ModelResolver {
+    async fn list(&self) -> ServiceResult;
+    async fn list_all(&self) -> ServiceResult;
     async fn disable(&self, params: Value) -> ServiceResult;
     async fn enable(&self, params: Value) -> ServiceResult;
     async fn forget_disabled(&self, model_ids: &[String]) -> ServiceResult;
@@ -830,15 +834,7 @@ pub(crate) fn model_service_not_configured_error(operation: &'static str) -> Ser
 }
 
 #[async_trait]
-impl ModelService for NoopModelService {
-    async fn list(&self) -> ServiceResult {
-        Ok(serde_json::json!([]))
-    }
-
-    async fn list_all(&self) -> ServiceResult {
-        Ok(serde_json::json!([]))
-    }
-
+impl ModelResolver for NoopModelService {
     async fn resolve_model_reasoning(
         &self,
         _model: &str,
@@ -847,6 +843,17 @@ impl ModelService for NoopModelService {
         Err(model_service_not_configured_error(
             "models.resolve_model_reasoning",
         ))
+    }
+}
+
+#[async_trait]
+impl ModelService for NoopModelService {
+    async fn list(&self) -> ServiceResult {
+        Ok(serde_json::json!([]))
+    }
+
+    async fn list_all(&self) -> ServiceResult {
+        Ok(serde_json::json!([]))
     }
 
     async fn disable(&self, _params: Value) -> ServiceResult {

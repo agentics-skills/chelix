@@ -192,7 +192,7 @@ pub(in crate::channel_events) async fn handle_agent(
             )));
         }
         let (chosen_id, chosen) = &agents[n - 1];
-        let model_reasoning = crate::model_reasoning::resolve_model_reasoning(
+        let model_reasoning = chelix_agents::model_validation::resolve_model_reasoning(
             state.services.model.as_ref(),
             &chosen.model,
             &chosen.reasoning_effort,

@@ -16,7 +16,9 @@ use {
 
 use {
     chelix_providers::{ProviderRegistry, model_id::raw_model_id},
-    chelix_service_traits::{ModelService, ResolvedModelReasoning, ServiceError, ServiceResult},
+    chelix_service_traits::{
+        ModelResolver, ModelService, ResolvedModelReasoning, ServiceError, ServiceResult,
+    },
 };
 
 use crate::{
@@ -36,15 +38,9 @@ pub struct DisabledModelsStore {
 
 impl DisabledModelsStore {
     pub fn from_config(config: &chelix_config::ChelixConfig) -> Self {
-        let mut disabled = HashSet::new();
-        for (provider, entry) in &config.providers.providers {
-            for (model_id, metadata) in &entry.models {
-                if !metadata.enabled {
-                    disabled.insert(format!("{provider}::{model_id}"));
-                }
-            }
+        Self {
+            disabled: chelix_providers::config_model_resolver::disabled_model_ids(config),
         }
-        Self { disabled }
     }
 
     /// Disable a model by ID.
@@ -80,6 +76,7 @@ pub struct LiveModelService {
     state: Arc<OnceCell<Arc<dyn ChatRuntime>>>,
     priority_models: Arc<RwLock<Vec<String>>>,
     agents_config: Option<Arc<RwLock<chelix_config::AgentsConfig>>>,
+    config_service: chelix_config_service::ConfigService,
 }
 
 impl LiveModelService {
@@ -87,6 +84,7 @@ impl LiveModelService {
         providers: Arc<RwLock<ProviderRegistry>>,
         disabled: Arc<RwLock<DisabledModelsStore>>,
         priority_models: Vec<String>,
+        config_service: chelix_config_service::ConfigService,
     ) -> Self {
         Self {
             providers,
@@ -94,6 +92,7 @@ impl LiveModelService {
             state: Arc::new(OnceCell::new()),
             priority_models: Arc::new(RwLock::new(priority_models)),
             agents_config: None,
+            config_service,
         }
     }
 
@@ -224,6 +223,19 @@ impl LiveModelService {
 }
 
 #[async_trait]
+impl ModelResolver for LiveModelService {
+    async fn resolve_model_reasoning(
+        &self,
+        model: &str,
+        reasoning_effort: Option<&chelix_common::ReasoningEffort>,
+    ) -> Result<ResolvedModelReasoning, ServiceError> {
+        let registry = self.providers.read().await;
+        let disabled = self.disabled.read().await;
+        registry.resolve_chat_model(model, reasoning_effort, &disabled.disabled)
+    }
+}
+
+#[async_trait]
 impl ModelService for LiveModelService {
     async fn list(&self) -> ServiceResult {
         let reg = self.providers.read().await;
@@ -270,35 +282,6 @@ impl ModelService for LiveModelService {
         Ok(serde_json::json!(models))
     }
 
-    async fn resolve_model_reasoning(
-        &self,
-        model: &str,
-        reasoning_effort: Option<&chelix_common::ReasoningEffort>,
-    ) -> Result<ResolvedModelReasoning, ServiceError> {
-        let resolved = {
-            let registry = self.providers.read().await;
-            registry
-                .resolve_model_reasoning(Some(model), reasoning_effort)
-                .map(|resolved| resolved.model_reasoning().clone())
-                .map_err(ServiceError::message)?
-        };
-
-        let models = self.list().await?;
-        let models = models
-            .as_array()
-            .ok_or_else(|| ServiceError::message("models.list returned an invalid response"))?;
-        if !models
-            .iter()
-            .any(|entry| entry.get("id").and_then(Value::as_str) == Some(resolved.model_id()))
-        {
-            return Err(ServiceError::message(format!(
-                "model '{model}' not found in chat model registry"
-            )));
-        }
-
-        Ok(resolved)
-    }
-
     async fn disable(&self, params: Value) -> ServiceResult {
         let model_id = params
             .get("modelId")
@@ -318,8 +301,7 @@ impl ModelService for LiveModelService {
         let (provider, raw_id) = model_id.split_once("::").ok_or_else(|| {
             ServiceError::message(format!("model '{model_id}' is not a provider model id"))
         })?;
-        chelix_config::set_model_enabled_in_toml(provider, raw_id, false)
-            .map_err(|error| ServiceError::message(format!("failed to save: {error}")))?;
+        self.persist_model_enabled(provider, raw_id, false).await?;
         let mut disabled = self.disabled.write().await;
         disabled.disable(model_id);
         drop(disabled);
@@ -343,8 +325,7 @@ impl ModelService for LiveModelService {
         let (provider, raw_id) = model_id.split_once("::").ok_or_else(|| {
             ServiceError::message(format!("model '{model_id}' is not a provider model id"))
         })?;
-        chelix_config::set_model_enabled_in_toml(provider, raw_id, true)
-            .map_err(|error| ServiceError::message(format!("failed to save: {error}")))?;
+        self.persist_model_enabled(provider, raw_id, true).await?;
         let mut disabled = self.disabled.write().await;
         disabled.enable(model_id);
         drop(disabled);
@@ -381,13 +362,88 @@ impl ModelService for LiveModelService {
     }
 }
 
+impl LiveModelService {
+    async fn persist_model_enabled(
+        &self,
+        provider: &str,
+        model_id: &str,
+        enabled: bool,
+    ) -> Result<(), ServiceError> {
+        let service = &self.config_service;
+        let provider = provider.to_string();
+        let model_id = model_id.to_string();
+        service
+            .edit_document(move |document| {
+                crate::model_document::set_model_enabled(document, &provider, &model_id, enabled)
+            })
+            .await
+            .map_err(|error| ServiceError::message(format!("failed to save: {error}")))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    struct ConfigFixture {
+        directory: tokio::sync::OwnedMutexGuard<Option<tempfile::TempDir>>,
+        service: chelix_config_service::ConfigService,
+    }
+
+    impl ConfigFixture {
+        async fn new() -> Result<Self, ServiceError> {
+            static DIRECTORY: std::sync::OnceLock<
+                Arc<tokio::sync::Mutex<Option<tempfile::TempDir>>>,
+            > = std::sync::OnceLock::new();
+            let mut directory = DIRECTORY
+                .get_or_init(|| Arc::new(tokio::sync::Mutex::new(None)))
+                .clone()
+                .lock_owned()
+                .await;
+            let dir = tempfile::tempdir().map_err(ServiceError::message)?;
+            std::fs::write(
+                dir.path().join("chelix.toml"),
+                r#"
+[providers.test.models.model]
+enabled = false
+context_length = 100
+max_input_tokens = 80
+max_output_tokens = 20
+input_modalities = ["text"]
+output_modalities = ["text"]
+tool_calling = false
+zeroDataRetentionEnabled = false
+reasoning_supported_efforts = ["off"]
+"#,
+            )
+            .map_err(ServiceError::message)?;
+            chelix_config::set_config_dir(dir.path().to_path_buf());
+            *directory = Some(dir);
+            let result =
+                chelix_config_service::ConfigService::open(Default::default(), Default::default())
+                    .await;
+            match result {
+                Ok(service) => Ok(Self { directory, service }),
+                Err(error) => {
+                    chelix_config::clear_config_dir();
+                    directory.take();
+                    Err(ServiceError::message(error))
+                },
+            }
+        }
+    }
+
+    impl Drop for ConfigFixture {
+        fn drop(&mut self) {
+            chelix_config::clear_config_dir();
+            self.directory.take();
+        }
+    }
+
     #[tokio::test]
     async fn disabling_configured_agent_model_is_rejected_before_mutation()
     -> Result<(), ServiceError> {
+        let fixture = ConfigFixture::new().await?;
         let mut agents = chelix_config::AgentsConfig {
             default: "main".to_string(),
             ..Default::default()
@@ -405,6 +461,7 @@ mod tests {
             Arc::new(RwLock::new(ProviderRegistry::empty())),
             Arc::clone(&disabled),
             Vec::new(),
+            fixture.service.clone(),
         )
         .with_agents_config(Arc::new(RwLock::new(agents)));
 
@@ -417,6 +474,32 @@ mod tests {
 
         assert!(error.to_string().contains("main"));
         assert!(disabled.read().await.disabled.is_empty());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn enabling_model_publishes_config_before_runtime_visibility() -> Result<(), ServiceError>
+    {
+        let fixture = ConfigFixture::new().await?;
+        let disabled = Arc::new(RwLock::new(DisabledModelsStore::default()));
+        disabled.write().await.disable("test::model");
+        let service = LiveModelService::new(
+            Arc::new(RwLock::new(ProviderRegistry::empty())),
+            Arc::clone(&disabled),
+            Vec::new(),
+            fixture.service.clone(),
+        );
+
+        service
+            .enable(serde_json::json!({ "modelId": "test::model" }))
+            .await?;
+        assert!(!disabled.read().await.is_disabled("test::model"));
+        let enabled = fixture
+            .service
+            .read(|config| config.providers.providers["test"].models["model"].enabled)
+            .await
+            .map_err(ServiceError::message)?;
+        assert!(enabled);
         Ok(())
     }
 }

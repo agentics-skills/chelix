@@ -19,15 +19,20 @@ fn config_default_construction() -> chelix_config::ChelixConfig {
     divan::black_box(chelix_config::ChelixConfig::default())
 }
 
-/// Benchmark loading + parsing a TOML config from disk (the full boot path).
+/// Benchmark a queued read of the current configuration snapshot.
 #[divan::bench]
-fn config_load_toml(bencher: divan::Bencher) {
-    let toml_content = chelix_config::template::default_config_template(8080);
+fn config_snapshot_read(bencher: divan::Bencher) {
     let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("chelix.toml");
-    std::fs::write(&path, &toml_content).unwrap();
-
-    bencher.bench_local(|| divan::black_box(chelix_config::loader::load_config(&path).unwrap()));
+    chelix_config::set_config_dir(dir.path().to_path_buf());
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let service = runtime
+        .block_on(chelix_config_service::ConfigService::open(
+            chelix_config_service::ConfigValidation::default(),
+            chelix_config_service::ConfigInitialization::default(),
+        ))
+        .unwrap();
+    bencher.bench_local(|| divan::black_box(runtime.block_on(service.read(Clone::clone)).unwrap()));
+    chelix_config::clear_config_dir();
 }
 
 /// Benchmark config round-trip: serialize ChelixConfig to TOML, then deserialize.
@@ -38,7 +43,7 @@ fn config_serde_roundtrip() {
     let _: chelix_config::ChelixConfig = divan::black_box(toml::from_str(&toml_str).unwrap());
 }
 
-/// Benchmark validating a TOML config string (schema checks, semantic warnings).
+/// Benchmark structural validation of a TOML configuration string.
 #[divan::bench]
 fn config_validate_toml(bencher: divan::Bencher) {
     let toml_content = chelix_config::template::default_config_template(8080);
@@ -234,18 +239,16 @@ fn values_to_chat_messages(bencher: divan::Bencher, n: usize) {
         .bench_local(|| divan::black_box(chelix_agents::model::values_to_chat_messages(&values)));
 }
 
-// ── Config load from disk (simulated boot) ──────────────────────────────────
+// ── Configuration decoding ─────────────────────────────────────────────────
 
-/// Full boot-path simulation: generate template, write to disk, load, validate.
+/// Decode and structurally validate an in-memory configuration document.
 #[divan::bench]
-fn full_config_boot_path(bencher: divan::Bencher) {
+fn config_decode_and_validate(bencher: divan::Bencher) {
     let toml_content = chelix_config::template::default_config_template(8080);
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("chelix.toml");
-    std::fs::write(&path, &toml_content).unwrap();
-
     bencher.bench_local(|| {
-        let config = chelix_config::loader::load_config(&path).unwrap();
+        let config =
+            chelix_config::parse_config_source(&toml_content, std::path::Path::new("benchmark"))
+                .unwrap();
         let _ = chelix_config::validate::validate_toml_str(&toml_content);
         divan::black_box(config)
     });

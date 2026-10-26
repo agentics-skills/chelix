@@ -5,6 +5,7 @@
 //! - `WebAuthnState`/`WebAuthnRegistry`: WebAuthn (passkey) challenge management
 //! - Connection locality detection for auth decisions
 
+pub mod config_validation;
 pub mod credential_store;
 pub mod error;
 pub mod locality;

@@ -36,7 +36,7 @@ disable_rag = true
     let unknown = result
         .diagnostics
         .iter()
-        .find(|d| d.category == "unknown-field" && d.path == "memory.disable_rag");
+        .find(|d| d.category == DiagnosticCategory::UnknownField && d.path == "memory.disable_rag");
     assert!(
         unknown.is_none(),
         "memory.disable_rag should be accepted as a known field"
@@ -53,7 +53,7 @@ style = "search-only"
     let unknown = result
         .diagnostics
         .iter()
-        .find(|d| d.category == "unknown-field" && d.path == "memory.style");
+        .find(|d| d.category == DiagnosticCategory::UnknownField && d.path == "memory.style");
     assert!(
         unknown.is_none(),
         "memory.style should be accepted as a known field"
@@ -67,10 +67,9 @@ fn memory_agent_write_mode_is_valid_field() {
 agent_write_mode = "prompt-only"
 "#;
     let result = validate_toml_str(toml);
-    let unknown = result
-        .diagnostics
-        .iter()
-        .find(|d| d.category == "unknown-field" && d.path == "memory.agent_write_mode");
+    let unknown = result.diagnostics.iter().find(|d| {
+        d.category == DiagnosticCategory::UnknownField && d.path == "memory.agent_write_mode"
+    });
     assert!(
         unknown.is_none(),
         "memory.agent_write_mode should be accepted as a known field"
@@ -84,29 +83,12 @@ fn memory_user_profile_write_mode_is_valid_field() {
 user_profile_write_mode = "explicit-only"
 "#;
     let result = validate_toml_str(toml);
-    let unknown = result
-        .diagnostics
-        .iter()
-        .find(|d| d.category == "unknown-field" && d.path == "memory.user_profile_write_mode");
+    let unknown = result.diagnostics.iter().find(|d| {
+        d.category == DiagnosticCategory::UnknownField && d.path == "memory.user_profile_write_mode"
+    });
     assert!(
         unknown.is_none(),
         "memory.user_profile_write_mode should be accepted as a known field"
-    );
-}
-
-#[test]
-fn partial_memory_embedding_fields_are_invalid() {
-    let toml = r#"
-[memory]
-url = "http://127.0.0.1:8080"
-"#;
-    let result = validate_toml_str(toml);
-    assert!(
-        result.diagnostics.iter().any(|d| {
-            d.category == "invalid-value" && d.severity == Severity::Error && d.path == "memory"
-        }),
-        "expected invalid embedding endpoint: {:?}",
-        result.diagnostics
     );
 }
 
@@ -138,7 +120,7 @@ archived_session_retention_days = 3
     let unknown: Vec<_> = result
         .diagnostics
         .iter()
-        .filter(|d| d.category == "unknown-field" && d.path.starts_with("memory."))
+        .filter(|d| d.category == DiagnosticCategory::UnknownField && d.path.starts_with("memory."))
         .collect();
     assert!(
         unknown.is_empty(),
@@ -158,10 +140,9 @@ fn skills_enable_self_improvement_is_valid() {
 enable_self_improvement = false
 "#;
     let result = validate_toml_str(toml);
-    let unknown = result
-        .diagnostics
-        .iter()
-        .find(|d| d.category == "unknown-field" && d.path == "skills.enable_self_improvement");
+    let unknown = result.diagnostics.iter().find(|d| {
+        d.category == DiagnosticCategory::UnknownField && d.path == "skills.enable_self_improvement"
+    });
     assert!(
         unknown.is_none(),
         "skills.enable_self_improvement should be accepted"

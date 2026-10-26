@@ -6,30 +6,46 @@ repository.workspace = true
 version.workspace    = true
 
 [dependencies]
-anyhow         = { workspace = true }
-async-trait    = { workspace = true }
-base64         = { workspace = true }
-chelix-agents  = { workspace = true }
-chelix-common  = { workspace = true }
+anyhow         = { optional = true, workspace = true }
+async-trait    = { optional = true, workspace = true }
+base64         = { optional = true, workspace = true }
+chelix-agents  = { optional = true, workspace = true }
+chelix-common  = { optional = true, workspace = true }
 chelix-config  = { workspace = true }
 chelix-metrics = { optional = true, workspace = true }
-reqwest        = { workspace = true }
-secrecy        = { workspace = true }
-serde          = { workspace = true }
-serde_json     = { workspace = true }
-thiserror      = { workspace = true }
-time           = { workspace = true }
-tokio          = { workspace = true }
-tracing        = { workspace = true }
-url            = { workspace = true }
+reqwest        = { optional = true, workspace = true }
+secrecy        = { optional = true, workspace = true }
+serde          = { optional = true, workspace = true }
+serde_json     = { optional = true, workspace = true }
+thiserror      = { optional = true, workspace = true }
+time           = { optional = true, workspace = true }
+tokio          = { optional = true, workspace = true }
+tracing        = { optional = true, workspace = true }
+url            = { optional = true, workspace = true }
 
 [dev-dependencies]
 mockito = { workspace = true }
 tokio   = { features = ["macros", "rt-multi-thread"], workspace = true }
 
 [features]
-default = ["tracing"]
+default = ["runtime", "tracing"]
 metrics = ["dep:chelix-metrics"]
+runtime = [
+  "dep:anyhow",
+  "dep:async-trait",
+  "dep:base64",
+  "dep:chelix-agents",
+  "dep:chelix-common",
+  "dep:reqwest",
+  "dep:secrecy",
+  "dep:serde",
+  "dep:serde_json",
+  "dep:thiserror",
+  "dep:time",
+  "dep:tokio",
+  "dep:tracing",
+  "dep:url",
+]
 tracing = []
 
 [lints]
