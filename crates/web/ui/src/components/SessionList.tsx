@@ -4,7 +4,7 @@
 // component that auto-rerenders from sessionStore signals.
 
 import { Fragment, type VNode } from "preact";
-import { useEffect, useRef } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { makeArchiveIcon, makeChatIcon, makeCronIcon, makeProjectIcon, makeTelegramIcon } from "../icons";
 import { currentPrefix, navigate, sessionPath } from "../router";
 import { switchSession } from "../sessions";
@@ -115,7 +115,10 @@ interface SessionBadgeProps {
 function SessionBadge({ count, sessionKey }: SessionBadgeProps): VNode | null {
 	if (count <= 0) return null;
 	return (
-		<span className="session-badge" data-session-key={sessionKey}>
+		<span
+			className="session-badge inline-block align-top mt-[calc((18px-0.7rem)/2)] h-[0.7rem] text-[8.5px] leading-[0.7rem]"
+			data-session-key={sessionKey}
+		>
 			{count > 99 ? "99+" : String(count)}
 		</span>
 	);
@@ -138,7 +141,7 @@ function SessionIcon({ session }: SessionIconProps): VNode {
 
 	const presentation = sessionIconPresentation(session, channelType, archived);
 	return (
-		<span className="session-icon" style={presentation.style} title={presentation.title}>
+		<span className="session-icon mt-px" style={presentation.style} title={presentation.title}>
 			<span className="session-icon-image" ref={iconRef} />
 			<span className="session-spinner" />
 		</span>
@@ -158,7 +161,7 @@ function sessionMetaParts(session: Session): string[] {
 	return parts;
 }
 
-function appendProjectMeta(container: HTMLDivElement, project: ProjectInfo, followsText: boolean): void {
+function appendProjectMeta(container: HTMLSpanElement, project: ProjectInfo, followsText: boolean): void {
 	if (followsText) container.appendChild(document.createTextNode(" \u00b7 "));
 	const icon = makeProjectIcon();
 	icon.style.display = "inline";
@@ -169,7 +172,7 @@ function appendProjectMeta(container: HTMLDivElement, project: ProjectInfo, foll
 	container.appendChild(document.createTextNode((project.label as string) || project.id));
 }
 
-function syncSessionMeta(container: HTMLDivElement, session: Session): void {
+function syncSessionMeta(container: HTMLSpanElement, session: Session): void {
 	container.textContent = "";
 	container.title = "";
 	const parts = sessionMetaParts(session);
@@ -181,7 +184,7 @@ function syncSessionMeta(container: HTMLDivElement, session: Session): void {
 }
 
 function SessionMeta({ session }: SessionMetaProps): VNode {
-	const ref = useRef<HTMLDivElement>(null);
+	const ref = useRef<HTMLSpanElement>(null);
 	const dataVersion = session.dataVersion.value;
 
 	useEffect(() => {
@@ -190,7 +193,7 @@ function SessionMeta({ session }: SessionMetaProps): VNode {
 		syncSessionMeta(container, session);
 	}, [session, dataVersion]);
 
-	return <div className="session-meta" data-session-key={session.key} ref={ref} />;
+	return <span className="session-meta" data-session-key={session.key} ref={ref} />;
 }
 
 // ── SessionItem component ───────────���───────────────────────
@@ -277,7 +280,7 @@ interface SessionAgentBadgeProps {
 function SessionAgentBadge({ agentId = "main" }: SessionAgentBadgeProps): VNode | null {
 	if (!agentId || agentId === "main") return null;
 	return (
-		<span className="session-agent" title={`Agent: ${agentId}`}>
+		<span className="session-agent float-left mr-1.5" title={`Agent: ${agentId}`}>
 			@{agentId}
 		</span>
 	);
@@ -285,14 +288,74 @@ function SessionAgentBadge({ agentId = "main" }: SessionAgentBadgeProps): VNode 
 
 interface SessionTimeProps {
 	timestamp?: number;
+	hasBadge: boolean;
 }
 
-function SessionTime({ timestamp = 0 }: SessionTimeProps): VNode | null {
+function SessionTime({ timestamp = 0, hasBadge }: SessionTimeProps): VNode | null {
 	if (timestamp <= 0) return null;
 	return (
-		<span className="session-time" title={new Date(timestamp).toLocaleString(undefined, { hourCycle: "h23" })}>
+		<span
+			className={`session-time${hasBadge ? " ml-0.5" : ""}`}
+			title={new Date(timestamp).toLocaleString(undefined, { hourCycle: "h23" })}
+		>
 			{formatHHMM(timestamp)}
 		</span>
+	);
+}
+
+interface SessionLabelProps {
+	session: Session;
+	badge: number;
+}
+
+function SessionLabel({ session, badge }: SessionLabelProps): VNode {
+	const label = session.label || session.key;
+	const titleRef = useRef<HTMLDivElement>(null);
+	const measureRef = useRef<HTMLSpanElement>(null);
+	const metadataRef = useRef<HTMLSpanElement>(null);
+	const [singleLine, setSingleLine] = useState(false);
+
+	useLayoutEffect(() => {
+		const title = titleRef.current;
+		const measure = measureRef.current;
+		const metadata = metadataRef.current;
+		if (!(title && measure && metadata)) return;
+
+		const update = () => {
+			const textWidth = measure.getBoundingClientRect().width;
+			const metadataWidth = metadata.getBoundingClientRect().width;
+			const marginLeft = Number.parseFloat(getComputedStyle(metadata).marginLeft);
+			setSingleLine(textWidth + metadataWidth + marginLeft <= title.getBoundingClientRect().width);
+		};
+		const observer = new ResizeObserver(update);
+		observer.observe(title);
+		observer.observe(measure);
+		observer.observe(metadata);
+		update();
+		return () => observer.disconnect();
+	}, [label, badge, session.updatedAt, session.archived]);
+
+	return (
+		<div className="session-label flex items-start gap-0.5">
+			<SessionIcon session={session} />
+			<div className={`min-w-0 flex-1 line-clamp-2 break-all ${singleLine ? "h-[18px]" : "h-[36px]"}`} ref={titleRef}>
+				<span>
+					<span className={`float-right w-0 ${singleLine ? "h-0" : "h-[18px]"}`} aria-hidden="true" />
+					<span className="float-right clear-right ml-0.5 h-[18px] whitespace-nowrap" ref={metadataRef}>
+						<SessionBadge count={badge} sessionKey={session.key} />
+						<SessionTime timestamp={session.updatedAt} hasBadge={badge > 0} />
+					</span>
+					<span data-label-text title={label}>
+						{label}
+					</span>
+				</span>
+			</div>
+			<div className="absolute invisible h-0 w-0 overflow-hidden" aria-hidden="true">
+				<span className="inline-block whitespace-nowrap" data-label-text ref={measureRef}>
+					{label}
+				</span>
+			</div>
+		</div>
 	);
 }
 
@@ -302,9 +365,9 @@ interface SessionPreviewProps {
 
 function SessionPreview({ preview }: SessionPreviewProps): VNode | null {
 	return preview ? (
-		<div className="session-preview" title={preview}>
+		<span className="session-preview" title={preview}>
 			{preview}
-		</div>
+		</span>
 	) : null;
 }
 
@@ -338,19 +401,14 @@ function SessionItem({ session, activeKey, ancestors, hasChildren, keyMap, refre
 		>
 			<SessionTreeGuides ancestors={ancestors} />
 			<div className={`session-info${hasChildren ? " session-parent" : ""}`}>
-				<div className="session-label">
-					<SessionIcon session={session} />
-					<span data-label-text title={session.label || session.key}>
-						{session.label || session.key}
-					</span>
-					<SessionBadge count={badge} sessionKey={session.key} />
-					<SessionTime timestamp={session.updatedAt} />
-				</div>
+				<SessionLabel session={session} badge={badge} />
 				<div className="session-details">
-					<SessionAgentBadge agentId={session.agent_id} />
-					<div className="session-summary">
-						<SessionPreview preview={sessionPreview(session, keyMap)} />
-						<SessionMeta session={session} />
+					<div className="session-summary line-clamp-2 break-all">
+						<span>
+							<SessionAgentBadge agentId={session.agent_id} />
+							<SessionPreview preview={sessionPreview(session, keyMap)} />
+							<SessionMeta session={session} />
+						</span>
 					</div>
 				</div>
 			</div>

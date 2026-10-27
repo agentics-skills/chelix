@@ -553,28 +553,13 @@ header .cmd-palette-header-kbd {
 }
 
 .session-label {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  height: 18px;
   line-height: 18px;
   color: var(--text);
   font-size: 0.82rem;
   min-width: 0;
 }
 
-.session-label [data-label-text] {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
 .session-details {
-  display: flex;
-  align-items: center;
-  gap: 6px;
   min-height: 15px;
   line-height: 15px;
   padding-left: 18px;
@@ -583,7 +568,6 @@ header .cmd-palette-header-kbd {
 
 .session-agent {
   max-width: 40%;
-  flex-shrink: 0;
   padding: 0 4px;
   border: 1px solid var(--border);
   border-radius: 0.25rem;
@@ -596,11 +580,7 @@ header .cmd-palette-header-kbd {
 }
 
 .session-summary {
-  flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   color: var(--muted);
   font-size: 0.7rem;
 }
@@ -617,7 +597,6 @@ header .cmd-palette-header-kbd {
 .session-preview + .session-meta:not(:empty)::before { content: " · "; }
 
 .session-time {
-  margin-left: 4px;
   font-size: 0.7rem;
   color: var(--muted);
   white-space: nowrap;
@@ -625,17 +604,13 @@ header .cmd-palette-header-kbd {
 }
 
 .session-badge {
-  margin-left: 4px;
   flex-shrink: 0;
   min-width: 14px;
-  height: 14px;
   padding: 0 3px;
   border-radius: 7px;
   background: var(--muted);
   color: var(--bg);
-  font-size: 9px;
   font-weight: 700;
-  line-height: 14px;
   text-align: center;
   pointer-events: none;
   box-sizing: border-box;
