@@ -24,6 +24,7 @@ fn completed_error(events: &[RunnerToolLifecycleEvent]) -> Option<String> {
 
 #[tokio::test]
 async fn permission_skip_returns_standard_tool_error_without_executing() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(ToolCallingProvider {
         call_count: std::sync::atomic::AtomicUsize::new(0),
     });
@@ -43,6 +44,8 @@ async fn permission_skip_returns_standard_tool_error_without_executing() {
         provider,
         &tools,
         &tools_config,
+        &_fixture.service,
+        "main",
         "You are a test bot.",
         &user_content,
         None,
@@ -67,6 +70,7 @@ async fn permission_skip_returns_standard_tool_error_without_executing() {
 
 #[tokio::test]
 async fn permission_deny_returns_feedback_error() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(ToolCallingProvider {
         call_count: std::sync::atomic::AtomicUsize::new(0),
     });
@@ -91,6 +95,8 @@ async fn permission_deny_returns_feedback_error() {
         provider,
         &tools,
         &tools_config,
+        &_fixture.service,
+        "main",
         "You are a test bot.",
         &user_content,
         None,
@@ -116,6 +122,7 @@ async fn permission_deny_returns_feedback_error() {
 
 #[tokio::test]
 async fn permission_approve_executes_tool() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(ToolCallingProvider {
         call_count: std::sync::atomic::AtomicUsize::new(0),
     });
@@ -129,6 +136,8 @@ async fn permission_approve_executes_tool() {
         provider,
         &tools,
         &tools_config,
+        &_fixture.service,
+        "main",
         "You are a test bot.",
         &user_content,
         None,
@@ -150,6 +159,7 @@ async fn permission_approve_executes_tool() {
 
 #[tokio::test]
 async fn permission_runs_before_unknown_tool_validation() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(ToolCallingProvider {
         call_count: std::sync::atomic::AtomicUsize::new(0),
     });
@@ -168,6 +178,8 @@ async fn permission_runs_before_unknown_tool_validation() {
         provider,
         &tools,
         &tools_config,
+        &_fixture.service,
+        "main",
         "You are a test bot.",
         &user_content,
         None,

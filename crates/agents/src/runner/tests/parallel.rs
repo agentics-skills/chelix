@@ -9,6 +9,7 @@ use {
 
 #[tokio::test]
 async fn test_parallel_tool_execution() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(MultiToolProvider {
         call_count: std::sync::atomic::AtomicUsize::new(0),
         tool_calls: vec![
@@ -52,6 +53,7 @@ async fn test_parallel_tool_execution() {
 
     let uc = UserContent::text("Use all tools");
     let result = run_agent_loop_with_tool_lifecycle(
+        &_fixture.service,
         provider,
         &tools,
         "Test bot",
@@ -91,6 +93,7 @@ async fn test_parallel_tool_execution() {
 
 #[tokio::test]
 async fn test_parallel_tool_one_fails() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(MultiToolProvider {
         call_count: std::sync::atomic::AtomicUsize::new(0),
         tool_calls: vec![
@@ -131,6 +134,7 @@ async fn test_parallel_tool_one_fails() {
 
     let uc = UserContent::text("Use all tools");
     let result = run_agent_loop_with_tool_lifecycle(
+        &_fixture.service,
         provider,
         &tools,
         "Test bot",
@@ -173,6 +177,7 @@ async fn test_parallel_tool_one_fails() {
 
 #[tokio::test]
 async fn test_parallel_execution_is_concurrent() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(MultiToolProvider {
         call_count: std::sync::atomic::AtomicUsize::new(0),
         tool_calls: vec![
@@ -213,9 +218,17 @@ async fn test_parallel_execution_is_concurrent() {
 
     let start = std::time::Instant::now();
     let uc = UserContent::text("Use all tools");
-    let result = run_agent_loop(provider, &tools, "Test bot", &uc, None, None)
-        .await
-        .unwrap();
+    let result = run_agent_loop(
+        &_fixture.service,
+        provider,
+        &tools,
+        "Test bot",
+        &uc,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
     let elapsed = start.elapsed();
 
     assert_eq!(result.output.text, "All done");

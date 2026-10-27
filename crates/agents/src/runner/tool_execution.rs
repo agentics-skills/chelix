@@ -38,7 +38,8 @@ pub(crate) struct ToolExecutionOutcome {
 pub(crate) struct ToolInvocationExecutor<'a> {
     pub tools: &'a ToolRegistry,
     pub tool_result_store: &'a ToolResultStore,
-    pub max_tool_result_bytes: usize,
+    pub config_service: &'a chelix_config_service::ConfigService,
+    pub agent_id: &'a str,
     pub tool_context: Option<&'a serde_json::Value>,
     pub hook_registry: Option<&'a Arc<HookRegistry>>,
     pub session_key: &'a str,
@@ -695,9 +696,19 @@ impl ToolInvocationExecutor<'_> {
         let persistence = tool
             .map(|tool| tool.result_persistence(arguments))
             .unwrap_or_default();
+        let id = self.agent_id.to_owned();
+        let max_tool_result_bytes = self
+            .config_service
+            .read(move |config| {
+                config
+                    .agent_runtime_limits(&id)
+                    .map(|limits| limits.max_tool_result_bytes)
+            })
+            .await
+            .map_err(anyhow::Error::from)??;
         let max_bytes = tool
             .and_then(|tool| tool.in_context_result_bytes(arguments))
-            .unwrap_or(self.max_tool_result_bytes);
+            .unwrap_or(max_tool_result_bytes);
         persist_and_truncate(
             self.tool_result_store,
             self.session_key,

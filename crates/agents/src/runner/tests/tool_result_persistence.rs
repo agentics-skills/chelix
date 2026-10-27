@@ -491,8 +491,17 @@ async fn quick_result_bytes_overrides_runtime_limit_for_one_call() {
     }));
     let events = Arc::new(Mutex::new(Vec::new()));
     let on_lifecycle = recording_tool_lifecycle(&events);
-    let mut limits = test_agent_loop_limits();
-    limits.max_tool_result_bytes = Some(100);
+    let limits = test_agent_loop_limits();
+    let mut config = test_config();
+    config
+        .agents
+        .entries
+        .get_mut("main")
+        .unwrap()
+        .max_tool_result_bytes = Some(100);
+    let fixture = crate::test_support::ConfigFixture::new(config)
+        .await
+        .unwrap();
     let tools_config = chelix_config::schema::ToolsConfig::default();
     let user_content = UserContent::text("run");
 
@@ -502,6 +511,8 @@ async fn quick_result_bytes_overrides_runtime_limit_for_one_call() {
         }),
         &tools,
         &tools_config,
+        &fixture.service,
+        "main",
         "You are a test bot.",
         &user_content,
         None,
@@ -529,4 +540,146 @@ async fn quick_result_bytes_overrides_runtime_limit_for_one_call() {
     assert_eq!(truncated_prefix(omit_result), "x".repeat(100));
     assert!(omit_result.contains("[Truncated — full tool result"));
     assert_eq!(dump_contents(omit_result), payload);
+}
+
+#[derive(Clone, Copy)]
+enum LiveLimitChange {
+    Global(usize),
+    Agent(usize),
+    RemoveAgent,
+}
+
+struct LiveLimitTool {
+    service: chelix_config_service::ConfigService,
+    change: LiveLimitChange,
+}
+
+#[async_trait]
+impl crate::tool_registry::AgentTool for LiveLimitTool {
+    fn name(&self) -> &str {
+        "quick_budget_tool"
+    }
+
+    fn description(&self) -> &str {
+        "Updates configuration while executing"
+    }
+
+    fn parameters_schema(&self) -> serde_json::Value {
+        serde_json::json!({"type": "object", "properties": {"quickResultBytes": {"type": "integer"}}})
+    }
+
+    fn in_context_result_bytes(&self, params: &serde_json::Value) -> Option<usize> {
+        params
+            .get("quickResultBytes")
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|bytes| usize::try_from(bytes).ok())
+    }
+
+    async fn execute(&self, _params: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        let change = self.change;
+        self.service
+            .update(move |config| {
+                match change {
+                    LiveLimitChange::Global(bytes) => config.tools.max_tool_result_bytes = bytes,
+                    LiveLimitChange::Agent(bytes) => {
+                        config
+                            .agents
+                            .entries
+                            .get_mut("main")
+                            .unwrap()
+                            .max_tool_result_bytes = Some(bytes)
+                    },
+                    LiveLimitChange::RemoveAgent => {
+                        config.agents.entries.remove("main");
+                    },
+                }
+                Ok(())
+            })
+            .await?;
+        Ok(serde_json::Value::String("x".repeat(1000)))
+    }
+}
+
+#[tokio::test]
+async fn live_agent_and_global_limits_are_read_after_tool_execution() {
+    let fixture = test_config_fixture().await;
+    for change in [LiveLimitChange::Global(75), LiveLimitChange::Agent(50)] {
+        fixture
+            .service
+            .update(|config| {
+                config.tools.max_tool_result_bytes = 1000;
+                config
+                    .agents
+                    .entries
+                    .get_mut("main")
+                    .unwrap()
+                    .max_tool_result_bytes = None;
+                Ok(())
+            })
+            .await
+            .unwrap();
+        let mut tools = ToolRegistry::new();
+        tools.register(Box::new(LiveLimitTool {
+            service: fixture.service.clone(),
+            change,
+        }));
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let on_lifecycle = recording_tool_lifecycle(&events);
+        run_agent_loop_streaming_with_tool_lifecycle(
+            &fixture.service,
+            Arc::new(QuickBudgetProvider {
+                call_count: AtomicUsize::new(0),
+            }),
+            &tools,
+            "You are a test bot.",
+            &UserContent::text("run"),
+            None,
+            Some(&on_lifecycle),
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        let expected = match change {
+            LiveLimitChange::Global(bytes) | LiveLimitChange::Agent(bytes) => bytes,
+            LiveLimitChange::RemoveAgent => unreachable!(),
+        };
+        let events = events.lock().unwrap();
+        assert_eq!(
+            truncated_prefix(completed_tool_result(&events, "call_quick_omit")),
+            "x".repeat(expected)
+        );
+    }
+}
+
+#[tokio::test]
+async fn removing_current_agent_during_tool_execution_errors_even_with_call_override() {
+    let fixture = test_config_fixture().await;
+    let mut tools = ToolRegistry::new();
+    tools.register(Box::new(LiveLimitTool {
+        service: fixture.service.clone(),
+        change: LiveLimitChange::RemoveAgent,
+    }));
+    let error = run_agent_loop_streaming_with_tool_lifecycle(
+        &fixture.service,
+        Arc::new(QuickBudgetProvider {
+            call_count: AtomicUsize::new(0),
+        }),
+        &tools,
+        "You are a test bot.",
+        &UserContent::text("run"),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(error.to_string(), "agent 'main' is not configured");
 }

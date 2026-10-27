@@ -470,6 +470,7 @@ impl ChatService for LiveChatService {
             .await
         } else {
             run_with_tools(
+                &self.config_service,
                 persona,
                 compaction_reminder,
                 runtime_limits,
@@ -887,7 +888,9 @@ impl ChatService for LiveChatService {
                 memory_setup,
                 visible_tools,
                 &self.skill_files,
+                &self.config_service,
             )
+            .await
             .map_err(|error| ServiceError::message(error.to_string()))?;
             let catalog = effective_registry
                 .list_catalog()
@@ -899,7 +902,7 @@ impl ChatService for LiveChatService {
                     })
                 })
                 .collect();
-            (catalog, effective_registry.list_schemas().len())
+            (catalog, effective_registry.list_names().len())
         } else {
             (vec![], 0)
         };
@@ -1103,18 +1106,27 @@ impl ChatService for LiveChatService {
                 memory_setup,
                 visible_tools,
                 &self.skill_files,
+                &self.config_service,
             )
+            .await
         }
         .map_err(|e| ServiceError::message(e.to_string()))?;
 
         // API-visible schema count (lazy mode: get_tool + revealed).
-        let tool_count = filtered_registry.list_schemas().len();
+        let tool_count = filtered_registry.list_names().len();
 
         // Build the system prompt.
         let prompt_limits = prompt_build_limits_from_config(&persona.config);
         let prompt_build = if tools_enabled {
+            let defaults = chelix_agents::tool_registry::ToolSchemaDefaults::read(
+                &self.config_service,
+                &policy_ctx.agent_id,
+            )
+            .await
+            .map_err(ServiceError::message)?;
             build_system_prompt_with_session_runtime_details(
                 &filtered_registry,
+                &defaults,
                 native_tools,
                 project_context.as_deref(),
                 &discovered_skills,
@@ -1264,15 +1276,24 @@ impl ChatService for LiveChatService {
                 memory_setup,
                 visible_tools,
                 &self.skill_files,
+                &self.config_service,
             )
+            .await
         }
         .map_err(|e| ServiceError::message(e.to_string()))?;
 
         // Build the system prompt.
         let prompt_limits = prompt_build_limits_from_config(&persona.config);
         let prompt_build = if tools_enabled {
+            let defaults = chelix_agents::tool_registry::ToolSchemaDefaults::read(
+                &self.config_service,
+                &policy_ctx.agent_id,
+            )
+            .await
+            .map_err(ServiceError::message)?;
             build_system_prompt_with_session_runtime_details(
                 &filtered_registry,
+                &defaults,
                 native_tools,
                 project_context.as_deref(),
                 &discovered_skills,
@@ -1790,7 +1811,10 @@ mod tests {
     }
 
     async fn validation_test_service() -> (
-        tempfile::TempDir,
+        (
+            tempfile::TempDir,
+            chelix_agents::test_support::ConfigFixture,
+        ),
         LiveChatService,
         Arc<SqliteSessionMetadata>,
         Arc<SessionStore>,
@@ -1869,6 +1893,9 @@ mod tests {
             ..ValidationTestRuntime::default()
         };
         let runtime: Arc<dyn crate::runtime::ChatRuntime> = Arc::new(runtime);
+        let fixture = chelix_agents::test_support::ConfigFixture::new(config.clone())
+            .await
+            .unwrap_or_else(|error| panic!("config fixture: {error}"));
         let mut service = LiveChatService::new(
             Arc::new(RwLock::new(registry)),
             runtime,
@@ -1877,13 +1904,13 @@ mod tests {
             Arc::new(QueuedPrompts::new(pool)),
             config.clone(),
             agents_config,
-            crate::ToolsConfigSource::snapshot(config.tools),
+            fixture.service.clone(),
             chelix_skills::skill_file::SkillFiles::new()
                 .unwrap_or_else(|error| panic!("skill files: {error}")),
         );
         service.test_broadcasts = broadcasts;
         (
-            directory,
+            (directory, fixture),
             service,
             metadata,
             session_store,

@@ -573,9 +573,9 @@ pub(crate) fn apply_runtime_tool_filters(
 ///    and schemas revealed by session history are visible, while the full
 ///    catalog stays advertised.
 ///
-/// Fails only when lazy wrapping hits the reserved-`get_tool` name collision.
+/// Propagates configuration-read, agent-lookup, skill-tool setup, and lazy-wrapper errors.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn prepare_run_registry(
+pub(crate) async fn prepare_run_registry(
     base: &chelix_agents::tool_registry::ToolRegistry,
     config: &chelix_config::ChelixConfig,
     skills: &[chelix_skills::types::SkillMetadata],
@@ -588,6 +588,7 @@ pub(crate) fn prepare_run_registry(
     )>,
     visible_tools: std::collections::HashSet<String>,
     skill_files: &Arc<chelix_skills::skill_file::SkillFiles>,
+    config_service: &chelix_config_service::ConfigService,
 ) -> anyhow::Result<chelix_agents::tool_registry::ToolRegistry> {
     let mut registry = if tools_enabled {
         apply_runtime_tool_filters(base, config, skills, policy_context)
@@ -613,16 +614,6 @@ pub(crate) fn prepare_run_registry(
         skill_files,
     )?;
 
-    let max_tool_result_bytes =
-        config
-            .agents
-            .get(agent_id)
-            .map_or(config.tools.max_tool_result_bytes, |agent| {
-                chelix_config::AgentRuntimeLimits::resolve(&config.tools, agent)
-                    .max_tool_result_bytes
-            });
-    registry.set_max_tool_result_bytes(max_tool_result_bytes);
-
     if tools_enabled
         && matches!(
             config.tools.registry_mode,
@@ -633,7 +624,12 @@ pub(crate) fn prepare_run_registry(
         if let Some(agent) = config.agents.get(&policy_context.agent_id) {
             visible.extend(agent.tools.preload.iter().cloned());
         }
-        registry = chelix_agents::lazy_tools::wrap_registry_lazy_with_visible(registry, visible)?;
+        let defaults =
+            chelix_agents::tool_registry::ToolSchemaDefaults::read(config_service, agent_id)
+                .await?;
+        registry = chelix_agents::lazy_tools::wrap_registry_lazy_with_visible(
+            registry, &defaults, visible,
+        )?;
     }
 
     Ok(registry)
@@ -803,8 +799,8 @@ mod tests {
         assert!(filtered.get("mcp__memory__store").is_none());
     }
 
-    #[test]
-    fn lazy_registry_preloads_only_tools_allowed_by_effective_policy() {
+    #[tokio::test]
+    async fn lazy_registry_preloads_only_tools_allowed_by_effective_policy() {
         let mut config = chelix_config::ChelixConfig::default();
         config.tools.registry_mode = chelix_config::ToolRegistryMode::Lazy;
         config
@@ -831,6 +827,9 @@ mod tests {
                     chelix_config::schema::ReasoningEffort::from("off"),
                 )
             });
+        let fixture = chelix_agents::test_support::ConfigFixture::new(config.clone())
+            .await
+            .unwrap_or_else(|error| panic!("config fixture: {error}"));
         let registry = prepare_run_registry(
             &registry_with_mcp_tools(),
             &config,
@@ -842,7 +841,9 @@ mod tests {
             std::collections::HashSet::from(["mcp__github__builtin_named_like_mcp".to_string()]),
             &chelix_skills::skill_file::SkillFiles::new()
                 .unwrap_or_else(|error| panic!("skill files: {error}")),
+            &fixture.service,
         )
+        .await
         .unwrap_or_else(|error| panic!("run registry preparation succeeds: {error}"));
 
         assert_eq!(registry.list_names(), vec![
@@ -852,6 +853,63 @@ mod tests {
         ]);
         assert!(registry.get("mcp__github__search").is_none());
         assert!(registry.get("mcp__memory__store").is_none());
+    }
+
+    #[tokio::test]
+    async fn prepare_registry_reads_defaults_only_for_lazy_tools() -> anyhow::Result<()> {
+        use chelix_config::ToolRegistryMode;
+
+        let mut config = chelix_config::ChelixConfig::default();
+        config.agents.entries.insert(
+            "main".to_string(),
+            chelix_config::AgentConfig::new(
+                "Main",
+                "test::model",
+                chelix_config::schema::ReasoningEffort::from("off"),
+            ),
+        );
+        let fixture = chelix_agents::test_support::ConfigFixture::new(config.clone()).await?;
+        fixture
+            .service
+            .update(|config| {
+                config.agents.entries.remove("main");
+                Ok(())
+            })
+            .await?;
+        let registry = chelix_agents::tool_registry::ToolRegistry::new();
+        let context = unrestricted_policy_context("main");
+        let skill_files =
+            chelix_skills::skill_file::SkillFiles::new().map_err(anyhow::Error::msg)?;
+        for (tools_enabled, mode) in [
+            (false, ToolRegistryMode::Lazy),
+            (true, ToolRegistryMode::Full),
+            (true, ToolRegistryMode::Lazy),
+        ] {
+            config.tools.registry_mode = mode;
+            let result = prepare_run_registry(
+                &registry,
+                &config,
+                &[],
+                &context,
+                tools_enabled,
+                "main",
+                None,
+                std::collections::HashSet::new(),
+                &skill_files,
+                &fixture.service,
+            )
+            .await;
+            if tools_enabled && mode == ToolRegistryMode::Lazy {
+                let error = match result {
+                    Ok(_) => panic!("lazy wrapping must report the removed agent"),
+                    Err(error) => error,
+                };
+                assert_eq!(error.to_string(), "agent 'main' is not configured");
+            } else {
+                assert!(result?.list_names().is_empty());
+            }
+        }
+        Ok(())
     }
 
     #[test]

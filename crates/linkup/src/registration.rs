@@ -2,16 +2,13 @@
 
 use std::sync::Arc;
 
-use {chelix_agents::tool_registry::ToolRegistry, chelix_config::schema::LinkupConfig};
+use {chelix_agents::tool_registry::ToolRegistry, chelix_config_service::ConfigService};
 
 use crate::{client::LinkupClient, tool::LinkupSearchTool};
 
 /// Register `linkup_search` against one shared client.
-pub fn register_tools(registry: &mut ToolRegistry, config: &LinkupConfig) {
-    let client = Arc::new(LinkupClient::new(
-        config.token.clone(),
-        config.request_timeout_secs,
-    ));
+pub fn register_tools(registry: &mut ToolRegistry, config_service: ConfigService) {
+    let client = Arc::new(LinkupClient::new(config_service));
     registry.register(Box::new(LinkupSearchTool::new(client)));
 }
 
@@ -19,10 +16,14 @@ pub fn register_tools(registry: &mut ToolRegistry, config: &LinkupConfig) {
 mod tests {
     use super::*;
 
-    #[test]
-    fn registers_the_complete_tool_set() {
+    #[tokio::test]
+    async fn registers_the_complete_tool_set() {
         let mut registry = ToolRegistry::new();
-        register_tools(&mut registry, &LinkupConfig::default());
+        let fixture =
+            chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+                .await
+                .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
+        register_tools(&mut registry, fixture.service.clone());
 
         let names: Vec<String> = registry
             .list_catalog()

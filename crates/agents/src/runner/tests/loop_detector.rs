@@ -270,6 +270,7 @@ fn intervention_stages(events: &[RunnerEvent]) -> Vec<u8> {
 
 #[tokio::test]
 async fn streaming_runner_counts_incident_batch_as_one_model_round() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(RoundAwareLoopProvider {
         call_count: std::sync::atomic::AtomicUsize::new(0),
     });
@@ -279,6 +280,7 @@ async fn streaming_runner_counts_incident_batch_as_one_model_round() {
     let on_event: OnEvent = Box::new(move |event| event_sink.lock().unwrap().push(event));
 
     let result = run_agent_loop_streaming(
+        &_fixture.service,
         provider,
         &tools,
         "Test bot",

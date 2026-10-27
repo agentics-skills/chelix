@@ -18,8 +18,11 @@ pub use {
 pub mod lazy_tools;
 pub mod response_sanitizer;
 pub mod skills;
+#[cfg(any(test, feature = "test-util"))]
+pub mod test_support;
 pub mod title;
 pub mod tool_arg_validator;
 pub mod tool_context;
 pub mod tool_loop_detector;
 pub mod tool_registry;
+mod tool_schema_defaults;

@@ -41,10 +41,11 @@ uuid                  = { workspace = true }
 which                 = { workspace = true }
 
 [dev-dependencies]
-mockito  = { workspace = true }
-sqlx     = { workspace = true }
-tempfile = { workspace = true }
-tokio    = { features = ["macros", "rt-multi-thread"], workspace = true }
+chelix-agents = { features = ["test-util"], workspace = true }
+mockito       = { workspace = true }
+sqlx          = { workspace = true }
+tempfile      = { workspace = true }
+tokio         = { features = ["macros", "rt-multi-thread"], workspace = true }
 
 [lints]
 workspace = true

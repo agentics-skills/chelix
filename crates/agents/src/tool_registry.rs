@@ -9,6 +9,8 @@ use {
     tracing::warn,
 };
 
+pub use crate::tool_schema_defaults::ToolSchemaDefaults;
+
 /// In-context truncation behavior for a tool's results.
 ///
 /// Full outputs are always persisted to disk regardless of this setting;
@@ -42,13 +44,9 @@ pub trait AgentTool: Send + Sync {
     fn name(&self) -> &str;
     fn description(&self) -> &str;
     fn parameters_schema(&self) -> serde_json::Value;
-    /// Parameter schema with the current in-context tool-result budget interpolated.
+    /// Parameter schema with the current runtime defaults interpolated.
     /// Default keeps `parameters_schema()` unchanged.
-    fn parameters_schema_with_max_tool_result_bytes(
-        &self,
-        max_tool_result_bytes: usize,
-    ) -> serde_json::Value {
-        let _ = max_tool_result_bytes;
+    fn parameters_schema_with_defaults(&self, _defaults: &ToolSchemaDefaults) -> serde_json::Value {
         self.parameters_schema()
     }
     /// Validate fully enriched parameters before the runner emits a
@@ -149,8 +147,6 @@ pub struct ToolRegistry {
     /// In lazy mode, only these tool schemas are exposed through `list_schemas()`.
     /// Execution still uses the full `tools` map.
     lazy_visible: Option<LazyVisibleTools>,
-    /// Resolved in-context tool-result budget for this run, used when building schemas.
-    max_tool_result_bytes: Option<usize>,
 }
 
 impl Default for ToolRegistry {
@@ -164,7 +160,6 @@ impl ToolRegistry {
         Self {
             tools: HashMap::new(),
             lazy_visible: None,
-            max_tool_result_bytes: None,
         }
     }
 
@@ -172,15 +167,10 @@ impl ToolRegistry {
         self.lazy_visible = Some(visible);
     }
 
-    pub fn set_max_tool_result_bytes(&mut self, max_tool_result_bytes: usize) {
-        self.max_tool_result_bytes = Some(max_tool_result_bytes);
-    }
-
     fn with_tools(&self, tools: HashMap<String, ToolEntry>) -> Self {
         Self {
             tools,
             lazy_visible: self.lazy_visible.clone(),
-            max_tool_result_bytes: self.max_tool_result_bytes,
         }
     }
 
@@ -254,7 +244,7 @@ impl ToolRegistry {
         self.tools.get(name).map(|e| Arc::clone(&e.tool))
     }
 
-    pub fn list_schemas(&self) -> Vec<serde_json::Value> {
+    pub fn list_schemas(&self, defaults: &ToolSchemaDefaults) -> Vec<serde_json::Value> {
         let visible = self
             .lazy_visible
             .as_ref()
@@ -267,7 +257,7 @@ impl ToolRegistry {
                     .as_ref()
                     .is_none_or(|visible| visible.contains(name.as_str()))
             })
-            .map(|(_, entry)| entry_to_schema(entry, self.max_tool_result_bytes))
+            .map(|(_, entry)| entry_to_schema(entry, defaults))
             .collect();
         schemas.sort_by(|left, right| {
             let left_name = left
@@ -383,13 +373,8 @@ impl ToolRegistry {
     }
 }
 
-fn entry_to_schema(e: &ToolEntry, max_tool_result_bytes: Option<usize>) -> serde_json::Value {
-    let parameters = match max_tool_result_bytes {
-        Some(max_tool_result_bytes) => e
-            .tool
-            .parameters_schema_with_max_tool_result_bytes(max_tool_result_bytes),
-        None => e.tool.parameters_schema(),
-    };
+fn entry_to_schema(e: &ToolEntry, defaults: &ToolSchemaDefaults) -> serde_json::Value {
+    let parameters = e.tool.parameters_schema_with_defaults(defaults);
     let mut schema = serde_json::json!({
         "name": e.tool.name(),
         "description": e.tool.description(),
@@ -411,6 +396,13 @@ fn entry_to_schema(e: &ToolEntry, max_tool_result_bytes: Option<usize>) -> serde
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn schema_defaults() -> ToolSchemaDefaults {
+        let tools = chelix_config::schema::ToolsConfig::default();
+        ToolSchemaDefaults {
+            max_tool_result_bytes: tools.max_tool_result_bytes,
+            execute_command_default_timeout_secs: tools.execute_command.default_timeout_secs,
+        }
+    }
 
     struct DummyTool {
         name: String,
@@ -452,7 +444,7 @@ mod tests {
         }));
 
         let filtered = registry.clone_without_prefix("mcp__");
-        assert_eq!(filtered.list_schemas().len(), 2);
+        assert_eq!(filtered.list_schemas(&schema_defaults()).len(), 2);
         assert!(filtered.get("execute_command").is_some());
         assert!(filtered.get("read_file").is_some());
         assert!(filtered.get("mcp__github_search").is_none());
@@ -470,7 +462,7 @@ mod tests {
         }));
 
         let filtered = registry.clone_without_prefix("mcp__");
-        assert_eq!(filtered.list_schemas().len(), 2);
+        assert_eq!(filtered.list_schemas(&schema_defaults()).len(), 2);
     }
 
     #[test]
@@ -494,7 +486,7 @@ mod tests {
 
         let removed = registry.unregister_mcp();
         assert_eq!(removed, 2);
-        assert_eq!(registry.list_schemas().len(), 1);
+        assert_eq!(registry.list_schemas(&schema_defaults()).len(), 1);
         assert!(registry.get("execute_command").is_some());
     }
 
@@ -511,7 +503,7 @@ mod tests {
             McpServerId::from("github"),
         );
 
-        let schemas = registry.list_schemas();
+        let schemas = registry.list_schemas(&schema_defaults());
         let builtin = schemas
             .iter()
             .find(|s| s["name"] == "execute_command")
@@ -558,7 +550,7 @@ mod tests {
         }));
 
         let names: Vec<String> = registry
-            .list_schemas()
+            .list_schemas(&schema_defaults())
             .into_iter()
             .filter_map(|schema| {
                 schema
@@ -610,7 +602,7 @@ mod tests {
         );
         // Source should now be Mcp even though the builtin was registered first.
         let schema = registry
-            .list_schemas()
+            .list_schemas(&schema_defaults())
             .into_iter()
             .find(|schema| {
                 schema.get("name").and_then(serde_json::Value::as_str) == Some("read_file")
@@ -660,7 +652,7 @@ mod tests {
         registry.set_lazy_visible(visible);
 
         // Schemas honor the lazy gate…
-        assert_eq!(registry.list_schemas().len(), 1);
+        assert_eq!(registry.list_schemas(&schema_defaults()).len(), 1);
         // …but the catalog advertises every public tool regardless.
         let names: Vec<String> = registry
             .list_catalog()
@@ -711,11 +703,11 @@ mod tests {
             serde_json::json!({ "source": "plain" })
         }
 
-        fn parameters_schema_with_max_tool_result_bytes(
+        fn parameters_schema_with_defaults(
             &self,
-            max_tool_result_bytes: usize,
+            defaults: &ToolSchemaDefaults,
         ) -> serde_json::Value {
-            serde_json::json!({ "source": "budget", "maxToolResultBytes": max_tool_result_bytes })
+            serde_json::json!({ "source": "budget", "maxToolResultBytes": defaults.max_tool_result_bytes, "timeoutSecs": defaults.execute_command_default_timeout_secs })
         }
 
         async fn execute(&self, _params: serde_json::Value) -> Result<serde_json::Value> {
@@ -724,20 +716,111 @@ mod tests {
     }
 
     #[test]
-    fn list_schemas_interpolates_max_tool_result_bytes_when_set() {
+    fn list_schemas_interpolates_explicit_defaults() {
         let mut registry = ToolRegistry::new();
         registry.register(Box::new(BudgetSchemaTool));
-        assert_eq!(registry.list_schemas()[0]["parameters"]["source"], "plain");
-
-        registry.set_max_tool_result_bytes(999);
-        let schema = registry.list_schemas();
+        assert_eq!(
+            registry
+                .get("budget_schema_tool")
+                .unwrap()
+                .parameters_schema()["source"],
+            "plain"
+        );
+        let defaults = ToolSchemaDefaults {
+            max_tool_result_bytes: 999,
+            execute_command_default_timeout_secs: 77,
+        };
+        let schema = registry.list_schemas(&defaults);
         assert_eq!(schema[0]["parameters"]["source"], "budget");
         assert_eq!(schema[0]["parameters"]["maxToolResultBytes"], 999);
+        assert_eq!(schema[0]["parameters"]["timeoutSecs"], 77);
 
         let cloned = registry.clone_without(&[]);
         assert_eq!(
-            cloned.list_schemas()[0]["parameters"]["maxToolResultBytes"],
+            cloned.list_schemas(&defaults)[0]["parameters"]["maxToolResultBytes"],
             999
         );
+    }
+
+    #[tokio::test]
+    async fn schema_generation_reads_updated_defaults_and_keeps_lazy_entries() -> Result<()> {
+        let mut config = chelix_config::ChelixConfig::default();
+        config.agents.entries.insert(
+            "main".to_owned(),
+            chelix_config::AgentConfig::new(
+                "Main",
+                "test::model",
+                chelix_config::schema::ReasoningEffort::from("off"),
+            ),
+        );
+        config.tools.max_tool_result_bytes = 100;
+        config.tools.execute_command.default_timeout_secs = 30;
+        let fixture = crate::test_support::ConfigFixture::new(config).await?;
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(BudgetSchemaTool));
+        let first = ToolSchemaDefaults::read(&fixture.service, "main").await?;
+        let first_schema = registry.list_schemas(&first);
+        assert_eq!(first_schema[0]["parameters"]["maxToolResultBytes"], 100);
+        assert_eq!(first_schema[0]["parameters"]["timeoutSecs"], 30);
+
+        fixture
+            .service
+            .update(|config| {
+                config.tools.max_tool_result_bytes = 200;
+                config.tools.execute_command.default_timeout_secs = 45;
+                Ok(())
+            })
+            .await?;
+        let second = ToolSchemaDefaults::read(&fixture.service, "main").await?;
+        let second_schema = registry.list_schemas(&second);
+        assert_eq!(second_schema[0]["parameters"]["maxToolResultBytes"], 200);
+        assert_eq!(second_schema[0]["parameters"]["timeoutSecs"], 45);
+        let lazy = crate::lazy_tools::wrap_registry_lazy(registry.clone_without(&[]), &second)?;
+
+        fixture
+            .service
+            .update(|config| {
+                config
+                    .agents
+                    .entries
+                    .get_mut("main")
+                    .unwrap()
+                    .max_tool_result_bytes = Some(300);
+                config.tools.execute_command.default_timeout_secs = 60;
+                Ok(())
+            })
+            .await?;
+        let third = ToolSchemaDefaults::read(&fixture.service, "main").await?;
+        let third_schema = registry.list_schemas(&third);
+        assert_eq!(third_schema[0]["parameters"]["maxToolResultBytes"], 300);
+        assert_eq!(third_schema[0]["parameters"]["timeoutSecs"], 60);
+        let revealed = lazy
+            .get("get_tool")
+            .unwrap()
+            .execute(serde_json::json!({"name": "budget_schema_tool"}))
+            .await?;
+        assert_eq!(revealed["parameters"]["maxToolResultBytes"], 200);
+        assert_eq!(revealed["parameters"]["timeoutSecs"], 45);
+        let rebuilt = crate::lazy_tools::wrap_registry_lazy(registry, &third)?;
+        let revealed = rebuilt
+            .get("get_tool")
+            .unwrap()
+            .execute(serde_json::json!({"name": "budget_schema_tool"}))
+            .await?;
+        assert_eq!(revealed["parameters"]["maxToolResultBytes"], 300);
+        assert_eq!(revealed["parameters"]["timeoutSecs"], 60);
+
+        fixture
+            .service
+            .update(|config| {
+                config.agents.entries.remove("main");
+                Ok(())
+            })
+            .await?;
+        let error = ToolSchemaDefaults::read(&fixture.service, "main")
+            .await
+            .unwrap_err();
+        assert_eq!(error.to_string(), "agent 'main' is not configured");
+        Ok(())
     }
 }

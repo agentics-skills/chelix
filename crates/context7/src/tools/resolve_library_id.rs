@@ -253,13 +253,23 @@ fn parse_input(params: Value) -> Result<ResolveLibraryIdInput> {
 mod tests {
     use super::*;
 
-    fn tool(base_url: String) -> Context7ResolveLibraryIdTool {
-        Context7ResolveLibraryIdTool::new(Arc::new(Context7Client::for_test(base_url, Vec::new())))
+    async fn tool(
+        base_url: String,
+    ) -> (
+        Context7ResolveLibraryIdTool,
+        chelix_agents::test_support::ConfigFixture,
+    ) {
+        let fixture = crate::test_support::fixture(Vec::new()).await;
+        let tool = Context7ResolveLibraryIdTool::new(Arc::new(Context7Client::for_test(
+            base_url,
+            fixture.service.clone(),
+        )));
+        (tool, fixture)
     }
 
-    #[test]
-    fn exposes_the_current_description_and_schema() {
-        let tool = tool("http://127.0.0.1:1".into());
+    #[tokio::test]
+    async fn exposes_the_current_description_and_schema() {
+        let (tool, _fixture) = tool("http://127.0.0.1:1".into()).await;
 
         assert_eq!(tool.name(), "context7_resolve_library_id");
         assert_eq!(tool.description(), TOOL_DESCRIPTION);
@@ -298,7 +308,8 @@ mod tests {
             .create_async()
             .await;
 
-        let value = tool(server.url())
+        let (tool, _fixture) = tool(server.url()).await;
+        let value = tool
             .execute(json!({
                 "query": " React framework routing ",
                 "libraryName": " Next.js "
@@ -333,7 +344,8 @@ mod tests {
             .create_async()
             .await;
 
-        let value = tool(server.url())
+        let (tool, _fixture) = tool(server.url()).await;
+        let value = tool
             .execute(json!({"query": "packages", "libraryName": "packages"}))
             .await
             .unwrap_or_else(|error| panic!("tool execution failed: {error}"));
@@ -365,7 +377,8 @@ mod tests {
             .create_async()
             .await;
 
-        let value = tool(server.url())
+        let (tool, _fixture) = tool(server.url()).await;
+        let value = tool
             .execute(json!({"query": "package", "libraryName": "A"}))
             .await
             .unwrap_or_else(|error| panic!("tool execution failed: {error}"));
@@ -377,7 +390,7 @@ mod tests {
         call.assert_async().await;
     }
 
-    #[tokio::test(start_paused = true)]
+    #[tokio::test]
     async fn rate_limited_response_is_retried_once_after_the_shared_cooldown() {
         let mut server = mockito::Server::new_async().await;
         let query_matcher = mockito::Matcher::AllOf(vec![
@@ -402,7 +415,8 @@ mod tests {
             .create_async()
             .await;
 
-        let value = tool(server.url())
+        let (tool, _fixture) = tool(server.url()).await;
+        let value = tool
             .execute(json!({"query": "routing", "libraryName": "Next.js"}))
             .await
             .unwrap_or_else(|error| panic!("tool execution failed: {error}"));
@@ -427,7 +441,8 @@ mod tests {
             .create_async()
             .await;
 
-        let error = match tool(server.url())
+        let (tool, _fixture) = tool(server.url()).await;
+        let error = match tool
             .execute(json!({"query": "routing", "libraryName": "Next.js"}))
             .await
         {
@@ -444,7 +459,8 @@ mod tests {
 
     #[tokio::test]
     async fn preserves_the_registered_error_prefix() {
-        let error = match tool("http://127.0.0.1:1".into()).execute(json!({})).await {
+        let (tool, _fixture) = tool("http://127.0.0.1:1".into()).await;
+        let error = match tool.execute(json!({})).await {
             Ok(value) => panic!("expected tool error, got: {value}"),
             Err(error) => error,
         };

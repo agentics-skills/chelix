@@ -72,7 +72,7 @@ async fn build(config_service: chelix_config_service::ConfigService) -> Result<(
         mode: sandbox::SandboxMode::On,
         ..sandbox_config
     };
-    let backend = sandbox::create_sandbox(sandbox_config)?;
+    let backend = sandbox::create_sandbox(sandbox_config, config_service)?;
     match backend.build_image(&base, &packages).await? {
         Some(result) => {
             if result.built {

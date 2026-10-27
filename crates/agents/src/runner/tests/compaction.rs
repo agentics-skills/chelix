@@ -534,6 +534,7 @@ fn compacted_prompt_floor_rejects_overlapping_reminder_segments() {
 
 #[tokio::test]
 async fn checkpoint_resume_token_floor_uses_post_hook_system_text() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(ResumeProvider {
         seen_messages: std::sync::Mutex::new(Vec::new()),
     });
@@ -547,6 +548,7 @@ async fn checkpoint_resume_token_floor_uses_post_hook_system_text() {
         suffix: "\nsafety suffix",
     }));
     let result = run_agent_loop_with_context_and_limits(
+        &_fixture.service,
         provider.clone(),
         &ToolRegistry::new(),
         &system_prompt,
@@ -611,12 +613,14 @@ async fn checkpoint_resume_token_floor_uses_post_hook_system_text() {
 
 #[tokio::test]
 async fn transport_retry_reports_started_provider_call_before_compaction() {
+    let _fixture = test_config_fixture().await;
     let partial = "partial provider output".repeat(20_000);
     let provider = Arc::new(PartialRetryProvider {
         stream_calls: AtomicUsize::new(0),
         partial: partial.clone(),
     });
     let result = run_agent_loop_with_context_and_limits(
+        &_fixture.service,
         provider.clone(),
         &ToolRegistry::new(),
         "system",
@@ -656,6 +660,7 @@ async fn transport_retry_reports_started_provider_call_before_compaction() {
 
 #[tokio::test]
 async fn checkpoint_resume_uses_post_hook_payload_for_hard_limit_gate() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(ResumeProvider {
         seen_messages: std::sync::Mutex::new(Vec::new()),
     });
@@ -669,6 +674,7 @@ async fn checkpoint_resume_uses_post_hook_payload_for_hard_limit_gate() {
         messages: replacement,
     }));
     let result = run_agent_loop_with_context_and_limits(
+        &_fixture.service,
         provider.clone(),
         &ToolRegistry::new(),
         "system with reminder",
@@ -714,10 +720,12 @@ fn zero_input_capacity_requires_compaction() {
 
 #[tokio::test]
 async fn automatic_checkpoint_trigger_stops_before_provider_call() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(ThresholdProvider {
         complete_calls: AtomicUsize::new(0),
     });
     let result = run_agent_loop_with_context_and_limits(
+        &_fixture.service,
         provider.clone(),
         &ToolRegistry::new(),
         "system prompt",
@@ -816,10 +824,12 @@ fn tool_call(id: &str) -> crate::model::ToolCall {
 
 #[tokio::test]
 async fn isolated_runner_does_not_trigger_session_checkpointing() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(ThresholdProvider {
         complete_calls: AtomicUsize::new(0),
     });
     let result = run_agent_loop_with_context_and_limits(
+        &_fixture.service,
         provider.clone(),
         &ToolRegistry::new(),
         "system prompt",
@@ -843,6 +853,7 @@ async fn isolated_runner_does_not_trigger_session_checkpointing() {
 
 #[tokio::test]
 async fn checkpoint_resume_does_not_repeat_original_user_message() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(ResumeProvider {
         seen_messages: std::sync::Mutex::new(Vec::new()),
     });
@@ -850,6 +861,7 @@ async fn checkpoint_resume_does_not_repeat_original_user_message() {
         "<conversation-summary>checkpoint state</conversation-summary>",
     )];
     let result = run_agent_loop_with_context_and_limits(
+        &_fixture.service,
         provider.clone(),
         &ToolRegistry::new(),
         "system prompt",

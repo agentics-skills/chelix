@@ -13,7 +13,7 @@ use {
     async_trait::async_trait,
     chelix_gateway::{
         auth,
-        chat::{DisabledModelsStore, LiveChatService, LiveModelService, ToolsConfigSource},
+        chat::{DisabledModelsStore, LiveChatService, LiveModelService},
         methods::MethodRegistry,
         services::{GatewayServices, OnboardingService, ServiceResult},
         state::GatewayState,
@@ -381,7 +381,7 @@ async fn gateway_startup_with_llm_wiring_does_not_block() {
             Arc::new(tokio::sync::RwLock::new(
                 chelix_config::AgentsConfig::default(),
             )),
-            ToolsConfigSource::snapshot(chelix_config::schema::ToolsConfig::default()),
+            fixture.service.clone(),
             chelix_skills::skill_file::SkillFiles::new()
                 .unwrap_or_else(|error| panic!("skill files: {error}")),
         )));
@@ -421,7 +421,7 @@ async fn gateway_startup_with_llm_wiring_does_not_block() {
         Arc::new(tokio::sync::RwLock::new(
             chelix_config::AgentsConfig::default(),
         )),
-        ToolsConfigSource::snapshot(chelix_config::schema::ToolsConfig::default()),
+        fixture.service.clone(),
         chelix_skills::skill_file::SkillFiles::new()
             .unwrap_or_else(|error| panic!("skill files: {error}")),
     )));

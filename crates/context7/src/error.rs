@@ -12,6 +12,8 @@ pub enum Error {
     #[error(transparent)]
     Request(#[from] reqwest::Error),
     #[error(transparent)]
+    ConfigService(#[from] chelix_config_service::Error),
+    #[error(transparent)]
     UrlParse(#[from] url::ParseError),
     #[error(transparent)]
     Json(#[from] serde_json::Error),

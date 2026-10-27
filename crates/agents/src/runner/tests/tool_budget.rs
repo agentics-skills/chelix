@@ -202,6 +202,7 @@ fn tool_call_budget_rejects_oversized_batch_without_changing_used() {
 
 #[tokio::test]
 async fn streaming_rejects_oversized_parallel_batch_before_any_sibling_runs() {
+    let _fixture = test_config_fixture().await;
     let executions = Arc::new(AtomicUsize::new(0));
     let provider = Arc::new(ScriptedToolProvider::new(vec![ScriptedRound::Tools(vec![
         call("c1", "count_a", serde_json::json!({})),
@@ -221,6 +222,7 @@ async fn streaming_rejects_oversized_parallel_batch_before_any_sibling_runs() {
     let on_tool_lifecycle = recording_tool_lifecycle(&lifecycle_events);
 
     let error = run_agent_loop_streaming_with_lifecycle_and_limits(
+        &_fixture.service,
         provider,
         &tools,
         "Test bot",
@@ -256,12 +258,14 @@ async fn streaming_rejects_oversized_parallel_batch_before_any_sibling_runs() {
 
 #[tokio::test]
 async fn full_budget_still_allows_a_final_text_only_model_round() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(ScriptedToolProvider::new(vec![
         ScriptedRound::Tools(vec![call("c1", "unknown_tool", serde_json::json!({}))]),
         ScriptedRound::Text("Final answer after the full tool budget."),
     ]));
 
     let result = run_agent_loop_with_context_and_limits(
+        &_fixture.service,
         provider,
         &ToolRegistry::new(),
         "Test bot",
@@ -287,6 +291,7 @@ async fn full_budget_still_allows_a_final_text_only_model_round() {
 
 #[tokio::test]
 async fn rejected_recognized_calls_consume_the_budget() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(ScriptedToolProvider::new(vec![
         ScriptedRound::Tools(vec![call(
             "c1",
@@ -299,6 +304,7 @@ async fn rejected_recognized_calls_consume_the_budget() {
     tools.register(Box::new(EchoTool));
 
     let error = run_agent_loop_with_context_and_limits(
+        &_fixture.service,
         provider,
         &tools,
         "Test bot",
@@ -319,13 +325,17 @@ async fn rejected_recognized_calls_consume_the_budget() {
 
 #[tokio::test]
 async fn lazy_get_tool_and_revealed_target_each_consume_one_unit() {
+    let _fixture = test_config_fixture().await;
     let executions = Arc::new(AtomicUsize::new(0));
     let mut registry = ToolRegistry::new();
     registry.register(Box::new(CountingTool {
         name: "count_target",
         executions: Arc::clone(&executions),
     }));
-    let lazy_registry = wrap_registry_lazy(registry).unwrap();
+    let defaults = crate::tool_registry::ToolSchemaDefaults::read(&_fixture.service, "main")
+        .await
+        .unwrap();
+    let lazy_registry = wrap_registry_lazy(registry, &defaults).unwrap();
     let provider = Arc::new(ScriptedToolProvider::new(vec![
         ScriptedRound::Tools(vec![call(
             "get_1",
@@ -341,6 +351,7 @@ async fn lazy_get_tool_and_revealed_target_each_consume_one_unit() {
     ]));
 
     let result = run_agent_loop_with_context_and_limits(
+        &_fixture.service,
         provider,
         &lazy_registry,
         "Test bot",

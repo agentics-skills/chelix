@@ -258,6 +258,9 @@ archived_session_retention_days = 7  # Days from owner metadata updated_at; requ
 #                                   # <data_dir>/sessions/tool-results/<session>/<call>/ and truncated
 #                                   # results point at the persisted file. Override per agent with
 #                                   # `max_tool_result_bytes` on the agent preset.
+#                                   # Global and agent limits are read together before processing
+#                                   # the prepared result; a missing agent produces an explicit error.
+#                                   # Schema defaults are read before each schema generation.
 # registry_mode = "full"            # "full" = all schemas every turn, "lazy" = catalog + on-demand get_tool schema fetch
 # agent_loop_detector_window = 2    # Fire after N model rounds repeat an equivalent failure
 
@@ -269,8 +272,8 @@ archived_session_retention_days = 7  # Days from owner metadata updated_at; requ
 # ── Command Execution ─────────────────────────────────────────────────────────
 
 [tools.execute_command]
-terminal_size = "115x58"             # 115 chars x 58
-# default_timeout_secs = 30         # Default timeout for commands
+terminal_size = "115x58"             # 115 chars x 58; read when building tools-service launch flags
+# default_timeout_secs = 30         # Read after approval for an omitted command timeout
 # rewrite_timeout_secs = 300        # Minimum for agent-provided timeouts; unset by default
 # approval_mode = "never"           # "always" = ask before every command, "never" = never ask
 
@@ -298,6 +301,8 @@ terminal_size = "115x58"             # 115 chars x 58
 
 # ── Context7 (context7_* tools) ───────────────────────────────────────────────
 # Every context7_* tool calls the Context7 API with these tokens, in order.
+# Tokens and timeout are read together for each HTTP attempt.
+# Changing the token list resets selection to its first token.
 # A missing or empty array sends requests without authorization.
 
 # [tools.context7]
@@ -306,23 +311,27 @@ terminal_size = "115x58"             # 115 chars x 58
 
 # ── Linkup Search ─────────────────────────────────────────────────────────────
 # linkup_search calls the Linkup API with this token.
+# Token and timeout are read together for each HTTP attempt.
 
 # [tools.linkup]
 # token = "..."                     # Linkup API token
 # request_timeout_secs = 300         # Per-request HTTP timeout; must be at least 1
 
 # ── Exa Search ────────────────────────────────────────────────────────────────
+# Token and timeout are read together for each HTTP attempt.
 # [tools.exa]
 # token = "..."                     # Exa API key
 # request_timeout_secs = 300         # Per-request HTTP timeout; must be at least 1
 
 # ── Google Search ─────────────────────────────────────────────────────────────
+# Token, engine ID, and timeout are read together for each HTTP attempt.
 # [tools.google]
 # token = "..."                     # Google API key
 # engine_id = "..."                 # Programmable Search engine ID
 # request_timeout_secs = 300         # Per-request HTTP timeout; must be at least 1
 
 # ── Felo Search ───────────────────────────────────────────────────────────────
+# Token and timeout are read together for each HTTP attempt.
 # [tools.felo]
 # token = "..."                     # Felo API key
 # request_timeout_secs = 300         # Per-request HTTP timeout; must be at least 1
@@ -330,11 +339,13 @@ terminal_size = "115x58"             # 115 chars x 58
 # ── DuckDuckGo Search ─────────────────────────────────────────────────────────
 # request_timeout_secs covers the complete search lifecycle: shared queue wait,
 # retry/backoff, the HTTP request, and response body reading.
+# Its value is read when establishing the deadline and retained through completion.
 
 # [tools.duckduckgo]
 # request_timeout_secs = 300         # Complete search timeout; must be at least 1
 
 # ── GitHub (github_* tools) ───────────────────────────────────────────────────
+# Token and timeout are read together for each HTTP attempt.
 # Every github_* tool calls the GitHub REST API with this token. Tools that
 # require authentication fail with an explicit error when it is not set.
 

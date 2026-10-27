@@ -241,11 +241,20 @@ fn parse_input(params: Value) -> Result<GetDirectoryContentsInput> {
 mod tests {
     use {super::*, secrecy::Secret};
 
-    fn tool(base_url: String, token: Option<&str>) -> GithubGetDirectoryContentsTool {
-        GithubGetDirectoryContentsTool::new(Arc::new(GitHubClient::for_test(
+    async fn tool(
+        base_url: String,
+        token: Option<&str>,
+    ) -> (
+        GithubGetDirectoryContentsTool,
+        chelix_agents::test_support::ConfigFixture,
+    ) {
+        let fixture =
+            crate::test_support::fixture(token.map(|value| Secret::new(value.to_string()))).await;
+        let tool = GithubGetDirectoryContentsTool::new(Arc::new(GitHubClient::for_test(
             base_url,
-            token.map(|value| Secret::new(value.to_string())),
-        )))
+            fixture.service.clone(),
+        )));
+        (tool, fixture)
     }
 
     fn directory_body() -> String {
@@ -272,9 +281,9 @@ mod tests {
         .to_string()
     }
 
-    #[test]
-    fn exposes_the_documented_description_and_a_strict_schema() {
-        let tool = tool("http://127.0.0.1:1".into(), None);
+    #[tokio::test]
+    async fn exposes_the_documented_description_and_a_strict_schema() {
+        let (tool, _fixture) = tool("http://127.0.0.1:1".into(), None).await;
 
         assert_eq!(tool.name(), "github_get_directory_contents");
         assert_eq!(
@@ -345,7 +354,8 @@ mod tests {
             .create_async()
             .await;
 
-        let result = tool(server.url(), None)
+        let (tool, _fixture) = tool(server.url(), None).await;
+        let result = tool
             .execute(json!({
                 "owner": "o",
                 "repo": "r",
@@ -389,7 +399,8 @@ mod tests {
             .create_async()
             .await;
 
-        let result = tool(server.url(), None)
+        let (tool, _fixture) = tool(server.url(), None).await;
+        let result = tool
             .execute(json!({ "owner": "o", "repo": "r", "path": "vendor" }))
             .await
             .unwrap_or_else(|error| panic!("execute failed: {error}"));
@@ -418,7 +429,8 @@ mod tests {
             .create_async()
             .await;
 
-        let result = tool(server.url(), None)
+        let (tool, _fixture) = tool(server.url(), None).await;
+        let result = tool
             .execute(json!({ "owner": "o", "repo": "r", "path": "///" }))
             .await
             .unwrap_or_else(|error| panic!("execute failed: {error}"));
@@ -444,7 +456,8 @@ mod tests {
             .create_async()
             .await;
 
-        let error = match tool(server.url(), None)
+        let (tool, _fixture) = tool(server.url(), None).await;
+        let error = match tool
             .execute(json!({ "owner": "o", "repo": "r", "path": "README.md" }))
             .await
         {
@@ -461,6 +474,7 @@ mod tests {
 
     #[tokio::test]
     async fn non_directory_shapes_report_the_reference_errors() {
+        let fixture = crate::test_support::fixture(None).await;
         for (body, expected) in [
             (
                 json!({ "type": "symlink" }).to_string(),
@@ -481,7 +495,11 @@ mod tests {
                 .create_async()
                 .await;
 
-            let error = match tool(server.url(), None)
+            let tool = GithubGetDirectoryContentsTool::new(Arc::new(GitHubClient::for_test(
+                server.url(),
+                fixture.service.clone(),
+            )));
+            let error = match tool
                 .execute(json!({ "owner": "o", "repo": "r", "path": "docs" }))
                 .await
             {
@@ -505,7 +523,8 @@ mod tests {
             .create_async()
             .await;
 
-        let error = match tool(server.url(), None)
+        let (tool, _fixture) = tool(server.url(), None).await;
+        let error = match tool
             .execute(json!({ "owner": "o", "repo": "private" }))
             .await
         {
@@ -531,7 +550,8 @@ mod tests {
             .create_async()
             .await;
 
-        let error = match tool(server.url(), Some("pat-token"))
+        let (tool, _fixture) = tool(server.url(), Some("pat-token")).await;
+        let error = match tool
             .execute(json!({ "owner": "o", "repo": "private" }))
             .await
         {
@@ -543,7 +563,7 @@ mod tests {
         call.assert_async().await;
     }
 
-    #[tokio::test(start_paused = true)]
+    #[tokio::test]
     async fn rate_limited_response_is_retried_once_after_the_cooldown() {
         let mut server = mockito::Server::new_async().await;
         let limited = server
@@ -563,7 +583,8 @@ mod tests {
             .create_async()
             .await;
 
-        let result = tool(server.url(), None)
+        let (tool, _fixture) = tool(server.url(), None).await;
+        let result = tool
             .execute(json!({ "owner": "o", "repo": "r" }))
             .await
             .unwrap_or_else(|error| panic!("execute failed: {error}"));

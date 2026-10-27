@@ -667,17 +667,12 @@ pub async fn prepare_gateway_core(
 
     // Build sandbox router from config.
     let sandbox_config = chelix_tools::sandbox::SandboxConfig::from(&config.sandbox);
-    let terminal_size = config
-        .tools
-        .execute_command
-        .terminal_size
-        .ok_or_else(|| anyhow::anyhow!("tools.execute_command.terminal_size is required"))?;
     let sandbox_router = Arc::new(sandbox::build_sandbox_router(
         &sandbox_config,
-        terminal_size,
         &sandbox_container_prefix,
         config.user.timezone.as_ref().map(|tz| tz.name()),
         Arc::clone(&session_metadata),
+        config_service.clone(),
     )?);
 
     // ── Upstream proxy (user-configured) ─────────────────────────────────
@@ -699,9 +694,12 @@ pub async fn prepare_gateway_core(
 
     // Initialize the global managed tools runtime before tools are registered.
     let tools_service: Arc<chelix_tools::tools_service::ManagedToolsService> =
-        chelix_tools::tools_service::ManagedToolsService::start(Arc::clone(&sandbox_router))
-            .await
-            .map_err(|error| anyhow::anyhow!("failed to start managed tools service: {error}"))?;
+        chelix_tools::tools_service::ManagedToolsService::start(
+            Arc::clone(&sandbox_router),
+            config_service.clone(),
+        )
+        .await
+        .map_err(|error| anyhow::anyhow!("failed to start managed tools service: {error}"))?;
 
     // Start daily retention checks for archived session sandboxes.
     sandbox::spawn_sandbox_background_tasks(&sandbox_router, &session_metadata)?;

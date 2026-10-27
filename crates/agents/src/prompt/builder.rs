@@ -14,7 +14,7 @@ use {
                 PromptBuildOutput, PromptRuntimeContext,
             },
         },
-        tool_registry::{ToolCatalogEntry, ToolRegistry},
+        tool_registry::{ToolCatalogEntry, ToolRegistry, ToolSchemaDefaults},
     },
     chelix_config::{AgentConfig, DEFAULT_SOUL, UserProfile},
     chelix_skills::types::SkillMetadata,
@@ -64,11 +64,13 @@ const MINIMAL_GUIDELINES: &str = concat!(
 /// Build the system prompt for an agent run, including available tools.
 pub fn build_system_prompt(
     tools: &ToolRegistry,
+    defaults: &ToolSchemaDefaults,
     native_tools: bool,
     project_context: Option<&str>,
 ) -> String {
     build_system_prompt_with_session_runtime(
         tools,
+        defaults,
         native_tools,
         project_context,
         &[],
@@ -87,6 +89,7 @@ pub fn build_system_prompt(
 /// Build the system prompt with explicit runtime context.
 pub fn build_system_prompt_with_session_runtime(
     tools: &ToolRegistry,
+    defaults: &ToolSchemaDefaults,
     native_tools: bool,
     project_context: Option<&str>,
     skills: &[SkillMetadata],
@@ -102,6 +105,7 @@ pub fn build_system_prompt_with_session_runtime(
 ) -> String {
     build_system_prompt_with_session_runtime_details(
         tools,
+        defaults,
         native_tools,
         project_context,
         skills,
@@ -122,6 +126,7 @@ pub fn build_system_prompt_with_session_runtime(
 /// Build the system prompt with explicit runtime context and metadata.
 pub fn build_system_prompt_with_session_runtime_details(
     tools: &ToolRegistry,
+    defaults: &ToolSchemaDefaults,
     native_tools: bool,
     project_context: Option<&str>,
     skills: &[SkillMetadata],
@@ -138,6 +143,7 @@ pub fn build_system_prompt_with_session_runtime_details(
 ) -> PromptBuildOutput {
     build_system_prompt_full(
         tools,
+        Some(defaults),
         native_tools,
         project_context,
         skills,
@@ -200,6 +206,7 @@ pub fn build_system_prompt_minimal_runtime_details(
 ) -> PromptBuildOutput {
     build_system_prompt_full(
         &ToolRegistry::new(),
+        None,
         true,
         project_context,
         &[],
@@ -260,6 +267,7 @@ pub fn runtime_datetime_message(runtime_context: Option<&PromptRuntimeContext>) 
 
 fn build_system_prompt_full(
     tools: &ToolRegistry,
+    defaults: Option<&ToolSchemaDefaults>,
     native_tools: bool,
     project_context: Option<&str>,
     skills: &[SkillMetadata],
@@ -283,11 +291,9 @@ fn build_system_prompt_full(
     } else {
         Vec::new()
     };
-    let tool_schemas = if include_tools {
-        tools.list_schemas()
-    } else {
-        Vec::new()
-    };
+    let tool_schemas = defaults
+        .map(|defaults| tools.list_schemas(defaults))
+        .unwrap_or_default();
     let mut prompt = String::from(if include_tools {
         "You are a helpful assistant. You can use tools when needed.\n\n"
     } else {

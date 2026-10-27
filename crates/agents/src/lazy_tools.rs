@@ -16,7 +16,7 @@ use std::{
 
 use {anyhow::Result, async_trait::async_trait, tracing::debug};
 
-use crate::tool_registry::{AgentTool, LazyVisibleTools, ToolRegistry};
+use crate::tool_registry::{AgentTool, LazyVisibleTools, ToolRegistry, ToolSchemaDefaults};
 
 /// Reserved control-plane meta-tool name. A user or MCP tool may not use it.
 pub use chelix_common::tool_disclosure::GET_TOOL_NAME;
@@ -79,9 +79,12 @@ impl GetTool {
     /// Build the reveal-only snapshot from the source registry's public
     /// schemas, plus the `get_tool` schema itself. Called before the meta-tool
     /// is registered so the snapshot reflects the underlying tools only.
-    fn build_entries(registry: &ToolRegistry) -> Vec<ToolSchemaEntry> {
+    fn build_entries(
+        registry: &ToolRegistry,
+        defaults: &ToolSchemaDefaults,
+    ) -> Vec<ToolSchemaEntry> {
         let mut entries: Vec<ToolSchemaEntry> = registry
-            .list_schemas()
+            .list_schemas(defaults)
             .into_iter()
             .filter_map(ToolSchemaEntry::from_schema)
             .collect();
@@ -179,8 +182,11 @@ impl AgentTool for GetTool {
 /// Fails if the source registry already contains a tool named `get_tool`: the
 /// reserved control-plane name must not be shadowed, and the existing tool is
 /// left untouched.
-pub fn wrap_registry_lazy(registry: ToolRegistry) -> Result<ToolRegistry> {
-    wrap_registry_lazy_with_visible(registry, std::iter::empty::<String>())
+pub fn wrap_registry_lazy(
+    registry: ToolRegistry,
+    defaults: &ToolSchemaDefaults,
+) -> Result<ToolRegistry> {
+    wrap_registry_lazy_with_visible(registry, defaults, std::iter::empty::<String>())
 }
 
 /// Wrap a full tool registry for lazy mode and restore already-visible schemas.
@@ -189,6 +195,7 @@ pub fn wrap_registry_lazy(registry: ToolRegistry) -> Result<ToolRegistry> {
 /// real public tools become visible; `get_tool` is always visible.
 pub fn wrap_registry_lazy_with_visible<I, S>(
     mut registry: ToolRegistry,
+    defaults: &ToolSchemaDefaults,
     visible_names: I,
 ) -> Result<ToolRegistry>
 where
@@ -203,7 +210,7 @@ where
 
     // Snapshot public schemas and public names before the lazy gate is set,
     // while `list_schemas()`/`list_names()` still return the full set.
-    let entries = Arc::new(GetTool::build_entries(&registry));
+    let entries = Arc::new(GetTool::build_entries(&registry, defaults));
     let public_names: HashSet<String> = registry.list_names().into_iter().collect();
 
     let mut visible_set = HashSet::from([GET_TOOL_NAME.to_string()]);
@@ -224,6 +231,13 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn schema_defaults() -> ToolSchemaDefaults {
+        let tools = chelix_config::schema::ToolsConfig::default();
+        ToolSchemaDefaults {
+            max_tool_result_bytes: tools.max_tool_result_bytes,
+            execute_command_default_timeout_secs: tools.execute_command.default_timeout_secs,
+        }
+    }
 
     struct DummyTool {
         tool_name: String,
@@ -289,7 +303,7 @@ mod tests {
     #[test]
     fn wrap_registry_lazy_catalog_lists_public_tools_plus_get_tool() {
         let full = build_full_registry();
-        let lazy = wrap_registry_lazy(full).unwrap();
+        let lazy = wrap_registry_lazy(full, &schema_defaults()).unwrap();
 
         let names: Vec<String> = lazy
             .list_catalog()
@@ -308,20 +322,20 @@ mod tests {
     #[test]
     fn wrap_registry_lazy_schemas_contain_only_get_tool() {
         let full = build_full_registry();
-        let lazy = wrap_registry_lazy(full).unwrap();
+        let lazy = wrap_registry_lazy(full, &schema_defaults()).unwrap();
 
         let names = lazy.list_names();
         assert_eq!(names, vec![GET_TOOL_NAME.to_string()]);
-        assert_eq!(lazy.list_schemas().len(), 1);
+        assert_eq!(lazy.list_schemas(&schema_defaults()).len(), 1);
     }
 
     #[tokio::test]
     async fn revealing_a_tool_adds_only_it_and_get_tool_to_schemas() {
         let full = build_full_registry();
-        let lazy = wrap_registry_lazy(full).unwrap();
+        let lazy = wrap_registry_lazy(full, &schema_defaults()).unwrap();
 
         // Before schema reveal, only get_tool is visible, but allowed tools are executable.
-        assert_eq!(lazy.list_schemas().len(), 1);
+        assert_eq!(lazy.list_schemas(&schema_defaults()).len(), 1);
         assert!(lazy.get("execute_command").is_some());
 
         let get_tool = lazy.get(GET_TOOL_NAME).unwrap();
@@ -347,7 +361,9 @@ mod tests {
         registry.register(Box::new(DummyTool::new(GET_TOOL_NAME, "user tool")));
         registry.register(Box::new(DummyTool::new("ripgrep", "Search files")));
 
-        let err = wrap_registry_lazy(registry).err().unwrap();
+        let err = wrap_registry_lazy(registry, &schema_defaults())
+            .err()
+            .unwrap();
         assert!(err.to_string().contains(GET_TOOL_NAME));
     }
 
@@ -356,13 +372,19 @@ mod tests {
         let mut registry = ToolRegistry::new();
         registry.register(Box::new(DummyTool::new(GET_TOOL_NAME, "user tool")));
 
-        assert!(wrap_registry_lazy_with_visible(registry, ["ripgrep".to_string()]).is_err());
+        assert!(
+            wrap_registry_lazy_with_visible(registry, &schema_defaults(), ["ripgrep".to_string()])
+                .is_err()
+        );
     }
 
     #[test]
     fn wrap_registry_lazy_with_visible_restores_schema_visibility() {
         let full = build_full_registry();
-        let lazy = wrap_registry_lazy_with_visible(full, ["execute_command".to_string()]).unwrap();
+        let lazy = wrap_registry_lazy_with_visible(full, &schema_defaults(), [
+            "execute_command".to_string()
+        ])
+        .unwrap();
 
         let names = lazy.list_names();
         assert_eq!(names, vec![
@@ -375,7 +397,7 @@ mod tests {
     #[test]
     fn wrap_registry_lazy_with_visible_ignores_unknown_names() {
         let registry = build_full_registry();
-        let lazy = wrap_registry_lazy_with_visible(registry, [
+        let lazy = wrap_registry_lazy_with_visible(registry, &schema_defaults(), [
             "execute_command".to_string(),
             "does_not_exist".to_string(),
         ])
@@ -393,7 +415,7 @@ mod tests {
     #[test]
     fn get_tool_parameters_schema_is_strict_single_name() {
         let full = build_full_registry();
-        let lazy = wrap_registry_lazy(full).unwrap();
+        let lazy = wrap_registry_lazy(full, &schema_defaults()).unwrap();
         let get_tool = lazy.get(GET_TOOL_NAME).unwrap();
 
         let schema = get_tool.parameters_schema();
@@ -407,7 +429,7 @@ mod tests {
     #[tokio::test]
     async fn get_tool_reveals_known_name() {
         let full = build_full_registry();
-        let lazy = wrap_registry_lazy(full).unwrap();
+        let lazy = wrap_registry_lazy(full, &schema_defaults()).unwrap();
         let get_tool = lazy.get(GET_TOOL_NAME).unwrap();
 
         let result = get_tool
@@ -428,7 +450,7 @@ mod tests {
     #[tokio::test]
     async fn get_tool_trims_external_whitespace_before_exact_match() {
         let full = build_full_registry();
-        let lazy = wrap_registry_lazy(full).unwrap();
+        let lazy = wrap_registry_lazy(full, &schema_defaults()).unwrap();
         let get_tool = lazy.get(GET_TOOL_NAME).unwrap();
 
         let result = get_tool
@@ -442,7 +464,7 @@ mod tests {
     #[tokio::test]
     async fn get_tool_returns_own_schema_for_self_lookup() {
         let full = build_full_registry();
-        let lazy = wrap_registry_lazy(full).unwrap();
+        let lazy = wrap_registry_lazy(full, &schema_defaults()).unwrap();
         let get_tool = lazy.get(GET_TOOL_NAME).unwrap();
 
         let result = get_tool
@@ -457,7 +479,7 @@ mod tests {
     #[tokio::test]
     async fn get_tool_rejects_empty_name() {
         let full = build_full_registry();
-        let lazy = wrap_registry_lazy(full).unwrap();
+        let lazy = wrap_registry_lazy(full, &schema_defaults()).unwrap();
         let get_tool = lazy.get(GET_TOOL_NAME).unwrap();
 
         assert!(
@@ -471,7 +493,7 @@ mod tests {
     #[tokio::test]
     async fn get_tool_rejects_missing_name() {
         let full = build_full_registry();
-        let lazy = wrap_registry_lazy(full).unwrap();
+        let lazy = wrap_registry_lazy(full, &schema_defaults()).unwrap();
         let get_tool = lazy.get(GET_TOOL_NAME).unwrap();
 
         assert!(get_tool.execute(serde_json::json!({})).await.is_err());
@@ -480,7 +502,7 @@ mod tests {
     #[tokio::test]
     async fn get_tool_rejects_non_string_name() {
         let full = build_full_registry();
-        let lazy = wrap_registry_lazy(full).unwrap();
+        let lazy = wrap_registry_lazy(full, &schema_defaults()).unwrap();
         let get_tool = lazy.get(GET_TOOL_NAME).unwrap();
 
         assert!(
@@ -494,7 +516,7 @@ mod tests {
     #[tokio::test]
     async fn get_tool_rejects_extra_field() {
         let full = build_full_registry();
-        let lazy = wrap_registry_lazy(full).unwrap();
+        let lazy = wrap_registry_lazy(full, &schema_defaults()).unwrap();
         let get_tool = lazy.get(GET_TOOL_NAME).unwrap();
 
         let err = get_tool
@@ -507,7 +529,7 @@ mod tests {
     #[tokio::test]
     async fn get_tool_ignores_runtime_injected_context_params() {
         let full = build_full_registry();
-        let lazy = wrap_registry_lazy(full).unwrap();
+        let lazy = wrap_registry_lazy(full, &schema_defaults()).unwrap();
         let get_tool = lazy.get(GET_TOOL_NAME).unwrap();
 
         // The runner merges tool_context into every tool call's params. These
@@ -530,7 +552,7 @@ mod tests {
     #[tokio::test]
     async fn get_tool_still_rejects_model_field_alongside_context_params() {
         let full = build_full_registry();
-        let lazy = wrap_registry_lazy(full).unwrap();
+        let lazy = wrap_registry_lazy(full, &schema_defaults()).unwrap();
         let get_tool = lazy.get(GET_TOOL_NAME).unwrap();
 
         // Service params are tolerated, but a stray model-supplied field is not.
@@ -548,7 +570,7 @@ mod tests {
     #[tokio::test]
     async fn get_tool_context_params_alone_still_require_name() {
         let full = build_full_registry();
-        let lazy = wrap_registry_lazy(full).unwrap();
+        let lazy = wrap_registry_lazy(full, &schema_defaults()).unwrap();
         let get_tool = lazy.get(GET_TOOL_NAME).unwrap();
 
         assert!(
@@ -562,7 +584,7 @@ mod tests {
     #[tokio::test]
     async fn get_tool_query_only_is_rejected() {
         let full = build_full_registry();
-        let lazy = wrap_registry_lazy(full).unwrap();
+        let lazy = wrap_registry_lazy(full, &schema_defaults()).unwrap();
         let get_tool = lazy.get(GET_TOOL_NAME).unwrap();
 
         assert!(
@@ -576,7 +598,7 @@ mod tests {
     #[tokio::test]
     async fn get_tool_unknown_name_is_structured_without_suggestions() {
         let full = build_full_registry();
-        let lazy = wrap_registry_lazy(full).unwrap();
+        let lazy = wrap_registry_lazy(full, &schema_defaults()).unwrap();
         let get_tool = lazy.get(GET_TOOL_NAME).unwrap();
 
         let result = get_tool
@@ -600,7 +622,7 @@ mod tests {
     #[tokio::test]
     async fn allowed_tool_is_executable_before_schema_reveal() {
         let full = build_full_registry();
-        let lazy = wrap_registry_lazy(full).unwrap();
+        let lazy = wrap_registry_lazy(full, &schema_defaults()).unwrap();
 
         let command_tool = lazy.get("execute_command").unwrap();
         let result = command_tool

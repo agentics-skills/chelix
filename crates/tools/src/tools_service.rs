@@ -1,6 +1,7 @@
 use std::{path::PathBuf, process::Stdio, sync::Arc, time::Duration};
 
 use {
+    chelix_config_service::ConfigService,
     chelix_protocol::{
         CreateToolsServiceTerminalRequest, CreateToolsServiceTerminalResponse, EditFileRequest,
         EditFileResponse, ExecuteCommandRequest, ExecuteCommandResponse, ListDirectoryRequest,
@@ -88,7 +89,10 @@ pub struct CreatedSessionTerminal {
 }
 
 impl ManagedToolsService {
-    pub async fn start(router: Arc<SandboxRouter>) -> Result<Arc<Self>> {
+    pub async fn start(
+        router: Arc<SandboxRouter>,
+        config_service: ConfigService,
+    ) -> Result<Arc<Self>> {
         let client = reqwest::Client::builder()
             .connect_timeout(Duration::from_secs(2))
             .build()?;
@@ -99,12 +103,8 @@ impl ManagedToolsService {
             );
             ManagedToolsRuntime::Sandbox
         } else {
-            let terminal_size = router
-                .config()
-                .terminal_size
-                .ok_or_else(|| Error::message("tools.execute_command.terminal_size is required"))?;
             ManagedToolsRuntime::Host(Box::new(
-                HostToolsService::start(&client, terminal_size).await?,
+                HostToolsService::start(&client, config_service).await?,
             ))
         };
         Ok(Arc::new(Self {
@@ -670,13 +670,25 @@ struct HostToolsService {
 }
 
 impl HostToolsService {
-    async fn start(
-        client: &reqwest::Client,
-        terminal_size: chelix_config::schema::TerminalSizeConfig,
-    ) -> Result<Self> {
+    async fn start(client: &reqwest::Client, config_service: ConfigService) -> Result<Self> {
         let binary = resolve_host_binary()?;
+        Self::start_with_binary(client, binary, config_service).await
+    }
+
+    async fn start_with_binary(
+        client: &reqwest::Client,
+        binary: PathBuf,
+        config_service: ConfigService,
+    ) -> Result<Self> {
         let working_dir = chelix_config::home_dir()
             .ok_or_else(|| Error::message("cannot resolve host tools service working directory"))?;
+        let terminal_size = config_service
+            .read(|config| config.tools.execute_command.terminal_size)
+            .await
+            .map_err(|error| {
+                Error::external("failed to read tools.execute_command.terminal_size", error)
+            })?
+            .ok_or_else(|| Error::message("tools.execute_command.terminal_size is required"))?;
         let mut child = Command::new(&binary)
             .arg("--shutdown-on-stdin-eof")
             .arg("--working-dir")
@@ -953,8 +965,105 @@ mod tests {
         )
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn host_service_start_reads_current_terminal_size() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let fixture =
+            chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+                .await
+                .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
+        let mut server = mockito::Server::new_async().await;
+        let health = server
+            .mock("GET", TOOLS_SERVICE_HEALTH_PATH)
+            .match_header("authorization", "Bearer host-token")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(format!(
+                "{{\"protocolVersion\":{TOOLS_SERVICE_PROTOCOL_VERSION}}}"
+            ))
+            .expect(2)
+            .create_async()
+            .await;
+        let port = server
+            .url()
+            .rsplit_once(':')
+            .unwrap_or_else(|| panic!("mock server has no port"))
+            .1
+            .to_string();
+        let directory =
+            tempfile::tempdir().unwrap_or_else(|error| panic!("tempdir failed: {error}"));
+        let binary = directory.path().join("tools-service");
+        std::fs::write(
+            &binary,
+            format!(
+                r#"#!/bin/sh
+count=0
+if [ -f "${{0}}.count" ]; then count=$(cat "${{0}}.count"); fi
+count=$((count + 1))
+printf '%s\n' "$count" > "${{0}}.count"
+printf '%s\n' "$@" > "${{0}}.${{count}}.args"
+printf '{{"protocolVersion":{TOOLS_SERVICE_PROTOCOL_VERSION},"port":{port},"token":"host-token"}}\n'
+cat
+"#
+            ),
+        )
+        .unwrap_or_else(|error| panic!("test binary write failed: {error}"));
+        std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755))
+            .unwrap_or_else(|error| panic!("test binary permissions failed: {error}"));
+        let client = reqwest::Client::new();
+        let error = match HostToolsService::start_with_binary(
+            &client,
+            binary.clone(),
+            fixture.service.clone(),
+        )
+        .await
+        {
+            Ok(_) => panic!("missing terminal size must refuse startup"),
+            Err(error) => error,
+        };
+        assert!(
+            error
+                .to_string()
+                .contains("tools.execute_command.terminal_size is required")
+        );
+        let mut services = Vec::new();
+        for (index, cols, rows) in [(1, 115, 58), (2, 140, 62)] {
+            fixture
+                .service
+                .update(move |config| {
+                    config.tools.execute_command.terminal_size =
+                        Some(chelix_config::schema::TerminalSizeConfig { cols, rows });
+                    Ok(())
+                })
+                .await
+                .unwrap_or_else(|error| panic!("config update failed: {error}"));
+            let service = HostToolsService::start_with_binary(
+                &client,
+                binary.clone(),
+                fixture.service.clone(),
+            )
+            .await
+            .unwrap_or_else(|error| panic!("host startup failed: {error}"));
+            let flags = std::fs::read_to_string(
+                directory.path().join(format!("tools-service.{index}.args")),
+            )
+            .unwrap_or_else(|error| panic!("flags read failed: {error}"));
+            assert!(flags.contains(&format!(
+                "--terminal-cols\n{cols}\n--terminal-rows\n{rows}\n"
+            )));
+            services.push(service);
+        }
+        health.assert_async().await;
+    }
+
     #[tokio::test]
     async fn sandbox_mode_contains_no_host_service() {
+        let fixture =
+            chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+                .await
+                .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
         let backend = Arc::new(RecoveringSandbox {
             endpoints: [
                 ToolsServiceEndpoint {
@@ -980,7 +1089,7 @@ mod tests {
             .unwrap_or_else(|error| panic!("test sandbox router failed: {error}")),
         );
 
-        let service = ManagedToolsService::start(router)
+        let service = ManagedToolsService::start(router, fixture.service.clone())
             .await
             .unwrap_or_else(|error| panic!("sandbox-only service startup failed: {error}"));
 

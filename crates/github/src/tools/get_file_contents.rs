@@ -199,7 +199,7 @@ impl AgentTool for GithubGetFileContentsTool {
 impl GithubGetFileContentsTool {
     async fn run(&self, params: Value) -> Result<String> {
         let input = parse_input(params)?;
-        self.client.require_token()?;
+        self.client.require_token().await?;
         let file = self.get_file(&input).await?.ok_or_else(|| {
             Error::message(
                 "Failed to retrieve file content from GitHub (not found or unsupported type)",
@@ -228,11 +228,20 @@ fn parse_input(params: Value) -> Result<GetFileContentsInput> {
 mod tests {
     use {super::*, secrecy::Secret};
 
-    fn tool(base_url: String, token: Option<&str>) -> GithubGetFileContentsTool {
-        GithubGetFileContentsTool::new(Arc::new(GitHubClient::for_test(
+    async fn tool(
+        base_url: String,
+        token: Option<&str>,
+    ) -> (
+        GithubGetFileContentsTool,
+        chelix_agents::test_support::ConfigFixture,
+    ) {
+        let fixture =
+            crate::test_support::fixture(token.map(|value| Secret::new(value.to_string()))).await;
+        let tool = GithubGetFileContentsTool::new(Arc::new(GitHubClient::for_test(
             base_url,
-            token.map(|value| Secret::new(value.to_string())),
-        )))
+            fixture.service.clone(),
+        )));
+        (tool, fixture)
     }
 
     fn file_body(content: &str) -> String {
@@ -250,9 +259,9 @@ mod tests {
         .to_string()
     }
 
-    #[test]
-    fn exposes_the_documented_description_and_a_strict_schema() {
-        let tool = tool("http://127.0.0.1:1".into(), None);
+    #[tokio::test]
+    async fn exposes_the_documented_description_and_a_strict_schema() {
+        let (tool, _fixture) = tool("http://127.0.0.1:1".into(), None).await;
 
         assert_eq!(tool.name(), "github_get_file_contents");
         assert_eq!(
@@ -316,7 +325,8 @@ mod tests {
             .create_async()
             .await;
 
-        let error = match tool(server.url(), None)
+        let (tool, _fixture) = tool(server.url(), None).await;
+        let error = match tool
             .execute(json!({ "owner": "o", "repo": "r", "path": "docs/README.md" }))
             .await
         {
@@ -345,7 +355,8 @@ mod tests {
             .create_async()
             .await;
 
-        let result = tool(server.url(), Some("pat-token"))
+        let (tool, _fixture) = tool(server.url(), Some("pat-token")).await;
+        let result = tool
             .execute(json!({
                 "owner": "o",
                 "repo": "r",
@@ -379,7 +390,8 @@ mod tests {
             .create_async()
             .await;
 
-        let result = tool(server.url(), Some("pat-token"))
+        let (tool, _fixture) = tool(server.url(), Some("pat-token")).await;
+        let result = tool
             .execute(json!({ "owner": "o", "repo": "r", "path": "docs/README.md" }))
             .await
             .unwrap_or_else(|error| panic!("execute failed: {error}"));
@@ -424,7 +436,8 @@ mod tests {
             .create_async()
             .await;
 
-        let error = match tool(server.url(), Some("pat-token"))
+        let (tool, _fixture) = tool(server.url(), Some("pat-token")).await;
+        let error = match tool
             .execute(json!({ "owner": "o", "repo": "r", "path": "docs" }))
             .await
         {
@@ -441,6 +454,8 @@ mod tests {
 
     #[tokio::test]
     async fn non_file_entry_types_are_reported_as_unsupported() {
+        let fixture =
+            crate::test_support::fixture(Some(Secret::new("pat-token".to_string()))).await;
         for entry_type in ["symlink", "submodule"] {
             let mut server = mockito::Server::new_async().await;
             let call = server
@@ -463,7 +478,11 @@ mod tests {
                 .create_async()
                 .await;
 
-            let error = match tool(server.url(), Some("pat-token"))
+            let tool = GithubGetFileContentsTool::new(Arc::new(GitHubClient::for_test(
+                server.url(),
+                fixture.service.clone(),
+            )));
+            let error = match tool
                 .execute(json!({ "owner": "o", "repo": "r", "path": "docs/link" }))
                 .await
             {
@@ -491,7 +510,8 @@ mod tests {
             .create_async()
             .await;
 
-        let error = match tool(server.url(), Some("pat-token"))
+        let (tool, _fixture) = tool(server.url(), Some("pat-token")).await;
+        let error = match tool
             .execute(json!({ "owner": "o", "repo": "r", "path": "docs/EMPTY.md" }))
             .await
         {
@@ -517,7 +537,8 @@ mod tests {
             .create_async()
             .await;
 
-        let error = match tool(server.url(), Some("pat-token"))
+        let (tool, _fixture) = tool(server.url(), Some("pat-token")).await;
+        let error = match tool
             .execute(json!({ "owner": "o", "repo": "r", "path": "docs/README.md" }))
             .await
         {
@@ -532,7 +553,7 @@ mod tests {
         call.assert_async().await;
     }
 
-    #[tokio::test(start_paused = true)]
+    #[tokio::test]
     async fn repeated_rate_limit_preserves_the_last_github_error() {
         let mut server = mockito::Server::new_async().await;
         let limited = server
@@ -551,7 +572,8 @@ mod tests {
             .create_async()
             .await;
 
-        let error = match tool(server.url(), Some("pat-token"))
+        let (tool, _fixture) = tool(server.url(), Some("pat-token")).await;
+        let error = match tool
             .execute(json!({ "owner": "o", "repo": "r", "path": "docs/README.md" }))
             .await
         {
@@ -578,7 +600,8 @@ mod tests {
             .create_async()
             .await;
 
-        let error = match tool(server.url(), Some("pat-token"))
+        let (tool, _fixture) = tool(server.url(), Some("pat-token")).await;
+        let error = match tool
             .execute(json!({ "owner": "o", "repo": "r", "path": "docs/README.md" }))
             .await
         {

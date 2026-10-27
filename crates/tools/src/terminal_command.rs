@@ -2,7 +2,8 @@ use std::{sync::Arc, time::Duration};
 
 use {
     async_trait::async_trait,
-    chelix_agents::tool_registry::AgentTool,
+    chelix_agents::tool_registry::{AgentTool, ToolSchemaDefaults},
+    chelix_config_service::ConfigService,
     chelix_protocol::{
         ExecuteCommandRequest, ExecuteCommandResponse, ReadTerminalOutputRequest,
         ReadTerminalOutputResponse, ToolsServiceEnvVar,
@@ -20,8 +21,6 @@ use crate::{
     params::without_null_params,
     tools_service::ManagedToolsService,
 };
-
-const DEFAULT_TIMEOUT_MILLIS: u64 = 300_000;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -57,7 +56,7 @@ struct ReadTerminalOutputParams {
 
 pub struct ExecuteCommandTool {
     service: Arc<ManagedToolsService>,
-    default_timeout: Duration,
+    config_service: ConfigService,
     rewrite_timeout: Option<Duration>,
     approval_manager: Option<Arc<ApprovalManager>>,
     broadcaster: Option<Arc<dyn crate::approval::ApprovalBroadcaster>>,
@@ -66,21 +65,15 @@ pub struct ExecuteCommandTool {
 
 impl ExecuteCommandTool {
     #[must_use]
-    pub fn new(service: Arc<ManagedToolsService>) -> Self {
+    pub fn new(service: Arc<ManagedToolsService>, config_service: ConfigService) -> Self {
         Self {
             service,
-            default_timeout: Duration::from_millis(DEFAULT_TIMEOUT_MILLIS),
+            config_service,
             rewrite_timeout: None,
             approval_manager: None,
             broadcaster: None,
             env_provider: None,
         }
-    }
-
-    #[must_use]
-    pub fn with_default_timeout(mut self, timeout: Duration) -> Self {
-        self.default_timeout = timeout;
-        self
     }
 
     #[must_use]
@@ -106,12 +99,20 @@ impl ExecuteCommandTool {
         self
     }
 
-    fn execute_parameters_schema(&self, max_tool_result_bytes: Option<usize>) -> serde_json::Value {
-        let timeout_default = self.default_timeout.as_millis();
-        let quick_result_default = match max_tool_result_bytes {
-            Some(max_tool_result_bytes) => max_tool_result_bytes.to_string(),
-            None => "max_tool_result_bytes".to_string(),
-        };
+    fn execute_parameters_schema(
+        &self,
+        defaults: Option<&ToolSchemaDefaults>,
+    ) -> serde_json::Value {
+        let timeout_default = defaults.map_or_else(
+            || "tools.execute_command.default_timeout_secs * 1000".to_string(),
+            |defaults| {
+                (u128::from(defaults.execute_command_default_timeout_secs) * 1000).to_string()
+            },
+        );
+        let quick_result_default = defaults.map_or_else(
+            || "max_tool_result_bytes".to_string(),
+            |defaults| defaults.max_tool_result_bytes.to_string(),
+        );
         serde_json::json!({
             "type": "object",
             "properties": {
@@ -203,16 +204,13 @@ impl ExecuteCommandTool {
             })
             .collect()
     }
+}
 
-    fn effective_timeout_millis(&self, requested_timeout: Option<u64>) -> Result<u64> {
-        let Some(requested_timeout) = requested_timeout else {
-            return duration_millis(self.default_timeout, "default command timeout");
-        };
-        let Some(rewrite_timeout) = self.rewrite_timeout else {
-            return Ok(requested_timeout);
-        };
-        Ok(requested_timeout.max(duration_millis(rewrite_timeout, "command timeout rewrite")?))
-    }
+fn effective_timeout_millis(requested: u64, rewrite: Option<Duration>) -> Result<u64> {
+    let Some(rewrite) = rewrite else {
+        return Ok(requested);
+    };
+    Ok(requested.max(duration_millis(rewrite, "command timeout rewrite")?))
 }
 
 fn duration_millis(duration: Duration, name: &str) -> Result<u64> {
@@ -287,11 +285,8 @@ impl AgentTool for ExecuteCommandTool {
         self.execute_parameters_schema(None)
     }
 
-    fn parameters_schema_with_max_tool_result_bytes(
-        &self,
-        max_tool_result_bytes: usize,
-    ) -> serde_json::Value {
-        self.execute_parameters_schema(Some(max_tool_result_bytes))
+    fn parameters_schema_with_defaults(&self, defaults: &ToolSchemaDefaults) -> serde_json::Value {
+        self.execute_parameters_schema(Some(defaults))
     }
 
     fn validate(&self, params: &serde_json::Value) -> anyhow::Result<()> {
@@ -318,7 +313,19 @@ impl AgentTool for ExecuteCommandTool {
             tracing::debug!("execute_command destructive_flag provided for approval UI context");
         }
         self.approval_check(&command, &session_key).await?;
-        let timeout_millis = self.effective_timeout_millis(params.response_timeout_ms)?;
+        let timeout_millis = match params.response_timeout_ms {
+            Some(requested) => effective_timeout_millis(requested, self.rewrite_timeout)?,
+            None => {
+                let default_timeout_secs = self
+                    .config_service
+                    .read(|config| config.tools.execute_command.default_timeout_secs)
+                    .await?;
+                duration_millis(
+                    Duration::from_secs(default_timeout_secs),
+                    "default command timeout",
+                )?
+            },
+        };
         let request = ExecuteCommandRequest {
             session_key: session_key.clone(),
             tool_call_id: params.tool_call_id,
@@ -539,6 +546,10 @@ mod tests {
 
     #[tokio::test]
     async fn execute_routes_exclusively_to_service() {
+        let fixture =
+            chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+                .await
+                .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
         let mut server = mockito::Server::new_async().await;
         let call = server
             .mock("POST", chelix_protocol::TOOLS_SERVICE_EXECUTE_COMMAND_PATH)
@@ -550,7 +561,7 @@ mod tests {
                 "customCwd": null,
                 "newTerminal": false,
                 "background": false,
-                "timeoutMillis": DEFAULT_TIMEOUT_MILLIS,
+                "timeoutMillis": 30_000,
                 "terminalId": null,
                 "env": []
             })))
@@ -562,7 +573,7 @@ mod tests {
             .await;
         let service = client(server.url(), "command-token");
         initialize_empty_environment(&service);
-        let tool = ExecuteCommandTool::new(service);
+        let tool = ExecuteCommandTool::new(service, fixture.service.clone());
 
         let result = tool
             .execute(serde_json::json!({
@@ -584,7 +595,56 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn execute_reads_updated_default_timeout_for_each_command() {
+        let fixture =
+            chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+                .await
+                .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
+        let mut server = mockito::Server::new_async().await;
+        let tool = ExecuteCommandTool::new(
+            client(server.url(), "command-token"),
+            fixture.service.clone(),
+        )
+        .with_rewrite_timeout(Some(Duration::from_secs(300)));
+
+        for timeout_secs in [7, 13] {
+            fixture
+                .service
+                .update(move |config| {
+                    config.tools.execute_command.default_timeout_secs = timeout_secs;
+                    Ok(())
+                })
+                .await
+                .unwrap_or_else(|error| panic!("config update failed: {error}"));
+            let call = server
+                .mock("POST", chelix_protocol::TOOLS_SERVICE_EXECUTE_COMMAND_PATH)
+                .match_header("authorization", "Bearer command-token")
+                .match_body(mockito::Matcher::PartialJson(serde_json::json!({
+                    "timeoutMillis": timeout_secs * 1000,
+                })))
+                .with_status(200)
+                .with_header("content-type", "application/json")
+                .with_body(execute_response("terminal", 0))
+                .expect(1)
+                .create_async()
+                .await;
+            tool.execute(serde_json::json!({
+                "command": "printf ok",
+                "_session_key": "session:test",
+                "_tool_call_id": format!("call-{timeout_secs}"),
+            }))
+            .await
+            .unwrap_or_else(|error| panic!("command failed: {error}"));
+            call.assert_async().await;
+        }
+    }
+
+    #[tokio::test]
     async fn execute_marks_only_completed_exit_code_one_as_error() {
+        let fixture =
+            chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+                .await
+                .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
         let mut server = mockito::Server::new_async().await;
         let exit_one_call = server
             .mock("POST", chelix_protocol::TOOLS_SERVICE_EXECUTE_COMMAND_PATH)
@@ -634,7 +694,7 @@ mod tests {
             .await;
         let service = client(server.url(), "command-token");
         initialize_empty_environment(&service);
-        let tool = ExecuteCommandTool::new(service);
+        let tool = ExecuteCommandTool::new(service, fixture.service.clone());
 
         let exit_one = tool
             .execute(serde_json::json!({
@@ -681,6 +741,10 @@ mod tests {
 
     #[tokio::test]
     async fn execute_treats_empty_routing_strings_as_omitted() {
+        let fixture =
+            chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+                .await
+                .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
         let mut server = mockito::Server::new_async().await;
         let call = server
             .mock("POST", chelix_protocol::TOOLS_SERVICE_EXECUTE_COMMAND_PATH)
@@ -696,7 +760,10 @@ mod tests {
             .expect(1)
             .create_async()
             .await;
-        let tool = ExecuteCommandTool::new(client(server.url(), "command-token"));
+        let tool = ExecuteCommandTool::new(
+            client(server.url(), "command-token"),
+            fixture.service.clone(),
+        );
 
         let result = tool
             .execute(serde_json::json!({
@@ -716,6 +783,10 @@ mod tests {
 
     #[tokio::test]
     async fn execute_preserves_non_empty_routing_values() {
+        let fixture =
+            chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+                .await
+                .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
         let mut server = mockito::Server::new_async().await;
         let call = server
             .mock("POST", chelix_protocol::TOOLS_SERVICE_EXECUTE_COMMAND_PATH)
@@ -731,7 +802,10 @@ mod tests {
             .expect(1)
             .create_async()
             .await;
-        let tool = ExecuteCommandTool::new(client(server.url(), "command-token"));
+        let tool = ExecuteCommandTool::new(
+            client(server.url(), "command-token"),
+            fixture.service.clone(),
+        );
 
         let result = tool
             .execute(serde_json::json!({
@@ -750,6 +824,10 @@ mod tests {
 
     #[tokio::test]
     async fn execute_propagates_new_terminal_id_conflict() {
+        let fixture =
+            chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+                .await
+                .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
         let mut server = mockito::Server::new_async().await;
         let call = server
             .mock("POST", chelix_protocol::TOOLS_SERVICE_EXECUTE_COMMAND_PATH)
@@ -764,7 +842,10 @@ mod tests {
             .expect(1)
             .create_async()
             .await;
-        let tool = ExecuteCommandTool::new(client(server.url(), "command-token"));
+        let tool = ExecuteCommandTool::new(
+            client(server.url(), "command-token"),
+            fixture.service.clone(),
+        );
 
         let error = match tool
             .execute(serde_json::json!({
@@ -789,7 +870,14 @@ mod tests {
 
     #[tokio::test]
     async fn execute_requires_internal_tool_call_id_before_transport() {
-        let tool = ExecuteCommandTool::new(client("http://127.0.0.1:1".into(), "unused"));
+        let fixture =
+            chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+                .await
+                .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
+        let tool = ExecuteCommandTool::new(
+            client("http://127.0.0.1:1".into(), "unused"),
+            fixture.service.clone(),
+        );
 
         let error = match tool.execute(serde_json::json!({ "command": "pwd" })).await {
             Ok(_) => panic!("expected missing internal tool call id error"),
@@ -803,21 +891,16 @@ mod tests {
     }
 
     #[test]
-    fn effective_timeout_uses_default_or_rewrites_explicit_value() {
-        let tool = ExecuteCommandTool::new(client("http://127.0.0.1:1".into(), "unused"))
-            .with_default_timeout(Duration::from_secs(60))
-            .with_rewrite_timeout(Some(Duration::from_secs(300)));
-
+    fn effective_timeout_rewrites_explicit_value() {
         for (requested, expected) in [
-            (None, 60_000),
-            (Some(10_000), 300_000),
-            (Some(100_000), 300_000),
-            (Some(300_000), 300_000),
-            (Some(600_000), 600_000),
-            (Some(7_200_000), 7_200_000),
+            (10_000, 300_000),
+            (100_000, 300_000),
+            (300_000, 300_000),
+            (600_000, 600_000),
+            (7_200_000, 7_200_000),
         ] {
             assert_eq!(
-                tool.effective_timeout_millis(requested)
+                effective_timeout_millis(requested, Some(Duration::from_secs(300)))
                     .unwrap_or_else(|error| panic!("timeout resolution failed: {error}")),
                 expected
             );
@@ -826,11 +909,8 @@ mod tests {
 
     #[test]
     fn effective_timeout_preserves_explicit_value_without_rewrite() {
-        let tool = ExecuteCommandTool::new(client("http://127.0.0.1:1".into(), "unused"))
-            .with_default_timeout(Duration::from_secs(60));
-
         assert_eq!(
-            tool.effective_timeout_millis(Some(10_000))
+            effective_timeout_millis(10_000, None)
                 .unwrap_or_else(|error| panic!("timeout resolution failed: {error}")),
             10_000
         );
@@ -881,6 +961,10 @@ mod tests {
 
     #[tokio::test]
     async fn agent_result_redacts_only_secret_environment_values() {
+        let fixture =
+            chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+                .await
+                .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
         let service = client("http://127.0.0.1:1".into(), "unused");
         service
             .set_env_provider(Arc::new(StaticEnvProvider {
@@ -898,7 +982,7 @@ mod tests {
                 ],
             }))
             .unwrap_or_else(|error| panic!("environment provider setup failed: {error}"));
-        let tool = ExecuteCommandTool::new(Arc::clone(&service));
+        let tool = ExecuteCommandTool::new(Arc::clone(&service), fixture.service.clone());
         let raw_result =
             serde_json::to_value(response("secret-value public-value", true, false, false))
                 .unwrap_or_else(|error| panic!("response encoding failed: {error}"));
@@ -942,26 +1026,55 @@ mod tests {
         }
     }
 
-    #[test]
-    fn execute_schema_requires_only_command() {
-        let schema = ExecuteCommandTool::new(client("http://127.0.0.1:1".into(), "unused"))
-            .parameters_schema();
+    #[tokio::test]
+    async fn execute_schema_requires_only_command() {
+        let fixture =
+            chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+                .await
+                .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
+        let schema = ExecuteCommandTool::new(
+            client("http://127.0.0.1:1".into(), "unused"),
+            fixture.service.clone(),
+        )
+        .parameters_schema();
 
         assert_eq!(schema["required"], serde_json::json!(["command"]));
         assert!(schema["properties"].get("node").is_none());
         assert_eq!(schema["additionalProperties"], false);
         assert_eq!(schema["properties"]["quickResultBytes"]["type"], "integer");
         assert_eq!(schema["properties"]["quickResultBytes"]["minimum"], 200);
+        assert!(
+            schema["properties"]["responseTimeoutMs"]["description"]
+                .as_str()
+                .unwrap_or_else(|| panic!("responseTimeoutMs description missing"))
+                .ends_with("(default tools.execute_command.default_timeout_secs * 1000)")
+        );
         assert_eq!(
             schema["properties"]["quickResultBytes"]["description"],
             "Return immediately in the result output; the rest will be written to a dump file and will be available for reading later or careful study due to large volume (default max_tool_result_bytes)"
         );
     }
 
-    #[test]
-    fn execute_schema_interpolates_current_max_tool_result_bytes() {
-        let tool = ExecuteCommandTool::new(client("http://127.0.0.1:1".into(), "unused"));
-        let schema_999 = tool.parameters_schema_with_max_tool_result_bytes(999);
+    #[tokio::test]
+    async fn execute_schema_interpolates_current_defaults() {
+        let fixture =
+            chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+                .await
+                .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
+        let tool = ExecuteCommandTool::new(
+            client("http://127.0.0.1:1".into(), "unused"),
+            fixture.service.clone(),
+        );
+        let schema_999 = tool.parameters_schema_with_defaults(&ToolSchemaDefaults {
+            max_tool_result_bytes: 999,
+            execute_command_default_timeout_secs: 7,
+        });
+        assert!(
+            schema_999["properties"]["responseTimeoutMs"]["description"]
+                .as_str()
+                .unwrap_or_else(|| panic!("responseTimeoutMs description missing"))
+                .ends_with("(default 7000)")
+        );
         let description_999 = schema_999["properties"]["quickResultBytes"]["description"]
             .as_str()
             .unwrap_or_else(|| panic!("quickResultBytes description missing"));
@@ -969,7 +1082,16 @@ mod tests {
             description_999.ends_with("(default 999)"),
             "{description_999}"
         );
-        let schema_12345 = tool.parameters_schema_with_max_tool_result_bytes(12345);
+        let schema_12345 = tool.parameters_schema_with_defaults(&ToolSchemaDefaults {
+            max_tool_result_bytes: 12345,
+            execute_command_default_timeout_secs: 13,
+        });
+        assert!(
+            schema_12345["properties"]["responseTimeoutMs"]["description"]
+                .as_str()
+                .unwrap_or_else(|| panic!("responseTimeoutMs description missing"))
+                .ends_with("(default 13000)")
+        );
         let description_12345 = schema_12345["properties"]["quickResultBytes"]["description"]
             .as_str()
             .unwrap_or_else(|| panic!("quickResultBytes description missing"));
@@ -979,9 +1101,16 @@ mod tests {
         );
     }
 
-    #[test]
-    fn quick_result_bytes_parses_and_rejects_invalid_values() {
-        let tool = ExecuteCommandTool::new(client("http://127.0.0.1:1".into(), "unused"));
+    #[tokio::test]
+    async fn quick_result_bytes_parses_and_rejects_invalid_values() {
+        let fixture =
+            chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+                .await
+                .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
+        let tool = ExecuteCommandTool::new(
+            client("http://127.0.0.1:1".into(), "unused"),
+            fixture.service.clone(),
+        );
 
         assert_eq!(tool.in_context_result_bytes(&serde_json::json!({})), None);
         assert_eq!(

@@ -312,6 +312,13 @@ file. Strings use `content.txt`; objects and arrays use `content.json` with
 `schema.json`. An agent can override the shared limit with
 `agents.<id>.max_tool_result_bytes`.
 
+The runner reads the current global and agent limits together from the configuration
+service after preparing the agent-facing result and applying its persistence hook,
+just before truncation. A tool-specific result limit takes precedence over the agent
+and global limits. Removing the running agent from the configuration makes this
+read fail explicitly. Schema generation reads the current effective result limit
+and command timeout together immediately before building the schemas.
+
 Tools must not truncate their own returned results. A tool can select its
 in-code truncation and persistence policies independently. Reading tools use
 both opt-outs: `read_file` already applies explicit line and byte bounds, so it
@@ -333,6 +340,12 @@ When the agent omits a timeout, `default_timeout_secs` is used without applying
 `rewrite_timeout_secs`. When the agent provides a timeout and
 `rewrite_timeout_secs` is configured, the physical timeout is the greater of
 the two values. Agent-provided command timeouts have no configured upper bound.
+
+The default is read from the configuration service after command approval, when
+the command's timeout is determined. The selected timeout applies to that command.
+`terminal_size` is read when constructing `--terminal-cols` and `--terminal-rows`
+for a new `chelix-tools-service` process. Existing instances retain their launch
+size.
 
 `approval_mode = "never"` executes commands without approval. `"always"`
 requests operator approval for every command. Any other value is rejected while
@@ -424,6 +437,12 @@ Docker `cp` into that rootfs fails explicitly. See
 
 ### `tools.context7` — Context7Config
 
+Context7, GitHub, Linkup, Exa, Google, and Felo read their credentials and
+`request_timeout_secs` together from the configuration service when forming each
+HTTP request, including retries. Google reads `engine_id` in that same selection.
+Each formed request retains those values through completion. Changing the Context7
+token list resets selection to its first token for the next formed request.
+
 | Key                   | Type            | Default | Description                                                        |
 | --------------------- | --------------- | ------- | ------------------------------------------------------------------ |
 | token                 | array of strings | `[]`    | Context7 API tokens in priority order. Missing or empty sends requests without authorization. |
@@ -459,6 +478,10 @@ Docker `cp` into that rootfs fails explicitly. See
 | request_timeout_secs | integer | `300` | Per-request HTTP timeout in seconds; minimum `1`. |
 
 ### `tools.duckduckgo` — DuckDuckGoConfig
+
+Each call reads its timeout immediately before establishing the deadline for the
+complete operation. That deadline remains fixed for the call; subsequent calls
+read the current configuration.
 
 | Key                  | Type    | Default | Description                                                                                                                   |
 | -------------------- | ------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |

@@ -15,7 +15,6 @@ mod skill_tools;
 mod stream_journal;
 mod streaming;
 mod tool_permission;
-mod tools_config_source;
 mod types;
 mod ui_history_ingress;
 
@@ -26,8 +25,6 @@ pub mod chat_error;
 pub mod config_validation;
 pub mod error;
 pub mod runtime;
-
-pub use tools_config_source::ToolsConfigSource;
 
 pub use {
     memory_tools::{AgentScopedMemoryWriter, MemoryForgetTool},

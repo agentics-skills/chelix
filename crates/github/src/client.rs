@@ -6,7 +6,7 @@
 
 use {
     reqwest::{StatusCode, header::HeaderValue},
-    secrecy::{ExposeSecret, Secret},
+    secrecy::ExposeSecret,
     std::time::Duration,
 };
 
@@ -127,50 +127,31 @@ impl GitHubResponse {
 pub struct GitHubClient {
     http: reqwest::Client,
     base_url: String,
-    token: Option<Secret<String>>,
-    request_timeout: Option<Duration>,
+    config_service: chelix_config_service::ConfigService,
     rate_limit: RateLimitCoordinator,
 }
 
 impl GitHubClient {
     /// Build a client for the public GitHub API.
     #[must_use]
-    pub fn new(token: Option<Secret<String>>, request_timeout_secs: u64) -> Self {
+    pub fn new(config_service: chelix_config_service::ConfigService) -> Self {
         Self {
             http: chelix_common::http_client::build_default_http_client(),
             base_url: GITHUB_API_BASE_URL.to_string(),
-            token,
-            request_timeout: Some(Duration::from_secs(request_timeout_secs)),
+            config_service,
             rate_limit: RateLimitCoordinator::default(),
         }
     }
 
-    /// Build a client pointed at a test double without a wall-clock deadline.
-    /// Paused-time retry tests use this constructor; timeout behaviour is tested
-    /// separately through `for_test_with_timeout`.
+    /// Build a client pointed at a test double.
     #[cfg(test)]
-    pub(crate) fn for_test(base_url: String, token: Option<Secret<String>>) -> Self {
-        Self {
-            http: chelix_common::http_client::build_default_http_client(),
-            base_url,
-            token,
-            request_timeout: None,
-            rate_limit: RateLimitCoordinator::default(),
-        }
-    }
-
-    #[cfg(test)]
-    fn for_test_with_timeout(
+    pub(crate) fn for_test(
         base_url: String,
-        token: Option<Secret<String>>,
-        request_timeout: Duration,
+        config_service: chelix_config_service::ConfigService,
     ) -> Self {
         Self {
-            http: chelix_common::http_client::build_default_http_client(),
             base_url,
-            token,
-            request_timeout: Some(request_timeout),
-            rate_limit: RateLimitCoordinator::default(),
+            ..Self::new(config_service)
         }
     }
 
@@ -181,17 +162,20 @@ impl GitHubClient {
     }
 
     /// Fail when a tool that requires authentication has no configured token.
-    pub fn require_token(&self) -> Result<()> {
-        if self.token.is_none() {
+    pub async fn require_token(&self) -> Result<()> {
+        if self
+            .config_service
+            .read(|config| config.tools.github.pat.clone())
+            .await?
+            .is_none()
+        {
             return Err(Error::MissingToken);
         }
         Ok(())
     }
 
-    fn map_request_error(&self, error: reqwest::Error) -> Error {
-        if error.is_timeout()
-            && let Some(request_timeout) = self.request_timeout
-        {
+    fn map_request_error(error: reqwest::Error, request_timeout: Duration) -> Error {
+        if error.is_timeout() {
             #[cfg(feature = "tracing")]
             tracing::warn!(
                 timeout = ?request_timeout,
@@ -207,6 +191,16 @@ impl GitHubClient {
     /// Perform one authenticated `GET` and read the complete response.
     pub async fn get(&self, url: &url::Url, options: RequestOptions) -> Result<GitHubResponse> {
         let rate_limit_permit = self.rate_limit.acquire().await;
+        let (token, request_timeout_secs) = self
+            .config_service
+            .read(|config| {
+                (
+                    config.tools.github.pat.clone(),
+                    config.tools.github.request_timeout_secs,
+                )
+            })
+            .await?;
+        let request_timeout = Duration::from_secs(request_timeout_secs);
         let mut request = self
             .http
             .get(url.as_str())
@@ -215,7 +209,7 @@ impl GitHubClient {
                 options.accept.unwrap_or(DEFAULT_ACCEPT),
             )
             .header("X-GitHub-Api-Version", GITHUB_API_VERSION);
-        if let Some(token) = &self.token {
+        if let Some(token) = &token {
             let mut authorization =
                 HeaderValue::try_from(format!("Bearer {}", token.expose_secret()))
                     .map_err(|error| Error::message(format!("invalid GitHub token: {error}")))?;
@@ -223,13 +217,11 @@ impl GitHubClient {
             request = request.header(reqwest::header::AUTHORIZATION, authorization);
         }
 
-        if let Some(request_timeout) = self.request_timeout {
-            request = request.timeout(request_timeout);
-        }
+        request = request.timeout(request_timeout);
         let raw = request
             .send()
             .await
-            .map_err(|error| self.map_request_error(error))?;
+            .map_err(|error| Self::map_request_error(error, request_timeout))?;
         let status = raw.status();
         let header = |name: &str| {
             raw.headers()
@@ -245,7 +237,7 @@ impl GitHubClient {
             body: raw
                 .text()
                 .await
-                .map_err(|error| self.map_request_error(error))?,
+                .map_err(|error| Self::map_request_error(error, request_timeout))?,
         };
         rate_limit_permit.complete(
             response.is_rate_limited(),
@@ -257,7 +249,7 @@ impl GitHubClient {
         }
 
         if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
-            if self.token.is_some() {
+            if token.is_some() {
                 return Err(Error::authorization(response.failure_message()));
             }
             return Err(Error::MissingToken);
@@ -269,7 +261,10 @@ impl GitHubClient {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {
+        super::*, crate::test_support::fixture, chelix_agents::test_support::ConfigFixture,
+        chelix_config::ChelixConfig, secrecy::Secret,
+    };
 
     async fn probe(
         server: &mockito::ServerGuard,
@@ -277,19 +272,17 @@ mod tests {
     ) -> Result<GitHubResponse> {
         let url = url::Url::parse(&format!("{}/probe", server.url()))
             .unwrap_or_else(|error| panic!("probe URL is invalid: {error}"));
-        GitHubClient::for_test(server.url(), None)
+        let fixture = fixture(None).await;
+        GitHubClient::for_test(server.url(), fixture.service.clone())
             .get(&url, options)
             .await
     }
 
-    #[test]
-    fn missing_token_is_reported_before_any_request() {
-        let error = match GitHubClient::new(
-            None,
-            chelix_config::schema::DEFAULT_GITHUB_REQUEST_TIMEOUT_SECS,
-        )
-        .require_token()
-        {
+    #[tokio::test]
+    async fn missing_token_is_reported_before_any_request() -> anyhow::Result<()> {
+        let fixture = fixture(None).await;
+        let client = GitHubClient::new(fixture.service.clone());
+        let error = match client.require_token().await {
             Ok(()) => panic!("expected a missing token error"),
             Err(error) => error,
         };
@@ -299,33 +292,146 @@ mod tests {
             error.to_string(),
             "GitHub personal access token is not configured: set `tools.github.pat` in chelix.toml"
         );
+        fixture
+            .service
+            .update(|config| {
+                config.tools.github.pat = Some(Secret::new("next".to_string()));
+                Ok(())
+            })
+            .await?;
+        client.require_token().await?;
+        fixture
+            .service
+            .update(|config| {
+                config.tools.github.pat = None;
+                Ok(())
+            })
+            .await?;
+        assert!(matches!(
+            client.require_token().await,
+            Err(Error::MissingToken)
+        ));
+        Ok(())
     }
 
     #[tokio::test]
-    async fn authorization_failure_with_token_is_an_error() {
-        let mut server = mockito::Server::new_async().await;
-        let call = server
-            .mock("GET", "/probe")
-            .match_header("authorization", "Bearer pat-token")
-            .match_header("x-github-api-version", "2022-11-28")
-            .with_status(401)
-            .with_body("{\"message\":\"Bad credentials\"}")
-            .expect(1)
-            .create_async()
-            .await;
-        let url = url::Url::parse(&format!("{}/probe", server.url()))
-            .unwrap_or_else(|error| panic!("probe URL is invalid: {error}"));
-        let client =
-            GitHubClient::for_test(server.url(), Some(Secret::new("pat-token".to_string())));
+    async fn next_request_uses_updated_credentials_and_timeout_through_body_read()
+    -> anyhow::Result<()> {
+        use tokio::io::AsyncWriteExt;
 
-        let error = match client.get(&url, RequestOptions::default()).await {
-            Ok(_) => panic!("expected an authorization error"),
-            Err(error) => error,
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let base_url = format!("http://{}", listener.local_addr()?);
+        let (body_tx, body_rx) = tokio::sync::oneshot::channel();
+        let server = tokio::spawn(async move {
+            let (mut first, _) = listener.accept().await?;
+            let headers = crate::test_support::read_request(&mut first).await?;
+            assert!(headers.contains("Bearer initial\r\n"));
+            first
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok")
+                .await?;
+            drop(first);
+
+            let (mut second, _) = listener.accept().await?;
+            let headers = crate::test_support::read_request(&mut second).await?;
+            assert!(headers.contains("Bearer next\r\n"));
+            second
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\no")
+                .await?;
+            body_tx
+                .send(())
+                .map_err(|_| anyhow::anyhow!("body receiver dropped"))?;
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            Ok::<(), anyhow::Error>(())
+        });
+        let mut config = ChelixConfig::default();
+        config.tools.github.pat = Some(Secret::new("initial".to_string()));
+        config.tools.github.request_timeout_secs = 3;
+        let fixture = ConfigFixture::new(config).await?;
+        let client = GitHubClient::for_test(base_url.clone(), fixture.service.clone());
+        let url = url::Url::parse(&format!("{base_url}/probe"))?;
+        assert_eq!(
+            client.get(&url, RequestOptions::default()).await?.body(),
+            "ok"
+        );
+
+        fixture
+            .service
+            .update(|config| {
+                config.tools.github.pat = Some(Secret::new("next".to_string()));
+                config.tools.github.request_timeout_secs = 1;
+                Ok(())
+            })
+            .await?;
+        let update = async {
+            body_rx.await?;
+            fixture
+                .service
+                .update(|config| {
+                    config.tools.github.request_timeout_secs = 3;
+                    Ok(())
+                })
+                .await?;
+            Ok::<(), anyhow::Error>(())
         };
+        let pending = client.get(&url, RequestOptions::default());
+        tokio::pin!(pending);
+        tokio::select! {
+            biased;
+            result = &mut pending => panic!("request finished before config update: {result:?}"),
+            updated = update => updated?,
+        }
+        let result = pending.await;
+        let error = result
+            .err()
+            .unwrap_or_else(|| panic!("expected a body timeout"));
+        assert_eq!(error.to_string(), "GitHub request timed out after 1s");
+        server.abort();
+        let _ = server.await;
+        Ok(())
+    }
 
+    #[tokio::test]
+    async fn authorization_failure_uses_the_sent_token_after_config_update() -> anyhow::Result<()> {
+        use tokio::io::AsyncWriteExt;
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let base_url = format!("http://{}", listener.local_addr()?);
+        let fixture = fixture(Some(Secret::new("pat-token".to_string()))).await;
+        let service = fixture.service.clone();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await?;
+            let headers = crate::test_support::read_request(&mut socket).await?;
+            assert!(headers.contains("Bearer pat-token\r\n"));
+            assert!(
+                headers
+                    .lines()
+                    .any(|line| line.eq_ignore_ascii_case("x-github-api-version: 2022-11-28"))
+            );
+            service
+                .update(|config| {
+                    config.tools.github.pat = None;
+                    Ok(())
+                })
+                .await?;
+            let body = r#"{"message":"Bad credentials"}"#;
+            let response = format!(
+                "HTTP/1.1 401 Unauthorized\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).await?;
+            Ok::<(), anyhow::Error>(())
+        });
+        let client = GitHubClient::for_test(base_url.clone(), fixture.service.clone());
+        let url = url::Url::parse(&format!("{base_url}/probe"))?;
+        let error = client
+            .get(&url, RequestOptions::default())
+            .await
+            .err()
+            .unwrap_or_else(|| panic!("expected an authorization error"));
         assert!(matches!(error, Error::Authorization { .. }));
         assert!(error.to_string().contains("Bad credentials"));
-        call.assert_async().await;
+        server.await??;
+        Ok(())
     }
 
     #[tokio::test]
@@ -419,38 +525,65 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn timed_out_probe_reopens_the_shared_gate() {
+    async fn timed_out_probe_reopens_the_shared_gate() -> anyhow::Result<()> {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .unwrap_or_else(|error| panic!("test listener failed to bind: {error}"));
         let address = listener
             .local_addr()
             .unwrap_or_else(|error| panic!("test listener has no local address: {error}"));
+        let (received_tx, received_rx) = tokio::sync::oneshot::channel();
         let server = tokio::spawn(async move {
-            let (_socket, _) = listener
-                .accept()
-                .await
-                .unwrap_or_else(|error| panic!("test listener failed to accept: {error}"));
+            let (mut socket, _) = listener.accept().await?;
+            crate::test_support::read_request(&mut socket).await?;
+            received_tx
+                .send(())
+                .map_err(|_| anyhow::anyhow!("request receiver dropped"))?;
             tokio::time::sleep(Duration::from_secs(5)).await;
+            Ok::<(), anyhow::Error>(())
         });
         let base_url = format!("http://{address}");
-        let client =
-            GitHubClient::for_test_with_timeout(base_url.clone(), None, Duration::from_millis(50));
+        let mut config = ChelixConfig::default();
+        config.tools.github.request_timeout_secs = 1;
+        let fixture = ConfigFixture::new(config)
+            .await
+            .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
+        let client = GitHubClient::for_test(base_url.clone(), fixture.service.clone());
         client.rate_limit.acquire().await.complete(true, Some(0));
         let url = url::Url::parse(&format!("{base_url}/probe"))
             .unwrap_or_else(|error| panic!("probe URL is invalid: {error}"));
 
-        let error = match client.get(&url, RequestOptions::default()).await {
+        let update = async {
+            received_rx.await?;
+            fixture
+                .service
+                .update(|config| {
+                    config.tools.github.request_timeout_secs = 2;
+                    Ok(())
+                })
+                .await?;
+            Ok::<(), anyhow::Error>(())
+        };
+        let pending = client.get(&url, RequestOptions::default());
+        tokio::pin!(pending);
+        tokio::select! {
+            biased;
+            result = &mut pending => panic!("request finished before config update: {result:?}"),
+            updated = update => updated?,
+        }
+        let result = pending.await;
+        let error = match result {
             Ok(_) => panic!("expected a request timeout"),
             Err(error) => error,
         };
 
-        assert_eq!(error.to_string(), "GitHub request timed out after 50ms");
+        assert_eq!(error.to_string(), "GitHub request timed out after 1s");
         let permit = tokio::time::timeout(Duration::from_millis(50), client.rate_limit.acquire())
             .await
             .unwrap_or_else(|_| panic!("shared gate remained blocked after probe timeout"));
         permit.complete(false, None);
         server.abort();
         let _ = server.await;
+        Ok(())
     }
 }

@@ -292,6 +292,14 @@ wrote it. Spawn failures, stream read failures, and malformed JSON are tool
 errors. A non-truncated rg status other than 0 or 1 with no parsed JSONL
 record, and a non-truncated missing status, are tool errors.
 
+## Live search configuration
+
+Context7, GitHub, Linkup, Exa, Google, and Felo obtain credentials and HTTP timeout
+from one configuration-service selection when forming each request, including
+retries. Google includes its search engine ID in that selection. A formed request
+uses its selected settings through completion. Context7 resets token selection to
+the first token when the configured list changes.
+
 ## Context7 tools
 
 The `context7_*` tools call the Context7 API through one shared client. API
@@ -312,8 +320,11 @@ error.
 
 A `429` response whose JSON field `error` is exactly `Quota Exceeded` rotates
 to the next configured token and retries the request before the shared cooldown.
-That rotation runs once for each token after the first (`N - 1`). The response
-that remains is handled by the rules below.
+A rotation cycle permits `N - 1` retries for `N` configured tokens. Changing the
+list resets selection to its first token. Each call that observes a new list
+generation restarts its retry budget at `N - 1` for the updated list, including
+calls running in parallel. Tokens shared by successive lists can be sent again
+after the reset. The response that remains is handled by the rules below.
 
 A `429` response with a numeric `Retry-After` header starts or extends one shared
 cooldown for all Context7 calls across concurrent sessions. The client adds a
@@ -425,7 +436,9 @@ One shared client serializes every invocation, spaces request starts, reuses an
 in-memory cookie jar, and retries one rate-limited response while retaining the
 serial queue permit. `tools.duckduckgo.request_timeout_secs` (default `300`,
 minimum `1`) bounds the complete call, including queueing, request spacing,
-retry/backoff, HTTP work, and response parsing.
+retry/backoff, HTTP work, and response parsing. The timeout is read from the
+configuration service immediately before establishing the call's deadline. Each
+call retains that deadline through completion.
 
 The tool returns Markdown as a string and uses the default tool-result persistence
 and truncation policy. See [DuckDuckGo Search](duckduckgo-search.md) for the exact

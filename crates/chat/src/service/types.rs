@@ -373,8 +373,8 @@ pub struct LiveChatService {
     pub(in crate::service) skill_files: Arc<chelix_skills::skill_file::SkillFiles>,
     /// Live agent registry shared with agent CRUD and chat runs.
     pub(in crate::service) agents_config: Arc<RwLock<chelix_config::AgentsConfig>>,
-    /// Source used to reload `[tools]` before each new agent run.
-    pub(in crate::service) tools_config_source: crate::ToolsConfigSource,
+    /// Shared configuration service for run settings and schema defaults.
+    pub(in crate::service) config_service: chelix_config_service::ConfigService,
     /// Minimal wait signal for the current session execution. Never stores answers.
     pub(in crate::service) session_gates: Arc<super::session_gate::SessionGateRegistry>,
     /// Ephemeral operator permission waits for moderated tool calls.
@@ -399,10 +399,10 @@ pub(in crate::service) struct TestGate {
 async fn runtime_config_for_agent_run(
     base: &chelix_config::ChelixConfig,
     agents_config: &RwLock<chelix_config::AgentsConfig>,
-    tools_config_source: &crate::ToolsConfigSource,
+    config_service: &chelix_config_service::ConfigService,
 ) -> error::Result<chelix_config::ChelixConfig> {
-    let tools = tools_config_source
-        .load()
+    let tools = config_service
+        .read(|config| config.tools.clone())
         .await
         .map_err(|error| error::Error::message(format!("reload tools config: {error}")))?;
     let agents = agents_config.read().await.clone();
@@ -421,7 +421,7 @@ impl LiveChatService {
         queued_prompts: Arc<QueuedPrompts>,
         config: chelix_config::ChelixConfig,
         agents_config: Arc<RwLock<chelix_config::AgentsConfig>>,
-        tools_config_source: crate::ToolsConfigSource,
+        config_service: chelix_config_service::ConfigService,
         skill_files: Arc<chelix_skills::skill_file::SkillFiles>,
     ) -> Self {
         Self {
@@ -445,7 +445,7 @@ impl LiveChatService {
             config,
             skill_files,
             agents_config,
-            tools_config_source,
+            config_service,
             session_gates: super::session_gate::SessionGateRegistry::new(),
             tool_permissions: Arc::new(crate::tool_permission::ToolPermissionManager::new()),
             stop_gate: super::stop_gate::StopGate::new(),
@@ -468,7 +468,7 @@ impl LiveChatService {
         runtime_config_for_agent_run(
             &self.config,
             self.agents_config.as_ref(),
-            &self.tools_config_source,
+            &self.config_service,
         )
         .await
     }
@@ -516,7 +516,7 @@ impl LiveChatService {
         self.tool_registry
             .try_read()
             .map(|r| {
-                let schemas = r.list_schemas();
+                let schemas = r.list_names();
                 let has = !schemas.is_empty();
                 tracing::debug!(
                     tool_count = schemas.len(),
@@ -744,14 +744,23 @@ impl LiveChatService {
                 memory_setup,
                 visible_tools,
                 &self.skill_files,
+                &self.config_service,
             )
+            .await
         }
         .map_err(|e| error::Error::message(e.to_string()))?;
 
         let prompt_limits = prompt_build_limits_from_config(&persona.config);
         let prompt_build = if tools_enabled {
+            let defaults = chelix_agents::tool_registry::ToolSchemaDefaults::read(
+                &self.config_service,
+                &agent_id,
+            )
+            .await
+            .map_err(error::Error::message)?;
             build_system_prompt_with_session_runtime_details(
                 &filtered_registry,
+                &defaults,
                 native_tools,
                 project_context.as_deref(),
                 &discovered_skills,
@@ -783,7 +792,13 @@ impl LiveChatService {
         };
 
         let tools = if native_tools {
-            filtered_registry.list_schemas()
+            let defaults = chelix_agents::tool_registry::ToolSchemaDefaults::read(
+                &self.config_service,
+                &agent_id,
+            )
+            .await
+            .map_err(error::Error::message)?;
+            filtered_registry.list_schemas(&defaults)
         } else {
             Vec::new()
         };
@@ -834,8 +849,10 @@ mod tests {
         );
         let live = RwLock::new(initial);
         let base = chelix_config::ChelixConfig::default();
-        let tools =
-            crate::ToolsConfigSource::snapshot(chelix_config::schema::ToolsConfig::default());
+        let fixture = chelix_agents::test_support::ConfigFixture::new(base.clone())
+            .await
+            .map_err(crate::error::Error::message)?;
+        let tools = fixture.service.clone();
 
         let first = runtime_config_for_agent_run(&base, &live, &tools).await?;
         assert!(first.agents.get("main").is_some());

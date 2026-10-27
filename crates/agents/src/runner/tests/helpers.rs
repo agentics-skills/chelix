@@ -43,10 +43,29 @@ pub(super) const TEST_CONTEXT_WINDOW: u32 = 128_000;
 pub(super) const TEST_MAX_INPUT_TOKENS: u32 = 96_000;
 pub(super) const TEST_MAX_OUTPUT_TOKENS: u32 = 32_000;
 
+pub(super) fn test_config() -> chelix_config::ChelixConfig {
+    let mut config = chelix_config::ChelixConfig::default();
+    config.agents.default = "main".to_owned();
+    config.agents.entries.insert(
+        "main".to_owned(),
+        chelix_config::AgentConfig::new(
+            "Main",
+            "test::model",
+            chelix_config::schema::ReasoningEffort::from("off"),
+        ),
+    );
+    config
+}
+
+pub(super) async fn test_config_fixture() -> crate::test_support::ConfigFixture {
+    crate::test_support::ConfigFixture::new(test_config())
+        .await
+        .unwrap()
+}
+
 pub(super) fn test_agent_loop_limits() -> AgentLoopLimits {
     AgentLoopLimits {
         max_tools_threshold: chelix_config::schema::DEFAULT_MAX_TOOLS_THRESHOLD,
-        max_tool_result_bytes: None,
         automatic_checkpointing: false,
         resume_from_history: false,
         resume_after_checkpoint: false,
@@ -54,6 +73,7 @@ pub(super) fn test_agent_loop_limits() -> AgentLoopLimits {
 }
 
 pub(super) async fn run_agent_loop(
+    config_service: &chelix_config_service::ConfigService,
     provider: Arc<dyn LlmProvider>,
     tools: &ToolRegistry,
     system_prompt: &str,
@@ -66,6 +86,8 @@ pub(super) async fn run_agent_loop(
         provider,
         tools,
         &tools_config,
+        config_service,
+        "main",
         system_prompt,
         user_content,
         on_event,
@@ -84,6 +106,7 @@ pub(super) async fn run_agent_loop(
 }
 
 pub(super) async fn run_agent_loop_with_tool_lifecycle(
+    config_service: &chelix_config_service::ConfigService,
     provider: Arc<dyn LlmProvider>,
     tools: &ToolRegistry,
     system_prompt: &str,
@@ -97,6 +120,8 @@ pub(super) async fn run_agent_loop_with_tool_lifecycle(
         provider,
         tools,
         &tools_config,
+        config_service,
+        "main",
         system_prompt,
         user_content,
         on_event,
@@ -125,6 +150,7 @@ pub(super) fn recording_tool_lifecycle(
 }
 
 pub(super) async fn run_agent_loop_with_context(
+    config_service: &chelix_config_service::ConfigService,
     provider: Arc<dyn LlmProvider>,
     tools: &ToolRegistry,
     system_prompt: &str,
@@ -140,6 +166,8 @@ pub(super) async fn run_agent_loop_with_context(
         provider,
         tools,
         &tools_config,
+        config_service,
+        "main",
         system_prompt,
         user_content,
         on_event,
@@ -158,6 +186,7 @@ pub(super) async fn run_agent_loop_with_context(
 }
 
 pub(super) async fn run_agent_loop_with_context_and_tool_lifecycle(
+    config_service: &chelix_config_service::ConfigService,
     provider: Arc<dyn LlmProvider>,
     tools: &ToolRegistry,
     system_prompt: &str,
@@ -174,6 +203,8 @@ pub(super) async fn run_agent_loop_with_context_and_tool_lifecycle(
         provider,
         tools,
         &tools_config,
+        config_service,
+        "main",
         system_prompt,
         user_content,
         on_event,
@@ -192,6 +223,7 @@ pub(super) async fn run_agent_loop_with_context_and_tool_lifecycle(
 }
 
 pub(super) async fn run_agent_loop_with_context_and_limits(
+    config_service: &chelix_config_service::ConfigService,
     provider: Arc<dyn LlmProvider>,
     tools: &ToolRegistry,
     system_prompt: &str,
@@ -209,6 +241,8 @@ pub(super) async fn run_agent_loop_with_context_and_limits(
         provider,
         tools,
         &tools_config,
+        config_service,
+        "main",
         system_prompt,
         user_content,
         on_event,
@@ -227,6 +261,7 @@ pub(super) async fn run_agent_loop_with_context_and_limits(
 }
 
 pub(super) async fn run_agent_loop_with_context_lifecycle_and_limits(
+    config_service: &chelix_config_service::ConfigService,
     provider: Arc<dyn LlmProvider>,
     tools: &ToolRegistry,
     system_prompt: &str,
@@ -244,6 +279,8 @@ pub(super) async fn run_agent_loop_with_context_lifecycle_and_limits(
         provider,
         tools,
         &tools_config,
+        config_service,
+        "main",
         system_prompt,
         user_content,
         on_event,
@@ -262,6 +299,7 @@ pub(super) async fn run_agent_loop_with_context_lifecycle_and_limits(
 }
 
 pub(super) async fn run_agent_loop_streaming(
+    config_service: &chelix_config_service::ConfigService,
     provider: Arc<dyn LlmProvider>,
     tools: &ToolRegistry,
     system_prompt: &str,
@@ -274,6 +312,7 @@ pub(super) async fn run_agent_loop_streaming(
     steer_inbox: Option<super::super::SteerInbox>,
 ) -> Result<AgentRunResult, AgentRunError> {
     run_agent_loop_streaming_with_limits(
+        config_service,
         provider,
         tools,
         system_prompt,
@@ -290,6 +329,7 @@ pub(super) async fn run_agent_loop_streaming(
 }
 
 pub(super) async fn run_agent_loop_streaming_with_tool_lifecycle(
+    config_service: &chelix_config_service::ConfigService,
     provider: Arc<dyn LlmProvider>,
     tools: &ToolRegistry,
     system_prompt: &str,
@@ -308,6 +348,8 @@ pub(super) async fn run_agent_loop_streaming_with_tool_lifecycle(
         provider,
         tools,
         &tools_config,
+        config_service,
+        "main",
         system_prompt,
         user_content,
         on_event,
@@ -326,6 +368,7 @@ pub(super) async fn run_agent_loop_streaming_with_tool_lifecycle(
 }
 
 pub(super) async fn run_agent_loop_streaming_with_lifecycle_and_limits(
+    config_service: &chelix_config_service::ConfigService,
     provider: Arc<dyn LlmProvider>,
     tools: &ToolRegistry,
     system_prompt: &str,
@@ -345,6 +388,8 @@ pub(super) async fn run_agent_loop_streaming_with_lifecycle_and_limits(
         provider,
         tools,
         &tools_config,
+        config_service,
+        "main",
         system_prompt,
         user_content,
         on_event,
@@ -363,6 +408,7 @@ pub(super) async fn run_agent_loop_streaming_with_lifecycle_and_limits(
 }
 
 pub(super) async fn run_agent_loop_streaming_with_limits(
+    config_service: &chelix_config_service::ConfigService,
     provider: Arc<dyn LlmProvider>,
     tools: &ToolRegistry,
     system_prompt: &str,
@@ -381,6 +427,8 @@ pub(super) async fn run_agent_loop_streaming_with_limits(
         provider,
         tools,
         &tools_config,
+        config_service,
+        "main",
         system_prompt,
         user_content,
         on_event,

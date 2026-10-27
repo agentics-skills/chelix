@@ -385,25 +385,11 @@ impl LiveModelService {
 mod tests {
     use super::*;
 
-    struct ConfigFixture {
-        directory: tokio::sync::OwnedMutexGuard<Option<tempfile::TempDir>>,
-        service: chelix_config_service::ConfigService,
-    }
+    use chelix_agents::test_support::ConfigFixture;
 
-    impl ConfigFixture {
-        async fn new() -> Result<Self, ServiceError> {
-            static DIRECTORY: std::sync::OnceLock<
-                Arc<tokio::sync::Mutex<Option<tempfile::TempDir>>>,
-            > = std::sync::OnceLock::new();
-            let mut directory = DIRECTORY
-                .get_or_init(|| Arc::new(tokio::sync::Mutex::new(None)))
-                .clone()
-                .lock_owned()
-                .await;
-            let dir = tempfile::tempdir().map_err(ServiceError::message)?;
-            std::fs::write(
-                dir.path().join("chelix.toml"),
-                r#"
+    fn model_test_config() -> Result<chelix_config::ChelixConfig, ServiceError> {
+        chelix_config::parse_raw_config(
+            r#"
 [providers.test.models.model]
 enabled = false
 context_length = 100
@@ -415,35 +401,16 @@ tool_calling = false
 zeroDataRetentionEnabled = false
 reasoning_supported_efforts = ["off"]
 "#,
-            )
-            .map_err(ServiceError::message)?;
-            chelix_config::set_config_dir(dir.path().to_path_buf());
-            *directory = Some(dir);
-            let result =
-                chelix_config_service::ConfigService::open(Default::default(), Default::default())
-                    .await;
-            match result {
-                Ok(service) => Ok(Self { directory, service }),
-                Err(error) => {
-                    chelix_config::clear_config_dir();
-                    directory.take();
-                    Err(ServiceError::message(error))
-                },
-            }
-        }
+            std::path::Path::new("chelix.toml"),
+        )
+        .map_err(ServiceError::message)
     }
-
-    impl Drop for ConfigFixture {
-        fn drop(&mut self) {
-            chelix_config::clear_config_dir();
-            self.directory.take();
-        }
-    }
-
     #[tokio::test]
     async fn disabling_configured_agent_model_is_rejected_before_mutation()
     -> Result<(), ServiceError> {
-        let fixture = ConfigFixture::new().await?;
+        let fixture = ConfigFixture::new(model_test_config()?)
+            .await
+            .map_err(ServiceError::message)?;
         let mut agents = chelix_config::AgentsConfig {
             default: "main".to_string(),
             ..Default::default()
@@ -480,7 +447,9 @@ reasoning_supported_efforts = ["off"]
     #[tokio::test]
     async fn enabling_model_publishes_config_before_runtime_visibility() -> Result<(), ServiceError>
     {
-        let fixture = ConfigFixture::new().await?;
+        let fixture = ConfigFixture::new(model_test_config()?)
+            .await
+            .map_err(ServiceError::message)?;
         let disabled = Arc::new(RwLock::new(DisabledModelsStore::default()));
         disabled.write().await.disable("test::model");
         let service = LiveModelService::new(

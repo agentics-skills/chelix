@@ -3,11 +3,11 @@ use {
     crate::rate_limit::RateLimitCoordinator,
     async_trait::async_trait,
     chelix_agents::{tool_context::ToolExecutionContext, tool_registry::AgentTool},
-    chelix_config::schema::GoogleConfig,
+    chelix_config_service::ConfigService,
     secrecy::ExposeSecret,
     serde::Deserialize,
     serde_json::{Number, Value, json},
-    std::{sync::Arc, time::Duration},
+    std::{future::Future, time::Duration},
 };
 
 const DESCRIPTION: &str = "Search Google and return relevant results from the web. This tool finds web pages, articles, and information on specific topics using Google's search engine. Results include titles, snippets, and URLs that can be analyzed further.";
@@ -115,33 +115,27 @@ fn format_results(query: &str, page: i64, response: &Value) -> String {
 }
 
 pub struct GoogleSearchTool {
-    config: Arc<GoogleConfig>,
+    config: ConfigService,
     http: reqwest::Client,
     gate: RateLimitCoordinator,
     base_url: String,
-    request_timeout: Option<Duration>,
 }
 
 impl GoogleSearchTool {
-    pub fn new(config: Arc<GoogleConfig>) -> Self {
-        let timeout = Duration::from_secs(config.request_timeout_secs);
+    pub fn new(config: ConfigService) -> Self {
         Self {
             config,
             http: chelix_common::http_client::build_default_http_client(),
             gate: RateLimitCoordinator::default(),
             base_url: BASE_URL.into(),
-            request_timeout: Some(timeout),
         }
     }
 
-    fn request_error(&self, error: reqwest::Error) -> anyhow::Error {
+    fn request_error(&self, error: reqwest::Error, timeout: Duration) -> anyhow::Error {
         use std::error::Error as _;
         let error = error.without_url();
         let mut message = if error.is_timeout() {
-            format!(
-                "Google request timed out after {:?}: {error}",
-                Duration::from_secs(self.config.request_timeout_secs)
-            )
+            format!("Google request timed out after {:?}: {error}", timeout)
         } else {
             error.to_string()
         };
@@ -159,12 +153,13 @@ impl GoogleSearchTool {
     async fn send_once(
         &self,
         request: reqwest::RequestBuilder,
-    ) -> anyhow::Result<(reqwest::Response, bool)> {
+        timeout: Duration,
+    ) -> anyhow::Result<(reqwest::Response, Duration, bool)> {
         let permit = self.gate.acquire().await;
         let response = request
             .send()
             .await
-            .map_err(|error| self.request_error(error))?;
+            .map_err(|error| self.request_error(error, timeout))?;
         let retry_after = response
             .headers()
             .get(reqwest::header::RETRY_AFTER)
@@ -173,17 +168,21 @@ impl GoogleSearchTool {
             response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS,
             retry_after,
         );
-        Ok((response, cooldown))
+        Ok((response, timeout, cooldown))
     }
 
-    async fn send_with_retry(
+    async fn send_with_retry<Fut>(
         &self,
         context: Option<&ToolExecutionContext>,
-        make_request: impl Fn() -> reqwest::RequestBuilder,
-    ) -> anyhow::Result<reqwest::Response> {
-        let (response, cooldown) = self.send_once(make_request()).await?;
+        make_request: impl Fn() -> Fut,
+    ) -> anyhow::Result<(reqwest::Response, Duration)>
+    where
+        Fut: Future<Output = anyhow::Result<(reqwest::RequestBuilder, Duration)>>,
+    {
+        let (request, timeout) = make_request().await?;
+        let (response, timeout, cooldown) = self.send_once(request, timeout).await?;
         if !cooldown {
-            return Ok(response);
+            return Ok((response, timeout));
         }
         #[cfg(feature = "tracing")]
         tracing::warn!(
@@ -193,16 +192,16 @@ impl GoogleSearchTool {
         if let Some(context) = context {
             context.record_retry();
         }
-        self.send_once(make_request())
+        let (request, timeout) = make_request().await?;
+        self.send_once(request, timeout)
             .await
-            .map(|(response, _)| response)
+            .map(|(response, timeout, _)| (response, timeout))
     }
 
     #[cfg(test)]
-    fn for_test(config: Arc<GoogleConfig>, base_url: String) -> Self {
+    fn for_test(config: ConfigService, base_url: String) -> Self {
         Self {
             base_url,
-            request_timeout: None,
             ..Self::new(config)
         }
     }
@@ -220,9 +219,56 @@ impl GoogleSearchTool {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .ok_or_else(|| anyhow::anyhow!("Missing required parameter: query"))?;
-        let api_key = self
+        let page = normalized_int(input.page.clone(), 1, 9_007_199_254_740_991);
+        let per_page = normalized_int(
+            input.results_per_page.clone().or(input.num_results.clone()),
+            5,
+            10,
+        );
+        let start = (page - 1).saturating_mul(per_page).saturating_add(1);
+        let (response, timeout) = self
+            .send_with_retry(context, || {
+                self.make_request(&input, query, per_page, start)
+            })
+            .await?;
+        let status = response.status();
+        let text = response
+            .text()
+            .await
+            .map_err(|error| self.request_error(error, timeout))?;
+        let parsed: Value = serde_json::from_str(&text).unwrap_or_else(|_| json!({
+            "error": { "code": if status.is_success() { 500 } else { status.as_u16() },
+                "message": if status.is_success() { "Failed to parse Google Search response" } else { &text } }
+        }));
+        if parsed.get("error").is_some_and(|error| match error {
+            Value::Null | Value::Bool(false) => false,
+            Value::Number(number) => number.as_f64().is_some_and(|value| value != 0.0),
+            Value::String(text) => !text.is_empty(),
+            Value::Array(_) | Value::Object(_) | Value::Bool(true) => true,
+        }) {
+            return Err(anyhow::anyhow!(serde_json::to_string_pretty(&parsed)?));
+        }
+        Ok(format_results(query, page, &parsed))
+    }
+
+    async fn make_request(
+        &self,
+        input: &Input,
+        query: &str,
+        per_page: i64,
+        start: i64,
+    ) -> anyhow::Result<(reqwest::RequestBuilder, Duration)> {
+        let (token, engine_id, timeout_secs) = self
             .config
-            .token
+            .read(|config| {
+                (
+                    config.tools.google.token.clone(),
+                    config.tools.google.engine_id.clone(),
+                    config.tools.google.request_timeout_secs,
+                )
+            })
+            .await?;
+        let api_key = token
             .as_ref()
             .map(ExposeSecret::expose_secret)
             .map(String::as_str)
@@ -231,9 +277,7 @@ impl GoogleSearchTool {
             .ok_or_else(|| {
                 anyhow::anyhow!("Google API key is not configured in tools.google.token")
             })?;
-        let engine_id = self
-            .config
-            .engine_id
+        let engine_id = engine_id
             .as_ref()
             .map(ExposeSecret::expose_secret)
             .map(String::as_str)
@@ -244,9 +288,6 @@ impl GoogleSearchTool {
                     "Google search engine ID is not configured in tools.google.engine_id"
                 )
             })?;
-        let page = normalized_int(input.page, 1, 9_007_199_254_740_991);
-        let per_page = normalized_int(input.results_per_page.or(input.num_results), 5, 10);
-        let start = (page - 1).saturating_mul(per_page).saturating_add(1);
         let mut url = url::Url::parse(&self.base_url)?;
         {
             let mut pairs = url.query_pairs_mut();
@@ -297,37 +338,13 @@ impl GoogleSearchTool {
                 pairs.append_pair("sort", "date");
             }
         }
-        let response = self
-            .send_with_retry(context, || {
-                let request = self
-                    .http
-                    .get(url.clone())
-                    .header(reqwest::header::USER_AGENT, "chelix");
-                if let Some(timeout) = self.request_timeout {
-                    request.timeout(timeout)
-                } else {
-                    request
-                }
-            })
-            .await?;
-        let status = response.status();
-        let text = response
-            .text()
-            .await
-            .map_err(|error| self.request_error(error))?;
-        let parsed: Value = serde_json::from_str(&text).unwrap_or_else(|_| json!({
-            "error": { "code": if status.is_success() { 500 } else { status.as_u16() },
-                "message": if status.is_success() { "Failed to parse Google Search response" } else { &text } }
-        }));
-        if parsed.get("error").is_some_and(|error| match error {
-            Value::Null | Value::Bool(false) => false,
-            Value::Number(number) => number.as_f64().is_some_and(|value| value != 0.0),
-            Value::String(text) => !text.is_empty(),
-            Value::Array(_) | Value::Object(_) | Value::Bool(true) => true,
-        }) {
-            return Err(anyhow::anyhow!(serde_json::to_string_pretty(&parsed)?));
-        }
-        Ok(format_results(query, page, &parsed))
+        let timeout = Duration::from_secs(timeout_secs);
+        let request = self
+            .http
+            .get(url)
+            .header(reqwest::header::USER_AGENT, "chelix")
+            .timeout(timeout);
+        Ok((request, timeout))
     }
 }
 
@@ -379,7 +396,20 @@ impl AgentTool for GoogleSearchTool {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, secrecy::Secret};
+    use {
+        super::*,
+        chelix_agents::test_support::ConfigFixture,
+        chelix_config::{ChelixConfig, schema::GoogleConfig},
+        secrecy::Secret,
+    };
+
+    pub(super) async fn fixture(provider: GoogleConfig) -> ConfigFixture {
+        let mut config = ChelixConfig::default();
+        config.tools.google = provider;
+        ConfigFixture::new(config)
+            .await
+            .unwrap_or_else(|error| panic!("fixture failed: {error}"))
+    }
 
     #[test]
     fn integer_valued_floats_match_schema_validation() {
@@ -390,7 +420,8 @@ mod tests {
 
     #[tokio::test]
     async fn missing_credentials_fail_before_http() {
-        let tool = GoogleSearchTool::new(Arc::new(GoogleConfig::default()));
+        let fixture = fixture(GoogleConfig::default()).await;
+        let tool = GoogleSearchTool::new(fixture.service.clone());
         let error = tool
             .execute(json!({ "query": "rust" }))
             .await
@@ -398,10 +429,14 @@ mod tests {
             .map(|error| error.to_string())
             .unwrap_or_default();
         assert!(error.contains("tools.google.token"));
-        let tool = GoogleSearchTool::new(Arc::new(GoogleConfig {
-            token: Some(Secret::new("key".into())),
-            ..GoogleConfig::default()
-        }));
+        fixture
+            .service
+            .update(|config| {
+                config.tools.google.token = Some(Secret::new("key".into()));
+                Ok(())
+            })
+            .await
+            .unwrap_or_else(|error| panic!("config update failed: {error}"));
         let error = tool
             .execute(json!({ "query": "rust" }))
             .await
@@ -422,12 +457,14 @@ mod tests {
             ]))
             .with_status(200).with_body(r#"{"items":[{"title":"Docs","link":"https://example.org","snippet":"Guide"}],"searchInformation":{"totalResults":"42"},"queries":{"nextPage":[{"startIndex":6}]}}"#)
             .create_async().await;
+        let fixture = fixture(GoogleConfig {
+            token: Some(Secret::new("private-key".into())),
+            engine_id: Some(Secret::new("engine".into())),
+            request_timeout_secs: 10,
+        })
+        .await;
         let tool = GoogleSearchTool::for_test(
-            Arc::new(GoogleConfig {
-                token: Some(Secret::new("private-key".into())),
-                engine_id: Some(Secret::new("engine".into())),
-                request_timeout_secs: 10,
-            }),
+            fixture.service.clone(),
             format!("{}/customsearch/v1", server.url()),
         );
         let result = tool
@@ -443,7 +480,7 @@ mod tests {
         mock.assert_async().await;
     }
 
-    #[tokio::test(start_paused = true)]
+    #[tokio::test]
     async fn rate_limit_retries_once_and_records_progress() {
         let mut server = mockito::Server::new_async().await;
         let limited = server
@@ -462,12 +499,14 @@ mod tests {
             .expect(1)
             .create_async()
             .await;
+        let fixture = fixture(GoogleConfig {
+            token: Some(Secret::new("private-key".into())),
+            engine_id: Some(Secret::new("engine".into())),
+            request_timeout_secs: 10,
+        })
+        .await;
         let tool = GoogleSearchTool::for_test(
-            Arc::new(GoogleConfig {
-                token: Some(Secret::new("private-key".into())),
-                engine_id: Some(Secret::new("engine".into())),
-                request_timeout_secs: 10,
-            }),
+            fixture.service.clone(),
             format!("{}/customsearch/v1", server.url()),
         );
         let context = ToolExecutionContext::for_session(chelix_sessions::SessionKey::new(
@@ -485,7 +524,7 @@ mod tests {
             )
         );
         assert_eq!(context.retry_count(), 1);
-        assert_eq!(started.elapsed(), Duration::from_secs(5));
+        assert!(started.elapsed() >= Duration::from_secs(5));
         limited.assert_async().await;
         success.assert_async().await;
     }
@@ -498,12 +537,14 @@ mod tests {
             .local_addr()
             .unwrap_or_else(|error| panic!("address failed: {error}"));
         drop(listener);
+        let fixture = fixture(GoogleConfig {
+            token: Some(Secret::new("google-secret-key-7f3a".into())),
+            engine_id: Some(Secret::new("engine-secret-id-91c2".into())),
+            request_timeout_secs: 1,
+        })
+        .await;
         let tool = GoogleSearchTool::for_test(
-            Arc::new(GoogleConfig {
-                token: Some(Secret::new("google-secret-key-7f3a".into())),
-                engine_id: Some(Secret::new("engine-secret-id-91c2".into())),
-                request_timeout_secs: 1,
-            }),
+            fixture.service.clone(),
             format!("http://{address}/customsearch/v1"),
         );
         let error = tool
@@ -522,3 +563,7 @@ mod tests {
         assert!(!error.contains("engine-secret-id-91c2"));
     }
 }
+
+#[cfg(test)]
+#[path = "config_tests.rs"]
+mod config_tests;

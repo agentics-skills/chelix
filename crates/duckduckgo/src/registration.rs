@@ -2,16 +2,13 @@
 
 use std::sync::Arc;
 
-use {chelix_agents::tool_registry::ToolRegistry, chelix_config::schema::DuckDuckGoConfig};
+use {chelix_agents::tool_registry::ToolRegistry, chelix_config_service::ConfigService};
 
 use crate::{client::DuckDuckGoClient, tool::DuckDuckGoSearchTool};
 
 /// Register `duckduckgo_search` against one shared client and request queue.
-pub fn register_tools(
-    registry: &mut ToolRegistry,
-    config: &DuckDuckGoConfig,
-) -> anyhow::Result<()> {
-    let client = Arc::new(DuckDuckGoClient::new(config.request_timeout_secs)?);
+pub fn register_tools(registry: &mut ToolRegistry, config: ConfigService) -> anyhow::Result<()> {
+    let client = Arc::new(DuckDuckGoClient::new(config)?);
     registry.register(Box::new(DuckDuckGoSearchTool::new(client)));
     Ok(())
 }

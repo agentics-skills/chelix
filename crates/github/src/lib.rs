@@ -7,6 +7,8 @@
 //! `tools.github.request_timeout_secs`.
 
 pub mod config_validation;
+#[cfg(all(test, feature = "runtime"))]
+mod test_support;
 
 #[cfg(feature = "runtime")]
 mod client;

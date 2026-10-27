@@ -3,12 +3,12 @@ use {
     crate::rate_limit::RateLimitCoordinator,
     async_trait::async_trait,
     chelix_agents::{tool_context::ToolExecutionContext, tool_registry::AgentTool},
-    chelix_config::schema::FeloConfig,
+    chelix_config_service::ConfigService,
     reqwest::header::{AUTHORIZATION, HeaderValue, RETRY_AFTER},
     secrecy::ExposeSecret,
     serde::Deserialize,
     serde_json::{Value, json},
-    std::{sync::Arc, time::Duration},
+    std::{future::Future, time::Duration},
 };
 
 const DESCRIPTION: &str = "Search the web for up-to-date technical information like latest releases, security advisories, migration guides, benchmarks, and community insights.";
@@ -65,14 +65,14 @@ struct ChatData {
 }
 
 pub struct FeloSearchTool {
-    config: Arc<FeloConfig>,
+    config: ConfigService,
     http: reqwest::Client,
     gate: RateLimitCoordinator,
     base_url: String,
 }
 
 impl FeloSearchTool {
-    pub fn new(config: Arc<FeloConfig>) -> Self {
+    pub fn new(config: ConfigService) -> Self {
         Self {
             config,
             http: chelix_common::http_client::build_default_http_client(),
@@ -81,10 +81,20 @@ impl FeloSearchTool {
         }
     }
 
-    fn authorization(&self) -> anyhow::Result<HeaderValue> {
-        let token = self
+    async fn make_request(
+        &self,
+        query: &str,
+    ) -> anyhow::Result<(reqwest::RequestBuilder, Duration)> {
+        let (token, timeout_secs) = self
             .config
-            .token
+            .read(|config| {
+                (
+                    config.tools.felo.token.clone(),
+                    config.tools.felo.request_timeout_secs,
+                )
+            })
+            .await?;
+        let token = token
             .as_ref()
             .map(ExposeSecret::expose_secret)
             .map(String::as_str)
@@ -94,17 +104,21 @@ impl FeloSearchTool {
         let mut value = HeaderValue::try_from(format!("Bearer {token}"))
             .map_err(|error| anyhow::anyhow!("invalid Felo API key: {error}"))?;
         value.set_sensitive(true);
-        Ok(value)
+        let timeout = Duration::from_secs(timeout_secs);
+        let request = self
+            .http
+            .post(&self.base_url)
+            .header(AUTHORIZATION, value)
+            .json(&json!({ "query": query }))
+            .timeout(timeout);
+        Ok((request, timeout))
     }
 
-    fn request_error(&self, error: reqwest::Error) -> anyhow::Error {
+    fn request_error(&self, error: reqwest::Error, timeout: Duration) -> anyhow::Error {
         use std::error::Error as _;
         let error = error.without_url();
         let mut message = if error.is_timeout() {
-            format!(
-                "Felo request timed out after {:?}: {error}",
-                Duration::from_secs(self.config.request_timeout_secs)
-            )
+            format!("Felo request timed out after {:?}: {error}", timeout)
         } else {
             error.to_string()
         };
@@ -122,12 +136,13 @@ impl FeloSearchTool {
     async fn send_once(
         &self,
         request: reqwest::RequestBuilder,
-    ) -> anyhow::Result<(reqwest::Response, bool)> {
+        timeout: Duration,
+    ) -> anyhow::Result<(reqwest::Response, Duration, bool)> {
         let permit = self.gate.acquire().await;
         let response = request
             .send()
             .await
-            .map_err(|error| self.request_error(error))?;
+            .map_err(|error| self.request_error(error, timeout))?;
         let retry_after = response
             .headers()
             .get(RETRY_AFTER)
@@ -136,17 +151,21 @@ impl FeloSearchTool {
             response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS,
             retry_after,
         );
-        Ok((response, cooldown))
+        Ok((response, timeout, cooldown))
     }
 
-    async fn send_with_retry(
+    async fn send_with_retry<Fut>(
         &self,
         context: Option<&ToolExecutionContext>,
-        make_request: impl Fn() -> reqwest::RequestBuilder,
-    ) -> anyhow::Result<reqwest::Response> {
-        let (response, cooldown) = self.send_once(make_request()).await?;
+        make_request: impl Fn() -> Fut,
+    ) -> anyhow::Result<(reqwest::Response, Duration)>
+    where
+        Fut: Future<Output = anyhow::Result<(reqwest::RequestBuilder, Duration)>>,
+    {
+        let (request, timeout) = make_request().await?;
+        let (response, timeout, cooldown) = self.send_once(request, timeout).await?;
         if !cooldown {
-            return Ok(response);
+            return Ok((response, timeout));
         }
         #[cfg(feature = "tracing")]
         tracing::warn!(
@@ -156,13 +175,14 @@ impl FeloSearchTool {
         if let Some(context) = context {
             context.record_retry();
         }
-        self.send_once(make_request())
+        let (request, timeout) = make_request().await?;
+        self.send_once(request, timeout)
             .await
-            .map(|(response, _)| response)
+            .map(|(response, timeout, _)| (response, timeout))
     }
 
     #[cfg(test)]
-    fn for_test(config: Arc<FeloConfig>, base_url: String) -> Self {
+    fn for_test(config: ConfigService, base_url: String) -> Self {
         Self {
             base_url,
             ..Self::new(config)
@@ -186,21 +206,14 @@ impl FeloSearchTool {
             .map(str::trim)
             .filter(|text| !text.is_empty())
             .ok_or_else(|| anyhow::anyhow!("Missing required parameter: query"))?;
-        let authorization = self.authorization()?;
-        let response = self
-            .send_with_retry(context, || {
-                self.http
-                    .post(&self.base_url)
-                    .header(AUTHORIZATION, authorization.clone())
-                    .json(&json!({ "query": query }))
-                    .timeout(Duration::from_secs(self.config.request_timeout_secs))
-            })
+        let (response, timeout) = self
+            .send_with_retry(context, || self.make_request(query))
             .await?;
         let status = response.status();
         let body = response
             .text()
             .await
-            .map_err(|error| self.request_error(error))?;
+            .map_err(|error| self.request_error(error, timeout))?;
         if !status.is_success() {
             anyhow::bail!("Felo API request failed: {} - {body}", status.as_u16());
         }
@@ -273,13 +286,27 @@ impl AgentTool for FeloSearchTool {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, secrecy::Secret};
+    use {
+        super::*,
+        chelix_agents::test_support::ConfigFixture,
+        chelix_config::{ChelixConfig, schema::FeloConfig},
+        secrecy::Secret,
+    };
 
-    fn config() -> Arc<FeloConfig> {
-        Arc::new(FeloConfig {
+    pub(super) async fn fixture(provider: FeloConfig) -> ConfigFixture {
+        let mut config = ChelixConfig::default();
+        config.tools.felo = provider;
+        ConfigFixture::new(config)
+            .await
+            .unwrap_or_else(|error| panic!("fixture failed: {error}"))
+    }
+
+    async fn config() -> ConfigFixture {
+        fixture(FeloConfig {
             token: Some(Secret::new("test-key".to_owned())),
             request_timeout_secs: 10,
         })
+        .await
     }
 
     #[tokio::test]
@@ -296,7 +323,9 @@ mod tests {
             )
             .create_async()
             .await;
-        let tool = FeloSearchTool::for_test(config(), format!("{}/v2/chat", server.url()));
+        let fixture = config().await;
+        let tool =
+            FeloSearchTool::for_test(fixture.service.clone(), format!("{}/v2/chat", server.url()));
         let result = tool
             .execute(json!({"query":" sample "}))
             .await
@@ -314,7 +343,9 @@ mod tests {
             .with_body(r#"{"status":"error","code":"INVALID_API_KEY","message":"Invalid key"}"#)
             .create_async()
             .await;
-        let tool = FeloSearchTool::for_test(config(), format!("{}/v2/chat", server.url()));
+        let fixture = config().await;
+        let tool =
+            FeloSearchTool::for_test(fixture.service.clone(), format!("{}/v2/chat", server.url()));
         let error = tool
             .execute(json!({"query":"sample"}))
             .await
@@ -331,7 +362,8 @@ mod tests {
             .with_body(r#"{"status":"error","code":"CHAT_FAILED","message":"Internal error"}"#)
             .create_async()
             .await;
-        let tool = FeloSearchTool::for_test(config(), format!("{}/v2/chat", server.url()));
+        let tool =
+            FeloSearchTool::for_test(fixture.service.clone(), format!("{}/v2/chat", server.url()));
         let error = tool
             .execute(json!({"query":"sample"}))
             .await
@@ -348,7 +380,8 @@ mod tests {
             .with_body(r#"{"status":500,"code":"CHAT_FAILED","message":"Provider failure"}"#)
             .create_async()
             .await;
-        let tool = FeloSearchTool::for_test(config(), format!("{}/v2/chat", server.url()));
+        let tool =
+            FeloSearchTool::for_test(fixture.service.clone(), format!("{}/v2/chat", server.url()));
         let error = tool
             .execute(json!({"query":"sample"}))
             .await
@@ -365,7 +398,8 @@ mod tests {
             .with_body(r#"{"status":true}"#)
             .create_async()
             .await;
-        let tool = FeloSearchTool::for_test(config(), format!("{}/v2/chat", server.url()));
+        let tool =
+            FeloSearchTool::for_test(fixture.service.clone(), format!("{}/v2/chat", server.url()));
         let error = tool
             .execute(json!({"query":"sample"}))
             .await
@@ -393,7 +427,9 @@ mod tests {
             .expect(1)
             .create_async()
             .await;
-        let tool = FeloSearchTool::for_test(config(), format!("{}/v2/chat", server.url()));
+        let fixture = config().await;
+        let tool =
+            FeloSearchTool::for_test(fixture.service.clone(), format!("{}/v2/chat", server.url()));
         let context = ToolExecutionContext::for_session(chelix_sessions::SessionKey::new(
             "session:search-test",
         ));
@@ -415,10 +451,9 @@ mod tests {
             .expect(0)
             .create_async()
             .await;
-        let tool = FeloSearchTool::for_test(
-            Arc::new(FeloConfig::default()),
-            format!("{}/v2/chat", server.url()),
-        );
+        let fixture = fixture(FeloConfig::default()).await;
+        let tool =
+            FeloSearchTool::for_test(fixture.service.clone(), format!("{}/v2/chat", server.url()));
         let error = tool
             .execute(json!({"query":"sample"}))
             .await
@@ -438,7 +473,9 @@ mod tests {
             .with_body(r#"{"status":"ok","data":{"answer":""}}"#)
             .create_async()
             .await;
-        let tool = FeloSearchTool::for_test(config(), format!("{}/v2/chat", server.url()));
+        let fixture = config().await;
+        let tool =
+            FeloSearchTool::for_test(fixture.service.clone(), format!("{}/v2/chat", server.url()));
         let result = tool
             .execute(json!({"query":"sample"}))
             .await
@@ -447,3 +484,7 @@ mod tests {
         mock.assert_async().await;
     }
 }
+
+#[cfg(test)]
+#[path = "config_tests.rs"]
+mod config_tests;

@@ -6,6 +6,7 @@ use {super::helpers::*, crate::model::ToolChoice};
 
 #[tokio::test]
 async fn tool_choice_none_forces_text_only() {
+    let _fixture = test_config_fixture().await;
     // With tool_choice=none the provider receives an empty tool list.
     // MockProvider returns text regardless.
     let provider = Arc::new(MockProvider {
@@ -15,6 +16,7 @@ async fn tool_choice_none_forces_text_only() {
     tools.register(Box::new(EchoTool));
 
     let result = run_agent_loop_with_context_and_limits(
+        &_fixture.service,
         provider,
         &tools,
         "You are a test bot.",
@@ -36,12 +38,14 @@ async fn tool_choice_none_forces_text_only() {
 
 #[tokio::test]
 async fn tool_choice_any_with_no_tools_errors() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(ToolCallingProvider {
         call_count: std::sync::atomic::AtomicUsize::new(0),
     });
     let tools = ToolRegistry::new();
 
     let err = run_agent_loop_with_context_and_limits(
+        &_fixture.service,
         provider,
         &tools,
         "You are a test bot.",
@@ -66,6 +70,7 @@ async fn tool_choice_any_with_no_tools_errors() {
 
 #[tokio::test]
 async fn tool_choice_forced_missing_tool_errors() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(ToolCallingProvider {
         call_count: std::sync::atomic::AtomicUsize::new(0),
     });
@@ -73,6 +78,7 @@ async fn tool_choice_forced_missing_tool_errors() {
     tools.register(Box::new(EchoTool));
 
     let err = run_agent_loop_with_context_and_limits(
+        &_fixture.service,
         provider,
         &tools,
         "You are a test bot.",
@@ -99,6 +105,7 @@ async fn tool_choice_forced_missing_tool_errors() {
 
 #[tokio::test]
 async fn no_tool_choice_runs_normally() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(ToolCallingProvider {
         call_count: std::sync::atomic::AtomicUsize::new(0),
     });
@@ -106,6 +113,7 @@ async fn no_tool_choice_runs_normally() {
     tools.register(Box::new(EchoTool));
 
     let result = run_agent_loop_with_context_and_limits(
+        &_fixture.service,
         provider,
         &tools,
         "You are a test bot.",

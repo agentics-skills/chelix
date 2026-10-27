@@ -2,8 +2,12 @@
 
 use super::*;
 
-#[test]
-fn explicit_unavailable_backend_fails_closed() {
+#[tokio::test]
+async fn explicit_unavailable_backend_fails_closed() {
+    let fixture =
+        chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+            .await
+            .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
     let backend = if is_cli_available("podman") {
         SandboxBackend::Docker
     } else {
@@ -20,10 +24,13 @@ fn explicit_unavailable_backend_fails_closed() {
         return;
     }
 
-    let error = match select_backend(SandboxConfig {
-        backend,
-        ..Default::default()
-    }) {
+    let error = match select_backend(
+        SandboxConfig {
+            backend,
+            ..Default::default()
+        },
+        fixture.service.clone(),
+    ) {
         Ok(selected) => panic!(
             "unavailable explicit backend unexpectedly selected {}",
             selected.backend_id()

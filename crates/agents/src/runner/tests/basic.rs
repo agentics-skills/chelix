@@ -94,14 +94,23 @@ fn test_parse_tool_call_function_block_with_wrapper_and_text() {
 
 #[tokio::test]
 async fn test_simple_text_response() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(MockProvider {
         response_text: "Hello!".into(),
     });
     let tools = ToolRegistry::new();
     let uc = UserContent::text("Hi");
-    let result = run_agent_loop(provider, &tools, "You are a test bot.", &uc, None, None)
-        .await
-        .unwrap();
+    let result = run_agent_loop(
+        &_fixture.service,
+        provider,
+        &tools,
+        "You are a test bot.",
+        &uc,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
     assert_eq!(result.output.text, "Hello!");
     assert_eq!(result.iterations, 1);
     assert_eq!(result.tool_calls_made, 0);
@@ -165,6 +174,7 @@ impl LlmProvider for NoToolsStreamingRoutingProvider {
 
 #[tokio::test]
 async fn test_streaming_runner_does_not_use_tools_path_for_empty_schema_list() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(NoToolsStreamingRoutingProvider {
         stream_calls: std::sync::atomic::AtomicUsize::new(0),
         stream_with_options_calls: std::sync::atomic::AtomicUsize::new(0),
@@ -173,6 +183,7 @@ async fn test_streaming_runner_does_not_use_tools_path_for_empty_schema_list() {
     let uc = UserContent::text("Hi");
 
     let result = run_agent_loop_streaming(
+        &_fixture.service,
         provider.clone(),
         &tools,
         "You are a test bot.",
@@ -319,6 +330,7 @@ impl IterationOwnedResponsesProvider {
 }
 
 async fn run_iteration_owned_responses_provider(
+    config_service: &chelix_config_service::ConfigService,
     terminal_output: TerminalResponsesOutput,
 ) -> AgentRunResult {
     let provider = Arc::new(IterationOwnedResponsesProvider {
@@ -329,6 +341,7 @@ async fn run_iteration_owned_responses_provider(
     tools.register(Box::new(EchoTool));
 
     run_agent_loop_streaming(
+        config_service,
         provider,
         &tools,
         "You are a test bot.",
@@ -346,8 +359,12 @@ async fn run_iteration_owned_responses_provider(
 
 #[tokio::test]
 async fn test_reasoning_only_terminal_iteration_is_a_new_segment() {
-    let result =
-        run_iteration_owned_responses_provider(TerminalResponsesOutput::VisibleReasoning).await;
+    let _fixture = test_config_fixture().await;
+    let result = run_iteration_owned_responses_provider(
+        &_fixture.service,
+        TerminalResponsesOutput::VisibleReasoning,
+    )
+    .await;
 
     assert_eq!(result.output.text, "");
     assert_eq!(
@@ -365,8 +382,12 @@ async fn test_reasoning_only_terminal_iteration_is_a_new_segment() {
 
 #[tokio::test]
 async fn test_opaque_only_terminal_iteration_is_a_new_segment() {
-    let result =
-        run_iteration_owned_responses_provider(TerminalResponsesOutput::OpaqueReasoning).await;
+    let _fixture = test_config_fixture().await;
+    let result = run_iteration_owned_responses_provider(
+        &_fixture.service,
+        TerminalResponsesOutput::OpaqueReasoning,
+    )
+    .await;
 
     assert_eq!(result.output.text, "");
     assert!(result.output.reasoning.is_none());
@@ -501,6 +522,7 @@ impl crate::tool_registry::AgentTool for CaptureToolCallContext {
 
 #[tokio::test]
 async fn test_streaming_runner_injects_tool_call_id_only_into_execution_context() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(ToolCallContextStreamingProvider {
         stream_calls: std::sync::atomic::AtomicUsize::new(0),
     });
@@ -521,6 +543,7 @@ async fn test_streaming_runner_injects_tool_call_id_only_into_execution_context(
     }));
 
     let result = run_agent_loop_streaming_with_tool_lifecycle(
+        &_fixture.service,
         provider,
         &tools,
         "You are a test bot.",
@@ -674,6 +697,7 @@ impl LlmProvider for InfiniteToolArgumentsProvider {
 
 #[tokio::test]
 async fn streaming_tool_arguments_are_cancelled_without_waiting_for_stream_completion() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(InfiniteToolArgumentsProvider);
     let mut tools = ToolRegistry::new();
     tools.register(Box::new(EchoTool));
@@ -705,6 +729,8 @@ async fn streaming_tool_arguments_are_cancelled_without_waiting_for_stream_compl
         provider,
         &tools,
         &tools_config,
+        &_fixture.service,
+        "main",
         "You are a test bot.",
         &user_content,
         Some(&on_event),
@@ -841,6 +867,7 @@ impl LlmProvider for ExecutingToolProvider {
 
 #[tokio::test]
 async fn executing_tool_is_cancelled_by_agent_run_token() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(ExecutingToolProvider);
     let mut tools = ToolRegistry::new();
     tools.register(Box::new(NeverFinishesTool));
@@ -867,6 +894,8 @@ async fn executing_tool_is_cancelled_by_agent_run_token() {
         provider,
         &tools,
         &tools_config,
+        &_fixture.service,
+        "main",
         "You are a test bot.",
         &user_content,
         None,
@@ -915,6 +944,7 @@ async fn executing_tool_is_cancelled_by_agent_run_token() {
 
 #[tokio::test]
 async fn test_waiting_for_execution_receipt_blocks_tool_dispatch() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(ToolCallContextStreamingProvider {
         stream_calls: std::sync::atomic::AtomicUsize::new(0),
     });
@@ -947,6 +977,7 @@ async fn test_waiting_for_execution_receipt_blocks_tool_dispatch() {
 
     let user_content = UserContent::text("capture context");
     let run = run_agent_loop_streaming_with_tool_lifecycle(
+        &_fixture.service,
         provider,
         &tools,
         "You are a test bot.",
@@ -1005,6 +1036,7 @@ impl HookHandler for HangingBeforeLlmHook {
 
 #[tokio::test]
 async fn hanging_before_llm_hook_is_cancelled_by_agent_run_token() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(MockProvider {
         response_text: "must not be reached".into(),
     });
@@ -1022,6 +1054,8 @@ async fn hanging_before_llm_hook_is_cancelled_by_agent_run_token() {
         provider,
         &tools,
         &tools_config,
+        &_fixture.service,
+        "main",
         "You are a test bot.",
         &user_content,
         None,
@@ -1129,6 +1163,7 @@ impl LlmProvider for RecordingMessagesProvider {
 
 #[tokio::test]
 async fn test_before_llm_call_modify_payload_updates_streaming_messages() {
+    let _fixture = test_config_fixture().await;
     let recorded_messages = Arc::new(std::sync::Mutex::new(Vec::new()));
     let provider = Arc::new(RecordingMessagesProvider {
         messages: Arc::clone(&recorded_messages),
@@ -1138,6 +1173,7 @@ async fn test_before_llm_call_modify_payload_updates_streaming_messages() {
     hooks.register(Arc::new(InjectBeforeLlmSystemHook));
 
     let result = run_agent_loop_streaming(
+        &_fixture.service,
         provider,
         &tools,
         "original system",
@@ -1275,6 +1311,7 @@ impl LlmProvider for StreamingChunksProvider {
 
 #[tokio::test]
 async fn test_streaming_runner_emits_final_text_chunks_live() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(StreamingChunksProvider);
     let tools = ToolRegistry::new();
     let events: Arc<std::sync::Mutex<Vec<RunnerEvent>>> =
@@ -1285,6 +1322,7 @@ async fn test_streaming_runner_emits_final_text_chunks_live() {
     });
 
     let result = run_agent_loop_streaming(
+        &_fixture.service,
         provider,
         &tools,
         "You are a test bot.",
@@ -1317,11 +1355,13 @@ async fn test_streaming_runner_emits_final_text_chunks_live() {
 
 #[tokio::test]
 async fn test_streaming_runner_preserves_cache_usage() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(StreamingUsageProvider);
     let tools = ToolRegistry::new();
     let uc = UserContent::text("another");
 
     let result = run_agent_loop_streaming(
+        &_fixture.service,
         provider,
         &tools,
         "You are a test bot.",
@@ -1351,6 +1391,7 @@ async fn test_streaming_runner_preserves_cache_usage() {
 
 #[tokio::test]
 async fn test_streaming_runner_dispatches_before_agent_start_hook() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(StreamingUsageProvider);
     let tools = ToolRegistry::new();
     let payloads = Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -1360,6 +1401,7 @@ async fn test_streaming_runner_dispatches_before_agent_start_hook() {
     }));
 
     let result = run_agent_loop_streaming(
+        &_fixture.service,
         provider,
         &tools,
         "You are a test bot.",
@@ -1466,6 +1508,7 @@ impl LlmProvider for PerRequestUsageProvider {
 
 #[tokio::test]
 async fn test_runner_preserves_total_and_request_cache_usage() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(PerRequestUsageProvider {
         call_count: std::sync::atomic::AtomicUsize::new(0),
     });
@@ -1473,9 +1516,17 @@ async fn test_runner_preserves_total_and_request_cache_usage() {
     tools.register(Box::new(EchoTool));
 
     let uc = UserContent::text("Use the tool");
-    let result = run_agent_loop(provider, &tools, "You are a test bot.", &uc, None, None)
-        .await
-        .unwrap();
+    let result = run_agent_loop(
+        &_fixture.service,
+        provider,
+        &tools,
+        "You are a test bot.",
+        &uc,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
 
     assert_eq!(result.output.text, "Done with cache.");
     assert_eq!(result.iterations, 2);
@@ -1492,6 +1543,7 @@ async fn test_runner_preserves_total_and_request_cache_usage() {
 
 #[tokio::test]
 async fn test_tool_call_loop() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(ToolCallingProvider {
         call_count: std::sync::atomic::AtomicUsize::new(0),
     });
@@ -1499,9 +1551,17 @@ async fn test_tool_call_loop() {
     tools.register(Box::new(EchoTool));
 
     let uc = UserContent::text("Use the tool");
-    let result = run_agent_loop(provider, &tools, "You are a test bot.", &uc, None, None)
-        .await
-        .unwrap();
+    let result = run_agent_loop(
+        &_fixture.service,
+        provider,
+        &tools,
+        "You are a test bot.",
+        &uc,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
 
     assert_eq!(result.output.text, "Done!");
     assert_eq!(result.iterations, 2);
@@ -1602,6 +1662,7 @@ impl LlmProvider for CommandSimulatingProvider {
 
 #[tokio::test]
 async fn test_execute_command_tool_end_to_end() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(CommandSimulatingProvider {
         call_count: std::sync::atomic::AtomicUsize::new(0),
     });
@@ -1619,6 +1680,7 @@ async fn test_execute_command_tool_end_to_end() {
 
     let uc = UserContent::text("Run echo hello");
     let result = run_agent_loop_with_tool_lifecycle(
+        &_fixture.service,
         provider,
         &tools,
         "You are a test bot.",
@@ -1682,6 +1744,7 @@ async fn test_execute_command_tool_end_to_end() {
 
 #[tokio::test(start_paused = true)]
 async fn test_backend_execution_progress_uses_paused_tokio_time() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(ToolCallingProvider {
         call_count: std::sync::atomic::AtomicUsize::new(0),
     });
@@ -1711,6 +1774,7 @@ async fn test_backend_execution_progress_uses_paused_tokio_time() {
 
     let user_content = UserContent::text("run slowly");
     let run = run_agent_loop_with_tool_lifecycle(
+        &_fixture.service,
         provider,
         &tools,
         "You are a test bot.",
@@ -1845,6 +1909,7 @@ impl LlmProvider for HookModifiedCommandProvider {
 
 #[tokio::test]
 async fn test_hook_modified_tool_args_are_revalidated_before_execute() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(HookModifiedCommandProvider {
         call_count: std::sync::atomic::AtomicUsize::new(0),
     });
@@ -1860,6 +1925,7 @@ async fn test_hook_modified_tool_args_are_revalidated_before_execute() {
     let on_tool_lifecycle = recording_tool_lifecycle(&lifecycle_events);
 
     let result = run_agent_loop_with_context_and_tool_lifecycle(
+        &_fixture.service,
         provider,
         &tools,
         "You are a test bot.",
@@ -1926,6 +1992,7 @@ async fn test_hook_modified_tool_args_are_revalidated_before_execute() {
 /// Test that non-native providers can still execute tools via text parsing.
 #[tokio::test]
 async fn test_text_based_tool_calling() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(TextToolCallingProvider {
         call_count: std::sync::atomic::AtomicUsize::new(0),
     });
@@ -1937,6 +2004,7 @@ async fn test_text_based_tool_calling() {
 
     let uc = UserContent::text("Run echo hello");
     let result = run_agent_loop_with_tool_lifecycle(
+        &_fixture.service,
         provider,
         &tools,
         "You are a test bot.",
@@ -2019,6 +2087,7 @@ impl LlmProvider for NativeTextToolCallProvider {
 
 #[tokio::test]
 async fn test_native_mode_does_not_parse_text_tool_call_streaming() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(NativeTextToolCallProvider {
         call_count: std::sync::atomic::AtomicUsize::new(0),
     });
@@ -2026,6 +2095,7 @@ async fn test_native_mode_does_not_parse_text_tool_call_streaming() {
     tools.register(Box::new(TestProcessTool));
 
     let result = run_agent_loop_streaming(
+        &_fixture.service,
         Arc::clone(&provider) as Arc<dyn LlmProvider>,
         &tools,
         "You are a test bot.",
@@ -2101,21 +2171,31 @@ fn test_sanitize_preserves_short_hex() {
 
 #[tokio::test]
 async fn test_vision_provider_tool_result_sanitized() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(VisionEnabledProvider {
         call_count: std::sync::atomic::AtomicUsize::new(0),
     });
     let mut tools = ToolRegistry::new();
     tools.register(Box::new(ScreenshotTool));
     let uc = UserContent::text("Take a screenshot");
-    let result = run_agent_loop(provider, &tools, "You are a test bot.", &uc, None, None)
-        .await
-        .unwrap();
+    let result = run_agent_loop(
+        &_fixture.service,
+        provider,
+        &tools,
+        "You are a test bot.",
+        &uc,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
     assert_eq!(result.output.text, "Screenshot processed successfully");
     assert_eq!(result.tool_calls_made, 1);
 }
 
 #[tokio::test]
 async fn completed_lifecycle_separates_context_from_raw_result() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(VisionEnabledProvider {
         call_count: std::sync::atomic::AtomicUsize::new(0),
     });
@@ -2125,6 +2205,7 @@ async fn completed_lifecycle_separates_context_from_raw_result() {
     let on_tool_lifecycle = recording_tool_lifecycle(&lifecycle_events);
     let uc = UserContent::text("Take a screenshot");
     let result = run_agent_loop_with_tool_lifecycle(
+        &_fixture.service,
         provider,
         &tools,
         "You are a test bot.",
@@ -2255,6 +2336,7 @@ fn scripted_tool_call_events(arguments_text: &str) -> Vec<StreamEvent> {
 
 #[tokio::test]
 async fn malformed_tool_arguments_are_rejected_and_reported_to_the_model() {
+    let _fixture = test_config_fixture().await;
     let provider = Arc::new(ScriptedArgumentsProvider::new(scripted_tool_call_events(
         r#"{"text":"a\.b"}"#,
     )));
@@ -2264,6 +2346,7 @@ async fn malformed_tool_arguments_are_rejected_and_reported_to_the_model() {
     let on_tool_lifecycle = recording_tool_lifecycle(&lifecycle_events);
 
     let result = run_agent_loop_with_tool_lifecycle(
+        &_fixture.service,
         Arc::clone(&provider) as Arc<dyn LlmProvider>,
         &tools,
         "You are a test bot.",
@@ -2311,6 +2394,7 @@ async fn malformed_tool_arguments_are_rejected_and_reported_to_the_model() {
 
 #[tokio::test]
 async fn serializer_escaped_tool_arguments_reach_the_tool_unchanged() {
+    let _fixture = test_config_fixture().await;
     let text = "say \"hi\"\\n\\path\nline2";
     let provider = Arc::new(ScriptedArgumentsProvider::new(scripted_tool_call_events(
         &serde_json::json!({"text": text}).to_string(),
@@ -2321,6 +2405,7 @@ async fn serializer_escaped_tool_arguments_reach_the_tool_unchanged() {
     let on_tool_lifecycle = recording_tool_lifecycle(&lifecycle_events);
 
     let result = run_agent_loop_with_tool_lifecycle(
+        &_fixture.service,
         provider,
         &tools,
         "You are a test bot.",
@@ -2351,6 +2436,7 @@ async fn serializer_escaped_tool_arguments_reach_the_tool_unchanged() {
 
 #[tokio::test]
 async fn provider_final_arguments_take_precedence_over_streamed_deltas() {
+    let _fixture = test_config_fixture().await;
     let segment_id = chelix_common::ProviderSegmentId::new("resp_final_args");
     let update = |seq: u64, payload: chelix_common::ProviderItemUpdatePayload| {
         StreamEvent::ProviderItemUpdate(chelix_common::ProviderItemUpdate {
@@ -2400,6 +2486,7 @@ async fn provider_final_arguments_take_precedence_over_streamed_deltas() {
     let on_tool_lifecycle = recording_tool_lifecycle(&lifecycle_events);
 
     let result = run_agent_loop_with_tool_lifecycle(
+        &_fixture.service,
         provider,
         &tools,
         "You are a test bot.",

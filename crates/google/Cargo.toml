@@ -5,21 +5,23 @@ repository.workspace = true
 version.workspace    = true
 
 [dependencies]
-anyhow         = { optional = true, workspace = true }
-async-trait    = { optional = true, workspace = true }
-chelix-agents  = { optional = true, workspace = true }
-chelix-common  = { optional = true, workspace = true }
-chelix-config  = { workspace = true }
-chelix-metrics = { optional = true, workspace = true }
-reqwest        = { optional = true, workspace = true }
-secrecy        = { optional = true, workspace = true }
-serde          = { optional = true, workspace = true }
-serde_json     = { optional = true, workspace = true }
-tokio          = { optional = true, workspace = true }
-tracing        = { optional = true, workspace = true }
-url            = { optional = true, workspace = true }
+anyhow                = { optional = true, workspace = true }
+async-trait           = { optional = true, workspace = true }
+chelix-agents         = { optional = true, workspace = true }
+chelix-common         = { optional = true, workspace = true }
+chelix-config         = { workspace = true }
+chelix-config-service = { optional = true, workspace = true }
+chelix-metrics        = { optional = true, workspace = true }
+reqwest               = { optional = true, workspace = true }
+secrecy               = { optional = true, workspace = true }
+serde                 = { optional = true, workspace = true }
+serde_json            = { optional = true, workspace = true }
+tokio                 = { optional = true, workspace = true }
+tracing               = { optional = true, workspace = true }
+url                   = { optional = true, workspace = true }
 
 [dev-dependencies]
+chelix-agents   = { features = ["test-util"], workspace = true }
 chelix-sessions = { workspace = true }
 mockito         = { workspace = true }
 tokio           = { features = ["macros", "rt-multi-thread", "test-util"], workspace = true }
@@ -32,6 +34,7 @@ runtime = [
   "dep:async-trait",
   "dep:chelix-agents",
   "dep:chelix-common",
+  "dep:chelix-config-service",
   "dep:reqwest",
   "dep:secrecy",
   "dep:serde",

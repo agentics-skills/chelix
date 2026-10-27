@@ -56,19 +56,18 @@ impl SandboxOwnerResolver for SessionSandboxOwnerResolver {
 /// Build the sandbox router with the selected global backend.
 pub(super) fn build_sandbox_router(
     sandbox_config: &SandboxConfig,
-    terminal_size: chelix_config::schema::TerminalSizeConfig,
     container_prefix: &str,
     timezone: Option<&str>,
     session_metadata: Arc<SqliteSessionMetadata>,
+    config_service: chelix_config_service::ConfigService,
 ) -> anyhow::Result<SandboxRouter> {
     let mut config = sandbox_config.clone();
     config.container_prefix = Some(container_prefix.to_string());
     config.timezone = timezone.map(ToOwned::to_owned);
-    config.terminal_size = Some(terminal_size);
 
     let owner_resolver: Arc<dyn SandboxOwnerResolver> =
         Arc::new(SessionSandboxOwnerResolver::new(session_metadata));
-    SandboxRouter::new(config, Some(owner_resolver))
+    SandboxRouter::new(config, Some(owner_resolver), config_service)
         .map_err(|error| anyhow::anyhow!("failed to initialize sandbox: {error}"))
 }
 
