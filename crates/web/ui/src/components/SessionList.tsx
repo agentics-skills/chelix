@@ -309,6 +309,7 @@ interface SessionLabelProps {
 }
 
 function SessionLabel({ session, badge }: SessionLabelProps): VNode {
+	void session.dataVersion.value;
 	const label = session.label || session.key;
 	const titleRef = useRef<HTMLDivElement>(null);
 	const measureRef = useRef<HTMLSpanElement>(null);
