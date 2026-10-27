@@ -108,6 +108,28 @@ npm run build:all      # Vite + Tailwind + service worker
 | Terminal            | [xterm.js](https://xtermjs.org/)                                |
 | Syntax highlighting | [Shiki](https://shiki.style/) (bundled, lazy-loaded)            |
 
+## Session Sidebar
+
+`components/SessionList.tsx` renders each session as two compact lines: the
+status icon, title, message-count badge and time on the first; the agent chip,
+preview and fork/worktree/project metadata on the second. Text is truncated
+with an ellipsis, with full titles, previews and metadata available on hover.
+Times use the 24-hour `h23` cycle, including `00:16` at midnight.
+Icons identify the session type (cron, channel or chat) at every tree level.
+Rows have 2px of left padding after the 3px selection border, with a 2px gap
+between the icon and title. The second line aligns with the title.
+
+Session rows are 42px tall on desktop and 44px on mobile. Each child level adds
+12px of indentation: the guide starts at the parent icon's centre, with a 4px
+elbow reaching the child icon. The 1px guides use `#5a606b`; the last child's
+incoming guide ends at its elbow. Ancestor guides continue through nested
+branches, and a divider appears after the final descendant of each root group.
+
+The search field and new-session button are 28px tall. The **Archive** checkbox
+sits beside the Sessions and Cron tabs and is shown on the Sessions tab. Panel
+styles are defined in `src/assets/css/layout.css`, with the mobile row spacing
+in `src/assets/css/mobile.css`.
+
 ## Provider Segment and Keyed Rendering
 
 `UiHistoryEngine` supplies semantic snapshots to both history pages and live

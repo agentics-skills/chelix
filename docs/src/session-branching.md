@@ -33,8 +33,8 @@ shortens that prefix, the response reports the adjustment and the UI displays a
 notification. Message actions use the exact selected boundary and reject an
 unfinished or interleaved prefix.
 
-Forked sessions appear **indented** under their parent in the sidebar, with a
-branch icon to distinguish them from top-level sessions. The metadata line shows
+Forked sessions appear **indented** under their parent in the sidebar, with tree
+guides connecting them to their parent. The metadata line shows
 `fork@N` where N is the exclusive UI history position at which the fork occurred.
 
 ## Agent Tool
@@ -128,7 +128,7 @@ leaving them in the main sidebar list.
 
 - Open **More controls** for a session and click **Archive**.
 - Archived sessions are hidden from the default sidebar list.
-- Enable **Show archived sessions** in the sidebar to reveal and restore them.
+- Enable the **Archive** checkbox beside the Sessions and Cron tabs in the sidebar to reveal and restore them.
 
 Archive is available for any session, including cron and channel-bound chats,
 except when the session is the current active session for its bound channel

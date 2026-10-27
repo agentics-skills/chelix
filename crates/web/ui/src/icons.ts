@@ -11,12 +11,6 @@ export function makeCronIcon(): HTMLSpanElement {
 	return el;
 }
 
-export function makeBranchIcon(): HTMLSpanElement {
-	const el = document.createElement("span");
-	el.className = "icon icon-branch";
-	return el;
-}
-
 export function makeProjectIcon(): HTMLSpanElement {
 	const el = document.createElement("span");
 	el.className = "icon icon-xs icon-folder";

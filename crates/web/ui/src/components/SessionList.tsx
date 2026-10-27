@@ -3,16 +3,9 @@
 // Replaces the imperative renderSessionList() with a reactive Preact
 // component that auto-rerenders from sessionStore signals.
 
-import type { VNode } from "preact";
+import { Fragment, type VNode } from "preact";
 import { useEffect, useRef } from "preact/hooks";
-import {
-	makeArchiveIcon,
-	makeBranchIcon,
-	makeChatIcon,
-	makeCronIcon,
-	makeProjectIcon,
-	makeTelegramIcon,
-} from "../icons";
+import { makeArchiveIcon, makeChatIcon, makeCronIcon, makeProjectIcon, makeTelegramIcon } from "../icons";
 import { currentPrefix, navigate, sessionPath } from "../router";
 import { switchSession } from "../sessions";
 import * as projectStore from "../stores/project-store";
@@ -50,7 +43,11 @@ function channelSessionType(s: Session): ChannelType | null {
 }
 
 function formatHHMM(epochMs: number): string {
-	return new Date(epochMs).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+	return new Date(epochMs).toLocaleTimeString(undefined, {
+		hour: "2-digit",
+		minute: "2-digit",
+		hourCycle: "h23",
+	});
 }
 
 // ── Icon component (renders SVG icon into a ref) ────────────
@@ -63,8 +60,7 @@ const channelLabels: Partial<Record<ChannelType, string>> = {
 	[ChannelType.Telegram]: "Telegram",
 };
 
-function makePrimarySessionIcon(session: Session, isBranch: boolean, channelType: ChannelType | null): HTMLElement {
-	if (isBranch) return makeBranchIcon();
+function makePrimarySessionIcon(session: Session, channelType: ChannelType | null): HTMLElement {
 	if ((session.key || "").startsWith("cron:")) return makeCronIcon();
 	return channelType ? (channelIconFactories[channelType]?.() ?? makeChatIcon()) : makeChatIcon();
 }
@@ -72,11 +68,10 @@ function makePrimarySessionIcon(session: Session, isBranch: boolean, channelType
 function syncSessionIcon(
 	container: HTMLSpanElement,
 	session: Session,
-	isBranch: boolean,
 	channelType: ChannelType | null,
 	archived: boolean,
 ): void {
-	container.replaceChildren(makePrimarySessionIcon(session, isBranch, channelType));
+	container.replaceChildren(makePrimarySessionIcon(session, channelType));
 	if (!archived) return;
 	const mark = makeArchiveIcon();
 	mark.classList.add("session-archived-mark");
@@ -128,10 +123,9 @@ function SessionBadge({ count, sessionKey }: SessionBadgeProps): VNode | null {
 
 interface SessionIconProps {
 	session: Session;
-	isBranch: boolean;
 }
 
-function SessionIcon({ session, isBranch }: SessionIconProps): VNode {
+function SessionIcon({ session }: SessionIconProps): VNode {
 	const iconRef = useRef<HTMLSpanElement>(null);
 	const archived = Boolean(session.archived);
 	const channelType = channelSessionType(session);
@@ -139,18 +133,14 @@ function SessionIcon({ session, isBranch }: SessionIconProps): VNode {
 	useEffect(() => {
 		const container = iconRef.current;
 		if (!container) return;
-		syncSessionIcon(container, session, isBranch, channelType, archived);
-	}, [session, isBranch, channelType, archived]);
+		syncSessionIcon(container, session, channelType, archived);
+	}, [session, channelType, archived]);
 
 	const presentation = sessionIconPresentation(session, channelType, archived);
-	// Read the reactive signal — auto-subscribes for badge updates.
-	const count = session.badgeCount.value;
-
 	return (
 		<span className="session-icon" style={presentation.style} title={presentation.title}>
-			<span ref={iconRef} />
+			<span className="session-icon-image" ref={iconRef} />
 			<span className="session-spinner" />
-			<SessionBadge count={count} sessionKey={session.key} />
 		</span>
 	);
 }
@@ -181,11 +171,13 @@ function appendProjectMeta(container: HTMLDivElement, project: ProjectInfo, foll
 
 function syncSessionMeta(container: HTMLDivElement, session: Session): void {
 	container.textContent = "";
+	container.title = "";
 	const parts = sessionMetaParts(session);
 	const project = session.projectId ? projectStore.getById(session.projectId) : null;
 	if (parts.length === 0 && !project) return;
 	container.textContent = parts.join(" \u00b7 ");
 	if (project) appendProjectMeta(container, project, parts.length > 0);
+	container.title = container.textContent;
 }
 
 function SessionMeta({ session }: SessionMetaProps): VNode {
@@ -207,12 +199,35 @@ interface KeyMap {
 	[key: string]: Session;
 }
 
+interface SessionAncestor {
+	key: string;
+	continues: boolean;
+}
+
 interface SessionItemProps {
 	session: Session;
 	activeKey: string;
-	depth: number;
+	ancestors: SessionAncestor[];
+	hasChildren: boolean;
 	keyMap: KeyMap;
 	refreshing: boolean;
+}
+
+interface SessionTreeGuidesProps {
+	ancestors: SessionAncestor[];
+}
+
+function SessionTreeGuides({ ancestors }: SessionTreeGuidesProps): VNode {
+	return (
+		<span className="session-tree-guides" aria-hidden="true">
+			{ancestors.map((ancestor, index) => {
+				const classes = ["session-tree-guide"];
+				if (ancestor.continues) classes.push("continues");
+				if (index === ancestors.length - 1) classes.push("branch");
+				return <span key={ancestor.key} className={classes.join(" ")} />;
+			})}
+		</span>
+	);
 }
 
 interface SessionItemState {
@@ -262,10 +277,7 @@ interface SessionAgentBadgeProps {
 function SessionAgentBadge({ agentId = "main" }: SessionAgentBadgeProps): VNode | null {
 	if (!agentId || agentId === "main") return null;
 	return (
-		<span
-			className="text-[10px] text-[var(--muted)] border border-[var(--border)] rounded px-1 py-0 ml-1"
-			title={`Agent: ${agentId}`}
-		>
+		<span className="session-agent" title={`Agent: ${agentId}`}>
 			@{agentId}
 		</span>
 	);
@@ -278,7 +290,7 @@ interface SessionTimeProps {
 function SessionTime({ timestamp = 0 }: SessionTimeProps): VNode | null {
 	if (timestamp <= 0) return null;
 	return (
-		<span className="session-time" title={new Date(timestamp).toLocaleString()}>
+		<span className="session-time" title={new Date(timestamp).toLocaleString(undefined, { hourCycle: "h23" })}>
 			{formatHHMM(timestamp)}
 		</span>
 	);
@@ -289,16 +301,19 @@ interface SessionPreviewProps {
 }
 
 function SessionPreview({ preview }: SessionPreviewProps): VNode | null {
-	return preview ? <div className="session-preview">{preview}</div> : null;
+	return preview ? (
+		<div className="session-preview" title={preview}>
+			{preview}
+		</div>
+	) : null;
 }
 
-function SessionItem({ session, activeKey, depth, keyMap, refreshing }: SessionItemProps): VNode {
-	const isBranch = depth > 0;
+function SessionItem({ session, activeKey, ancestors, hasChildren, keyMap, refreshing }: SessionItemProps): VNode {
+	const groupEnd = !hasChildren && ancestors.every((ancestor) => !ancestor.continues);
 	const active = session.key === activeKey;
 	// Read per-session signals — auto-subscribes for re-render.
 	// dataVersion triggers re-render when plain properties (preview,
-	// updatedAt, label) change. Badge updates come from badgeCount
-	// signal read inside SessionIcon.
+	// updatedAt, label) change. Badge updates come from badgeCount.
 	const replying = session.replying.value;
 	void session.dataVersion.value;
 	// Unread tint: true when not viewing this session and there are messages
@@ -312,26 +327,32 @@ function SessionItem({ session, activeKey, depth, keyMap, refreshing }: SessionI
 		refreshing,
 		archived: Boolean(session.archived),
 	});
-	const style = isBranch ? { paddingLeft: `${12 + depth * 16}px` } : {};
 	const href = sessionPath(session.key);
 
 	return (
 		<a
 			href={href}
-			className={className}
+			className={`${className}${groupEnd ? " session-group-end" : ""}`}
 			data-session-key={session.key}
-			style={style}
 			onClick={(event) => navigateToSession(event, href, session.key)}
 		>
-			<div className="session-info">
+			<SessionTreeGuides ancestors={ancestors} />
+			<div className={`session-info${hasChildren ? " session-parent" : ""}`}>
 				<div className="session-label">
-					<SessionIcon session={session} isBranch={isBranch} />
-					<span data-label-text>{session.label || session.key}</span>
-					<SessionAgentBadge agentId={session.agent_id} />
+					<SessionIcon session={session} />
+					<span data-label-text title={session.label || session.key}>
+						{session.label || session.key}
+					</span>
+					<SessionBadge count={badge} sessionKey={session.key} />
 					<SessionTime timestamp={session.updatedAt} />
 				</div>
-				<SessionPreview preview={sessionPreview(session, keyMap)} />
-				<SessionMeta session={session} />
+				<div className="session-details">
+					<SessionAgentBadge agentId={session.agent_id} />
+					<div className="session-summary">
+						<SessionPreview preview={sessionPreview(session, keyMap)} />
+						<SessionMeta session={session} />
+					</div>
+				</div>
 			</div>
 		</a>
 	);
@@ -380,22 +401,24 @@ export function SessionList(): VNode {
 	});
 	const roots = filtered.filter((s) => !(s.parentSessionKey && keyMap[s.parentSessionKey]));
 
-	function renderTree(session: Session, depth: number): VNode {
+	function renderTree(session: Session, ancestors: SessionAncestor[]): VNode {
 		const children = childrenMap[session.key] || [];
 		return (
-			<>
+			<Fragment key={session.key}>
 				<SessionItem
-					key={session.key}
 					session={session}
 					activeKey={activeKey}
-					depth={depth}
+					ancestors={ancestors}
+					hasChildren={children.length > 0}
 					keyMap={keyMap}
 					refreshing={session.key === refreshingKey}
 				/>
-				{children.map((child) => renderTree(child, depth + 1))}
-			</>
+				{children.map((child, index) =>
+					renderTree(child, [...ancestors, { key: session.key, continues: index < children.length - 1 }]),
+				)}
+			</Fragment>
 		);
 	}
 
-	return <div ref={spinnersRef}>{roots.map((s) => renderTree(s, 0))}</div>;
+	return <div ref={spinnersRef}>{roots.map((s) => renderTree(s, []))}</div>;
 }
