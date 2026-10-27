@@ -110,16 +110,25 @@ npm run build:all      # Vite + Tailwind + service worker
 
 ## Session Sidebar
 
-`components/SessionList.tsx` renders each session as two compact lines: the
-status icon, title, message-count badge and time on the first; the agent chip,
-preview and fork/worktree/project metadata on the second. Text is truncated
-with an ellipsis, with full titles, previews and metadata available on hover.
+`components/SessionList.tsx` renders each session with a title and a summary of
+up to two lines each. The title uses one line when its text, message-count badge
+and time fit together; otherwise it uses two lines. The status icon and archive
+mark sit on the first title line; the count badge and time occupy the right end
+of the last title line. Both title lines start at the same position. The count
+badge is 0.7rem tall, matching the time's font size, with 8.5px digits. The
+title-to-count and count-to-time gaps are 2px. The agent chip sits at the start
+of the summary's first line, followed by the preview and fork/worktree/project
+metadata. The second summary line starts beneath the chip. Title and summary
+text wrap at character boundaries and are truncated with an ellipsis at the end
+of the available second line, with full titles, previews and metadata available
+on hover.
 Times use the 24-hour `h23` cycle, including `00:16` at midnight.
 Icons identify the session type (cron, channel or chat) at every tree level.
 Rows have 2px of left padding after the 3px selection border, with a 2px gap
-between the icon and title. The second line aligns with the title.
+between the icon and title. The summary aligns with the title.
 
-Session rows are 42px tall on desktop and 44px on mobile. Each child level adds
+Session row heights follow their content, with 4px vertical padding on desktop
+and 5px on mobile. Each child level adds
 12px of indentation: the guide starts at the parent icon's centre, with a 4px
 elbow reaching the child icon. The 1px guides use `#5a606b`; the last child's
 incoming guide ends at its elbow. Ancestor guides continue through nested
