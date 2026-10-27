@@ -463,20 +463,19 @@ pub(super) async fn complete_startup(
         let sandbox_packages_tool =
             chelix_tools::sandbox_packages::SandboxPackagesTool::new(Arc::clone(&sandbox_router));
 
-        let execute_command_tool =
-            chelix_tools::terminal_command::ExecuteCommandTool::new(Arc::clone(&tools_service))
-                .with_default_timeout(std::time::Duration::from_secs(
-                    config.tools.execute_command.default_timeout_secs,
-                ))
-                .with_rewrite_timeout(
-                    config
-                        .tools
-                        .execute_command
-                        .rewrite_timeout_secs
-                        .map(std::time::Duration::from_secs),
-                )
-                .with_approval(Arc::clone(&approval_manager), Arc::clone(&broadcaster))
-                .with_env_provider(Arc::clone(&env_provider));
+        let execute_command_tool = chelix_tools::terminal_command::ExecuteCommandTool::new(
+            Arc::clone(&tools_service),
+            state.services.configuration().clone(),
+        )
+        .with_rewrite_timeout(
+            config
+                .tools
+                .execute_command
+                .rewrite_timeout_secs
+                .map(std::time::Duration::from_secs),
+        )
+        .with_approval(Arc::clone(&approval_manager), Arc::clone(&broadcaster))
+        .with_env_provider(Arc::clone(&env_provider));
 
         tool_registry.register(Box::new(execute_command_tool));
         tool_registry.register(Box::new(
@@ -550,25 +549,28 @@ pub(super) async fn complete_startup(
             tool_registry.register(Box::new(t));
         }
         #[cfg(feature = "context7")]
-        chelix_context7::register_tools(&mut tool_registry, &config.tools.context7);
+        chelix_context7::register_tools(&mut tool_registry, state.services.configuration().clone());
 
         #[cfg(feature = "linkup")]
-        chelix_linkup::register_tools(&mut tool_registry, &config.tools.linkup);
+        chelix_linkup::register_tools(&mut tool_registry, state.services.configuration().clone());
 
         #[cfg(feature = "exa")]
-        chelix_exa::register_tools(&mut tool_registry, &config.tools.exa);
+        chelix_exa::register_tools(&mut tool_registry, state.services.configuration().clone());
 
         #[cfg(feature = "google")]
-        chelix_google::register_tools(&mut tool_registry, &config.tools.google);
+        chelix_google::register_tools(&mut tool_registry, state.services.configuration().clone());
 
         #[cfg(feature = "felo")]
-        chelix_felo::register_tools(&mut tool_registry, &config.tools.felo);
+        chelix_felo::register_tools(&mut tool_registry, state.services.configuration().clone());
 
         #[cfg(feature = "github")]
-        chelix_github::register_tools(&mut tool_registry, &config.tools.github);
+        chelix_github::register_tools(&mut tool_registry, state.services.configuration().clone());
 
         #[cfg(feature = "duckduckgo")]
-        chelix_duckduckgo::register_tools(&mut tool_registry, &config.tools.duckduckgo)?;
+        chelix_duckduckgo::register_tools(
+            &mut tool_registry,
+            state.services.configuration().clone(),
+        )?;
 
         if let Some(ref mm) = memory_manager {
             tool_registry.register(Box::new(chelix_memory::tools::MemorySearchTool::new(
@@ -756,7 +758,7 @@ pub(super) async fn complete_startup(
             Arc::clone(&queued_prompts),
             config.clone(),
             Arc::clone(&agents_config),
-            chelix_chat::ToolsConfigSource::Service(state.services.configuration().clone()),
+            state.services.configuration().clone(),
             Arc::clone(&skill_files),
         )
         .with_session_state_store(Arc::clone(&session_state_store))
@@ -776,8 +778,7 @@ pub(super) async fn complete_startup(
             .await;
         crate::mcp_service::sync_mcp_tools(live_mcp.manager(), &shared_tool_registry).await;
 
-        let schemas = shared_tool_registry.read().await.list_schemas();
-        let tool_names: Vec<&str> = schemas.iter().filter_map(|s| s["name"].as_str()).collect();
+        let tool_names = shared_tool_registry.read().await.list_names();
         info!(tools = ?tool_names, "agent tools registered");
     }
 

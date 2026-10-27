@@ -185,9 +185,6 @@ pub struct SandboxConfig {
     pub packages: Vec<String>,
     /// IANA timezone (e.g. "Europe/Paris") injected as `TZ` env var into containers.
     pub timezone: Option<String>,
-    /// PTY size passed to `chelix-tools-service`. Absent until the loaded
-    /// `tools.execute_command.terminal_size` is copied in.
-    pub terminal_size: Option<chelix_config::schema::TerminalSizeConfig>,
 }
 
 impl Default for SandboxConfig {
@@ -209,7 +206,6 @@ impl Default for SandboxConfig {
             gpus: None,
             packages: Vec::new(),
             timezone: None,
-            terminal_size: None,
         }
     }
 }
@@ -263,7 +259,6 @@ impl From<&chelix_config::schema::SandboxConfig> for SandboxConfig {
             gpus: cfg.gpus.clone(),
             packages: cfg.packages.clone(),
             timezone: None, // Set by gateway from user profile
-            terminal_size: None,
         }
     }
 }

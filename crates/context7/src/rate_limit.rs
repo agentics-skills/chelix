@@ -232,6 +232,22 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
+    async fn enormous_cooldown_is_capped_before_the_probe() {
+        let coordinator = RateLimitCoordinator::default();
+        let started = Instant::now();
+        coordinator.acquire().await.complete(true, Some(u64::MAX));
+
+        let probe = coordinator.acquire().await;
+
+        assert!(probe.is_probe());
+        assert_eq!(
+            Instant::now() - started,
+            Duration::from_millis(CONTEXT7_MAX_RATE_LIMIT_COOLDOWN_MS)
+        );
+        probe.complete(false, None);
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn concurrent_rate_limits_extend_the_shared_deadline() {
         let coordinator = RateLimitCoordinator::default();
         let first = coordinator.acquire().await;

@@ -2,9 +2,13 @@
 use super::*;
 
 #[cfg(target_os = "macos")]
-#[test]
-fn test_backend_id_apple_container() {
-    let sandbox = AppleContainerSandbox::new(SandboxConfig::default());
+#[tokio::test]
+async fn test_backend_id_apple_container() {
+    let fixture =
+        chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+            .await
+            .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
+    let sandbox = AppleContainerSandbox::new(SandboxConfig::default(), fixture.service.clone());
     assert_eq!(sandbox.backend_id(), SandboxBackendId::AppleContainer);
 }
 
@@ -25,9 +29,13 @@ fn test_sandbox_router_explicit_apple_container_backend() {
 }
 
 #[cfg(target_os = "macos")]
-#[test]
-fn test_apple_container_name_is_stable() {
-    let sandbox = AppleContainerSandbox::new(SandboxConfig::default());
+#[tokio::test]
+async fn test_apple_container_name_is_stable() {
+    let fixture =
+        chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+            .await
+            .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
+    let sandbox = AppleContainerSandbox::new(SandboxConfig::default(), fixture.service.clone());
     let id = SandboxId {
         scope: SandboxScope::Session,
         key: "session-abc".into(),
@@ -38,15 +46,19 @@ fn test_apple_container_name_is_stable() {
 
 /// When both Docker and Apple Container are available, test that we can
 /// explicitly select each one.
-#[test]
-fn test_select_backend_explicit_choices() {
+#[tokio::test]
+async fn test_select_backend_explicit_choices() {
+    let fixture =
+        chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+            .await
+            .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
     // Docker backend
     if should_use_docker_backend(is_cli_available("docker"), is_docker_daemon_available()) {
         let config = SandboxConfig {
             backend: SandboxBackend::Docker,
             ..Default::default()
         };
-        let backend = select_backend(config).unwrap();
+        let backend = select_backend(config, fixture.service.clone()).unwrap();
         assert_eq!(backend.backend_id(), SandboxBackendId::Docker);
     }
 
@@ -56,7 +68,7 @@ fn test_select_backend_explicit_choices() {
             backend: SandboxBackend::Podman,
             ..Default::default()
         };
-        let backend = select_backend(config).unwrap();
+        let backend = select_backend(config, fixture.service.clone()).unwrap();
         assert_eq!(backend.backend_id(), SandboxBackendId::Podman);
     }
 
@@ -67,7 +79,7 @@ fn test_select_backend_explicit_choices() {
             backend: SandboxBackend::AppleContainer,
             ..Default::default()
         };
-        let backend = select_backend(config).unwrap();
+        let backend = select_backend(config, fixture.service.clone()).unwrap();
         assert_eq!(backend.backend_id(), SandboxBackendId::AppleContainer);
     }
 }
@@ -164,27 +176,34 @@ fn test_apple_container_run_args_with_declarative_mounts() {
 }
 
 #[cfg(target_os = "macos")]
-#[test]
-fn test_apple_container_mount_specs_use_resolved_plan_and_modes() {
+#[tokio::test]
+async fn test_apple_container_mount_specs_use_resolved_plan_and_modes() {
+    let fixture =
+        chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+            .await
+            .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
     let host_data = tempfile::tempdir().unwrap();
     let custom = tempfile::tempdir().unwrap();
     let custom_file = tempfile::NamedTempFile::new().unwrap();
-    let sandbox = AppleContainerSandbox::new(SandboxConfig {
-        host_data_dir: Some(host_data.path().to_path_buf()),
-        mounts: vec![
-            chelix_config::container_mounts::SandboxMount {
-                host: custom.path().to_path_buf(),
-                guest: "/mnt/reference".into(),
-                mode: chelix_config::container_mounts::MountMode::Ro,
-            },
-            chelix_config::container_mounts::SandboxMount {
-                host: custom_file.path().to_path_buf(),
-                guest: "/mnt/single-file".into(),
-                mode: chelix_config::container_mounts::MountMode::Ro,
-            },
-        ],
-        ..Default::default()
-    });
+    let sandbox = AppleContainerSandbox::new(
+        SandboxConfig {
+            host_data_dir: Some(host_data.path().to_path_buf()),
+            mounts: vec![
+                chelix_config::container_mounts::SandboxMount {
+                    host: custom.path().to_path_buf(),
+                    guest: "/mnt/reference".into(),
+                    mode: chelix_config::container_mounts::MountMode::Ro,
+                },
+                chelix_config::container_mounts::SandboxMount {
+                    host: custom_file.path().to_path_buf(),
+                    guest: "/mnt/single-file".into(),
+                    mode: chelix_config::container_mounts::MountMode::Ro,
+                },
+            ],
+            ..Default::default()
+        },
+        fixture.service.clone(),
+    );
     let id = SandboxId {
         scope: SandboxScope::Session,
         key: "apple-mount-plan".into(),

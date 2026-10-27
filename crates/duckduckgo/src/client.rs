@@ -2,7 +2,7 @@
 
 use std::{sync::Arc, time::Duration};
 
-use url::Url;
+use {chelix_config_service::ConfigService, url::Url};
 
 use crate::{
     error::{Error, Result},
@@ -19,22 +19,17 @@ pub(crate) struct DuckDuckGoClient {
     coordinator: RequestCoordinator,
     parser: SearchParser,
     search_url: String,
-    request_timeout: Duration,
+    config: ConfigService,
 }
 
 impl DuckDuckGoClient {
-    pub(crate) fn new(request_timeout_secs: u64) -> Result<Self> {
-        if request_timeout_secs == 0 {
-            return Err(Error::message(
-                "tools.duckduckgo.request_timeout_secs must be at least 1",
-            ));
-        }
+    pub(crate) fn new(config: ConfigService) -> Result<Self> {
         Ok(Self {
             transport: Arc::new(ReqwestTransport::new()?),
             coordinator: RequestCoordinator::default(),
             parser: SearchParser::new()?,
             search_url: DUCKDUCKGO_SEARCH_URL.to_string(),
-            request_timeout: Duration::from_secs(request_timeout_secs),
+            config,
         })
     }
 
@@ -42,7 +37,7 @@ impl DuckDuckGoClient {
     pub(crate) fn for_test(
         transport: Arc<dyn HttpTransport>,
         search_url: String,
-        request_timeout: Duration,
+        config: ConfigService,
     ) -> Self {
         Self {
             transport,
@@ -50,7 +45,7 @@ impl DuckDuckGoClient {
             parser: SearchParser::new()
                 .unwrap_or_else(|error| panic!("test parser creation failed: {error}")),
             search_url,
-            request_timeout,
+            config,
         }
     }
 
@@ -61,8 +56,18 @@ impl DuckDuckGoClient {
         page: u32,
         num_results: u32,
     ) -> Result<Vec<SearchResultItem>> {
+        let request_timeout_secs = self
+            .config
+            .read(|config| config.tools.duckduckgo.request_timeout_secs)
+            .await?;
+        if request_timeout_secs == 0 {
+            return Err(Error::message(
+                "tools.duckduckgo.request_timeout_secs must be at least 1",
+            ));
+        }
+        let request_timeout = Duration::from_secs(request_timeout_secs);
         match tokio::time::timeout(
-            self.request_timeout,
+            request_timeout,
             self.search_with_retry(query, page, num_results),
         )
         .await
@@ -70,7 +75,7 @@ impl DuckDuckGoClient {
             Ok(result) => result,
             Err(_) => Err(Error::message(format!(
                 "duckduckgo_search timed out after {} second(s) while waiting for the shared request queue, retry/backoff, and HTTP response",
-                self.request_timeout.as_secs()
+                request_timeout.as_secs()
             ))),
         }
     }
@@ -159,7 +164,15 @@ mod tests {
 
     use {async_trait::async_trait, reqwest::StatusCode};
 
-    use super::*;
+    use {super::*, chelix_agents::test_support::ConfigFixture, chelix_config::ChelixConfig};
+
+    async fn fixture(timeout_secs: u64) -> ConfigFixture {
+        let mut config = ChelixConfig::default();
+        config.tools.duckduckgo.request_timeout_secs = timeout_secs;
+        ConfigFixture::new(config)
+            .await
+            .unwrap_or_else(|error| panic!("fixture failed: {error}"))
+    }
 
     struct FakeTransport {
         responses: Mutex<VecDeque<HttpResponse>>,
@@ -206,16 +219,37 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn zero_request_timeout_is_rejected_before_transport() {
+        let fixture = fixture(0).await;
+        let transport = Arc::new(FakeTransport::new(vec![]));
+        let client = DuckDuckGoClient::for_test(
+            transport.clone(),
+            "https://duckduckgo.test/html/".to_string(),
+            fixture.service.clone(),
+        );
+        let error = match client.search("rust", 1, 10).await {
+            Ok(_) => panic!("zero timeout must be rejected"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error.to_string(),
+            "tools.duckduckgo.request_timeout_secs must be at least 1"
+        );
+        assert_eq!(transport.calls(), 0);
+    }
+
     #[tokio::test(start_paused = true)]
     async fn retries_one_rate_limited_response() {
         let transport = Arc::new(FakeTransport::new(vec![
             response(StatusCode::TOO_MANY_REQUESTS, "slow down".into(), Some("1")),
             response(StatusCode::OK, success_html(), None),
         ]));
+        let fixture = fixture(30).await;
         let client = DuckDuckGoClient::for_test(
             transport.clone(),
             "https://duckduckgo.test/html/".to_string(),
-            Duration::from_secs(30),
+            fixture.service.clone(),
         );
 
         let results = client
@@ -228,33 +262,57 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn request_timeout_covers_waiting_in_the_shared_queue() {
-        let transport = Arc::new(FakeTransport::new(vec![response(
-            StatusCode::OK,
-            success_html(),
-            None,
-        )]));
+    async fn request_timeout_covers_waiting_in_the_shared_queue() -> anyhow::Result<()> {
+        let transport = Arc::new(FakeTransport::new(vec![
+            response(StatusCode::OK, success_html(), None),
+            response(StatusCode::OK, success_html(), None),
+        ]));
+        let fixture = fixture(1).await;
         let client = DuckDuckGoClient::for_test(
             transport.clone(),
             "https://duckduckgo.test/html/".to_string(),
-            Duration::from_secs(1),
+            fixture.service.clone(),
         );
-        let first = client
-            .search("first", 1, 10)
-            .await
-            .unwrap_or_else(|error| panic!("first search failed: {error}"));
+        let first = client.search("first", 1, 10).await?;
         assert_eq!(first.len(), 1);
 
-        let error = match client.search("second", 1, 10).await {
+        let started = tokio::time::Instant::now();
+        let second = client.search("second", 1, 10);
+        tokio::pin!(second);
+        tokio::select! {
+            result = &mut second => panic!("second search finished before its deadline: {result:?}"),
+            () = tokio::time::sleep(Duration::from_millis(100)) => {},
+        }
+        // Hold the paused clock while the configuration write performs filesystem I/O.
+        let (release_clock, hold_clock) = std::sync::mpsc::channel::<()>();
+        let clock_guard = tokio::task::spawn_blocking(move || {
+            let _ = hold_clock.recv();
+        });
+        let updated = fixture
+            .service
+            .update(|config| {
+                config.tools.duckduckgo.request_timeout_secs = 30;
+                Ok(())
+            })
+            .await;
+        drop(release_clock);
+        clock_guard.await?;
+        updated?;
+        let error = match second.await {
             Ok(_) => panic!("second search should time out in the queue"),
             Err(error) => error,
         };
-
+        assert_eq!(started.elapsed(), Duration::from_secs(1));
         assert_eq!(
             error.to_string(),
             "duckduckgo_search timed out after 1 second(s) while waiting for the shared request queue, retry/backoff, and HTTP response"
         );
         assert_eq!(transport.calls(), 1);
+        let third = client.search("third", 1, 10).await?;
+        assert_eq!(third.len(), 1);
+        assert_eq!(transport.calls(), 2);
+        assert_eq!(started.elapsed(), BASE_INTERVAL);
+        Ok(())
     }
 
     #[tokio::test(start_paused = true)]
@@ -277,10 +335,11 @@ mod tests {
                 None,
             ),
         ]));
+        let fixture = fixture(30).await;
         let client = DuckDuckGoClient::for_test(
             transport.clone(),
             "https://duckduckgo.test/html/".to_string(),
-            Duration::from_secs(30),
+            fixture.service.clone(),
         );
 
         let error = match client.search("rust", 1, 10).await {
@@ -306,10 +365,11 @@ mod tests {
             html,
             None,
         )]));
+        let fixture = fixture(30).await;
         let client = DuckDuckGoClient::for_test(
             transport.clone(),
             "https://duckduckgo.test/html/".to_string(),
-            Duration::from_secs(30),
+            fixture.service.clone(),
         );
 
         let results = client

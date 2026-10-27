@@ -713,11 +713,20 @@ fn parse_input(params: Value) -> Result<PullRequestReadInput> {
 mod tests {
     use {super::*, secrecy::Secret};
 
-    fn tool(base_url: String, token: Option<&str>) -> GithubPullRequestReadTool {
-        GithubPullRequestReadTool::new(Arc::new(GitHubClient::for_test(
+    async fn tool(
+        base_url: String,
+        token: Option<&str>,
+    ) -> (
+        GithubPullRequestReadTool,
+        chelix_agents::test_support::ConfigFixture,
+    ) {
+        let fixture =
+            crate::test_support::fixture(token.map(|value| Secret::new(value.to_string()))).await;
+        let tool = GithubPullRequestReadTool::new(Arc::new(GitHubClient::for_test(
             base_url,
-            token.map(|value| Secret::new(value.to_string())),
-        )))
+            fixture.service.clone(),
+        )));
+        (tool, fixture)
     }
 
     fn pull_request_body(body: Value, head_sha: Option<&str>) -> String {
@@ -747,9 +756,9 @@ mod tests {
         })
     }
 
-    #[test]
-    fn exposes_the_reference_description_and_a_strict_schema() {
-        let tool = tool("http://127.0.0.1:1".into(), None);
+    #[tokio::test]
+    async fn exposes_the_reference_description_and_a_strict_schema() {
+        let (tool, _fixture) = tool("http://127.0.0.1:1".into(), None).await;
 
         assert_eq!(tool.name(), "github_pull_request_read");
         assert_eq!(
@@ -878,7 +887,8 @@ mod tests {
             .create_async()
             .await;
 
-        let result = tool(server.url(), None)
+        let (tool, _fixture) = tool(server.url(), None).await;
+        let result = tool
             .execute(input("get"))
             .await
             .unwrap_or_else(|error| panic!("execute failed: {error}"));
@@ -905,7 +915,8 @@ mod tests {
             .create_async()
             .await;
 
-        let result = tool(server.url(), None)
+        let (tool, _fixture) = tool(server.url(), None).await;
+        let result = tool
             .execute(input("get"))
             .await
             .unwrap_or_else(|error| panic!("execute failed: {error}"));
@@ -929,7 +940,8 @@ mod tests {
             .create_async()
             .await;
 
-        let result = tool(server.url(), None)
+        let (tool, _fixture) = tool(server.url(), None).await;
+        let result = tool
             .execute(input("get_diff"))
             .await
             .unwrap_or_else(|error| panic!("execute failed: {error}"));
@@ -984,7 +996,8 @@ mod tests {
             .create_async()
             .await;
 
-        let result = tool(server.url(), None)
+        let (tool, _fixture) = tool(server.url(), None).await;
+        let result = tool
             .execute(input("get_status"))
             .await
             .unwrap_or_else(|error| panic!("execute failed: {error}"));
@@ -1042,7 +1055,8 @@ mod tests {
         params["perPage"] = json!(10);
         params["page"] = json!(2);
 
-        let result = tool(server.url(), None)
+        let (tool, _fixture) = tool(server.url(), None).await;
+        let result = tool
             .execute(params)
             .await
             .unwrap_or_else(|error| panic!("execute failed: {error}"));
@@ -1083,7 +1097,8 @@ mod tests {
             .create_async()
             .await;
 
-        let result = tool(server.url(), None)
+        let (tool, _fixture) = tool(server.url(), None).await;
+        let result = tool
             .execute(input("get_review_comments"))
             .await
             .unwrap_or_else(|error| panic!("execute failed: {error}"));
@@ -1122,7 +1137,8 @@ mod tests {
             .create_async()
             .await;
 
-        let result = tool(server.url(), None)
+        let (tool, _fixture) = tool(server.url(), None).await;
+        let result = tool
             .execute(input("get_reviews"))
             .await
             .unwrap_or_else(|error| panic!("execute failed: {error}"));
@@ -1159,7 +1175,8 @@ mod tests {
             .create_async()
             .await;
 
-        let result = tool(server.url(), None)
+        let (tool, _fixture) = tool(server.url(), None).await;
+        let result = tool
             .execute(input("get_comments"))
             .await
             .unwrap_or_else(|error| panic!("execute failed: {error}"));
@@ -1184,6 +1201,7 @@ mod tests {
 
     #[tokio::test]
     async fn each_unsuccessful_endpoint_propagates_the_github_error_body() {
+        let fixture = crate::test_support::fixture(None).await;
         for (method, path) in [
             ("get", "/repos/o/r/pulls/42"),
             ("get_diff", "/repos/o/r/pulls/42"),
@@ -1202,7 +1220,11 @@ mod tests {
                 .create_async()
                 .await;
 
-            let error = match tool(server.url(), None).execute(input(method)).await {
+            let tool = GithubPullRequestReadTool::new(Arc::new(GitHubClient::for_test(
+                server.url(),
+                fixture.service.clone(),
+            )));
+            let error = match tool.execute(input(method)).await {
                 Ok(_) => panic!("expected a retrieval error for {method}"),
                 Err(error) => error,
             };
@@ -1224,7 +1246,8 @@ mod tests {
             .create_async()
             .await;
 
-        let error = match tool(server.url(), None).execute(input("get_status")).await {
+        let (tool, _fixture) = tool(server.url(), None).await;
+        let error = match tool.execute(input("get_status")).await {
             Ok(_) => panic!("expected a missing head SHA error"),
             Err(error) => error,
         };
@@ -1236,7 +1259,7 @@ mod tests {
         call.assert_async().await;
     }
 
-    #[tokio::test(start_paused = true)]
+    #[tokio::test]
     async fn diff_rate_limit_retry_preserves_the_specialized_media_type() {
         let mut server = mockito::Server::new_async().await;
         let limited = server
@@ -1257,7 +1280,8 @@ mod tests {
             .create_async()
             .await;
 
-        let result = tool(server.url(), None)
+        let (tool, _fixture) = tool(server.url(), None).await;
+        let result = tool
             .execute(input("get_diff"))
             .await
             .unwrap_or_else(|error| panic!("execute failed: {error}"));
@@ -1282,7 +1306,8 @@ mod tests {
             .create_async()
             .await;
 
-        let error = match tool(server.url(), None).execute(input("get_diff")).await {
+        let (tool, _fixture) = tool(server.url(), None).await;
+        let error = match tool.execute(input("get_diff")).await {
             Ok(_) => panic!("expected a rate-limit error"),
             Err(error) => error,
         };

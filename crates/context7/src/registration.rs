@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use {chelix_agents::tool_registry::ToolRegistry, chelix_config::schema::Context7Config};
+use {chelix_agents::tool_registry::ToolRegistry, chelix_config_service::ConfigService};
 
 use crate::{
     client::Context7Client,
@@ -10,11 +10,8 @@ use crate::{
 };
 
 /// Register every `context7_*` tool against one shared client.
-pub fn register_tools(registry: &mut ToolRegistry, config: &Context7Config) {
-    let client = Arc::new(Context7Client::new(
-        config.token.clone(),
-        config.request_timeout_secs,
-    ));
+pub fn register_tools(registry: &mut ToolRegistry, config_service: ConfigService) {
+    let client = Arc::new(Context7Client::new(config_service));
     registry.register(Box::new(Context7ResolveLibraryIdTool::new(Arc::clone(
         &client,
     ))));
@@ -25,10 +22,14 @@ pub fn register_tools(registry: &mut ToolRegistry, config: &Context7Config) {
 mod tests {
     use super::*;
 
-    #[test]
-    fn registers_the_complete_tool_set() {
+    #[tokio::test]
+    async fn registers_the_complete_tool_set() {
         let mut registry = ToolRegistry::new();
-        register_tools(&mut registry, &Context7Config::default());
+        let fixture =
+            chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+                .await
+                .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
+        register_tools(&mut registry, fixture.service.clone());
 
         let names: Vec<String> = registry
             .list_catalog()

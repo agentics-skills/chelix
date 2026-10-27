@@ -19,10 +19,18 @@ use {
     chelix_skills::types::SkillMetadata,
 };
 
+fn schema_defaults() -> crate::tool_registry::ToolSchemaDefaults {
+    let tools = chelix_config::schema::ToolsConfig::default();
+    crate::tool_registry::ToolSchemaDefaults {
+        max_tool_result_bytes: tools.max_tool_result_bytes,
+        execute_command_default_timeout_secs: tools.execute_command.default_timeout_secs,
+    }
+}
+
 #[test]
 fn test_native_prompt_does_not_include_tool_call_format() {
     let tools = ToolRegistry::new();
-    let prompt = build_system_prompt(&tools, true, None);
+    let prompt = build_system_prompt(&tools, &schema_defaults(), true, None);
     assert!(!prompt.contains("```tool_call"));
 }
 
@@ -50,7 +58,7 @@ fn test_fallback_prompt_includes_tool_call_format() {
     }
     tools.register(Box::new(Dummy));
 
-    let prompt = build_system_prompt(&tools, false, None);
+    let prompt = build_system_prompt(&tools, &schema_defaults(), false, None);
     assert!(prompt.contains("```tool_call"));
     assert!(prompt.contains("### {\"name\":\"test\"}"));
 }
@@ -79,7 +87,7 @@ fn test_native_prompt_uses_compact_tool_list() {
     }
     tools.register(Box::new(Dummy));
 
-    let prompt = build_system_prompt(&tools, true, None);
+    let prompt = build_system_prompt(&tools, &schema_defaults(), true, None);
     assert!(prompt.contains("## Available Tools"));
     assert!(prompt.contains("- `{\"name\":\"test\"}`: A test tool"));
     assert!(!prompt.contains("Parameters:"));
@@ -88,7 +96,7 @@ fn test_native_prompt_uses_compact_tool_list() {
 #[test]
 fn test_tool_guidelines_prefer_native_mcp_tools() {
     let tools = ToolRegistry::new();
-    let prompt = build_system_prompt(&tools, true, None);
+    let prompt = build_system_prompt(&tools, &schema_defaults(), true, None);
     assert!(prompt.contains("mcp__<server>__<tool>"));
     assert!(prompt.contains("mcp_list"));
     assert!(prompt.contains("Skills describe workflows"));
@@ -104,7 +112,20 @@ fn test_skills_injected_into_prompt() {
         ..Default::default()
     }];
     let prompt = build_system_prompt_with_session_runtime(
-        &tools, true, None, &skills, None, None, None, None, None, None, None, None, None,
+        &tools,
+        &schema_defaults(),
+        true,
+        None,
+        &skills,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
     );
     assert!(prompt.contains("<available_skills>"));
     assert!(prompt.contains("commit"));
@@ -117,6 +138,7 @@ fn test_no_skills_block_when_empty() {
     let tools = ToolRegistry::new();
     let prompt = build_system_prompt_with_session_runtime(
         &tools,
+        &schema_defaults(),
         true,
         None,
         &[],
@@ -147,6 +169,7 @@ fn test_documentation_section_includes_local_docs_path() {
 
     let prompt = build_system_prompt_with_session_runtime(
         &tools,
+        &schema_defaults(),
         true,
         None,
         &[],
@@ -172,6 +195,7 @@ fn test_documentation_section_falls_back_to_public_docs() {
     let tools = ToolRegistry::new();
     let prompt = build_system_prompt_with_session_runtime(
         &tools,
+        &schema_defaults(),
         true,
         None,
         &[],
@@ -211,6 +235,7 @@ fn test_agent_injected_into_prompt() {
     };
     let prompt = build_system_prompt_with_session_runtime(
         &tools,
+        &schema_defaults(),
         true,
         None,
         &[],
@@ -240,6 +265,7 @@ fn test_custom_soul_injected() {
     );
     let prompt = build_system_prompt_with_session_runtime(
         &tools,
+        &schema_defaults(),
         true,
         None,
         &[],
@@ -263,6 +289,7 @@ fn test_no_agent_no_extra_lines() {
     let tools = ToolRegistry::new();
     let prompt = build_system_prompt_with_session_runtime(
         &tools,
+        &schema_defaults(),
         true,
         None,
         &[],
@@ -286,6 +313,7 @@ fn test_workspace_files_injected_when_provided() {
     let tools = ToolRegistry::new();
     let prompt = build_system_prompt_with_session_runtime(
         &tools,
+        &schema_defaults(),
         true,
         None,
         &[],
@@ -311,6 +339,7 @@ fn test_workspace_file_metadata_marks_truncation() {
     let tools = ToolRegistry::new();
     let output = build_system_prompt_with_session_runtime_details(
         &tools,
+        &schema_defaults(),
         true,
         None,
         &[],
@@ -389,6 +418,7 @@ fn test_runtime_context_injected_when_provided() {
 
     let prompt = build_system_prompt_with_session_runtime(
         &tools,
+        &schema_defaults(),
         true,
         None,
         &[],
@@ -449,6 +479,7 @@ fn test_runtime_context_sandbox_without_sudo_omits_sudo_hint() {
 
     let prompt = build_system_prompt_with_session_runtime(
         &tools,
+        &schema_defaults(),
         true,
         None,
         &[],
@@ -484,6 +515,7 @@ fn test_runtime_context_no_sandbox_uses_host_only_routing() {
 
     let prompt = build_system_prompt_with_session_runtime(
         &tools,
+        &schema_defaults(),
         true,
         None,
         &[],
@@ -522,6 +554,7 @@ fn test_runtime_context_no_sandbox_with_sudo_includes_sudo_hint() {
 
     let prompt = build_system_prompt_with_session_runtime(
         &tools,
+        &schema_defaults(),
         true,
         None,
         &[],
@@ -555,6 +588,7 @@ fn test_runtime_context_includes_location_when_set() {
 
     let prompt = build_system_prompt_with_session_runtime(
         &tools,
+        &schema_defaults(),
         true,
         None,
         &[],
@@ -591,6 +625,7 @@ fn test_runtime_context_includes_channel_surface_fields_when_set() {
 
     let prompt = build_system_prompt_with_session_runtime(
         &tools,
+        &schema_defaults(),
         true,
         None,
         &[],
@@ -627,6 +662,7 @@ fn test_runtime_context_omits_location_when_none() {
 
     let prompt = build_system_prompt_with_session_runtime(
         &tools,
+        &schema_defaults(),
         true,
         None,
         &[],
@@ -676,7 +712,7 @@ fn test_minimal_prompt_runtime_does_not_add_command_routing_block() {
 #[test]
 fn test_silent_replies_section_in_tool_prompt() {
     let tools = ToolRegistry::new();
-    let prompt = build_system_prompt(&tools, true, None);
+    let prompt = build_system_prompt(&tools, &schema_defaults(), true, None);
     assert!(prompt.contains("## Silent Replies"));
     assert!(prompt.contains("empty response"));
     assert!(prompt.contains("Do not call tools for greetings"));
@@ -698,6 +734,7 @@ fn test_memory_text_injected_into_prompt() {
     let memory = "## User Facts\n- Lives in Paris\n- Speaks French";
     let prompt = build_system_prompt_with_session_runtime(
         &tools,
+        &schema_defaults(),
         true,
         None,
         &[],
@@ -723,6 +760,7 @@ fn test_boot_text_injected_into_prompt() {
     let boot = "Run health check on startup.\n- Verify API key configured";
     let prompt = build_system_prompt_with_session_runtime(
         &tools,
+        &schema_defaults(),
         true,
         None,
         &[],
@@ -747,6 +785,7 @@ fn test_memory_text_truncated_at_limit() {
     let large_memory = "x".repeat(8_000 + 500);
     let prompt = build_system_prompt_with_session_runtime(
         &tools,
+        &schema_defaults(),
         true,
         None,
         &[],
@@ -770,6 +809,7 @@ fn test_no_memory_section_without_memory_or_tools() {
     let tools = ToolRegistry::new();
     let prompt = build_system_prompt_with_session_runtime(
         &tools,
+        &schema_defaults(),
         true,
         None,
         &[],
@@ -838,6 +878,7 @@ fn test_memory_save_hint_injected_when_tool_registered() {
     let tools = registry_with_tools(&["memory_save"]);
     let prompt = build_system_prompt_with_session_runtime(
         &tools,
+        &schema_defaults(),
         true,
         None,
         &[],
@@ -860,6 +901,7 @@ fn test_memory_forget_hint_injected_when_tool_registered() {
     let tools = registry_with_tools(&["memory_forget"]);
     let prompt = build_system_prompt_with_session_runtime(
         &tools,
+        &schema_defaults(),
         true,
         None,
         &[],
@@ -882,6 +924,7 @@ fn test_memory_delete_hint_injected_when_tool_registered() {
     let tools = registry_with_tools(&["memory_delete"]);
     let prompt = build_system_prompt_with_session_runtime(
         &tools,
+        &schema_defaults(),
         true,
         None,
         &[],
@@ -904,6 +947,7 @@ fn test_memory_save_hint_absent_without_tool() {
     let tools = ToolRegistry::new();
     let prompt = build_system_prompt_with_session_runtime(
         &tools,
+        &schema_defaults(),
         true,
         None,
         &[],
@@ -926,6 +970,7 @@ fn test_memory_search_and_save_hints_both_present() {
     let memory = "## User Facts\n- Likes coffee";
     let prompt = build_system_prompt_with_session_runtime(
         &tools,
+        &schema_defaults(),
         true,
         None,
         &[],
@@ -956,6 +1001,7 @@ fn test_memory_search_save_forget_and_delete_hints_all_present() {
     let memory = "## User Facts\n- Likes coffee";
     let prompt = build_system_prompt_with_session_runtime(
         &tools,
+        &schema_defaults(),
         true,
         None,
         &[],
@@ -989,6 +1035,7 @@ fn test_system_prompt_does_not_contain_datetime() {
 
     let prompt = build_system_prompt_with_session_runtime(
         &tools,
+        &schema_defaults(),
         true,
         None,
         &[],
@@ -1181,7 +1228,7 @@ fn text_mode_prompt_uses_compact_schema() {
     }
     tools.register(Box::new(ParamTool));
 
-    let prompt = build_system_prompt(&tools, false, None);
+    let prompt = build_system_prompt(&tools, &schema_defaults(), false, None);
     assert!(prompt.contains("## Available Tools"));
     assert!(prompt.contains("- `{\"name\":\"execute_command\"}`: Run a shell command"));
     assert!(prompt.contains("## Tool Schemas"));
@@ -1197,6 +1244,7 @@ fn test_custom_guidelines_replaces_hardcoded() {
     let custom = "## My Guidelines\n- Always be terse.\n";
     let prompt = build_system_prompt_with_session_runtime(
         &tools,
+        &schema_defaults(),
         true,
         None,
         &[],
@@ -1219,6 +1267,7 @@ fn test_none_guidelines_uses_tool_guidelines() {
     let tools = ToolRegistry::new();
     let prompt = build_system_prompt_with_session_runtime(
         &tools,
+        &schema_defaults(),
         true,
         None,
         &[],
@@ -1240,6 +1289,7 @@ fn test_empty_string_guidelines_falls_through_to_hardcoded() {
     let tools = ToolRegistry::new();
     let prompt = build_system_prompt_with_session_runtime(
         &tools,
+        &schema_defaults(),
         true,
         None,
         &[],
@@ -1268,6 +1318,7 @@ fn test_skill_self_improvement_included_when_enabled() {
     }];
     let output = build_system_prompt_with_session_runtime_details(
         &tools,
+        &schema_defaults(),
         true,
         None,
         &skills,
@@ -1302,6 +1353,7 @@ fn test_skill_self_improvement_omitted_when_disabled() {
     }];
     let output = build_system_prompt_with_session_runtime_details(
         &tools,
+        &schema_defaults(),
         true,
         None,
         &skills,
@@ -1332,7 +1384,7 @@ fn test_skill_self_improvement_omitted_when_disabled() {
 #[test]
 fn test_native_available_tools_uses_json_name_labels() {
     let tools = registry_with_tools(&["edit_file", "ripgrep"]);
-    let prompt = build_system_prompt(&tools, true, None);
+    let prompt = build_system_prompt(&tools, &schema_defaults(), true, None);
     assert!(prompt.contains("## Available Tools"));
     assert!(prompt.contains("- `{\"name\":\"edit_file\"}`: stub"));
     assert!(prompt.contains("- `{\"name\":\"ripgrep\"}`: stub"));
@@ -1343,7 +1395,7 @@ fn test_native_available_tools_uses_json_name_labels() {
 #[test]
 fn test_text_available_tools_and_schemas_use_json_name_labels() {
     let tools = registry_with_tools(&["edit_file"]);
-    let prompt = build_system_prompt(&tools, false, None);
+    let prompt = build_system_prompt(&tools, &schema_defaults(), false, None);
     assert!(prompt.contains("## Available Tools"));
     assert!(prompt.contains("- `{\"name\":\"edit_file\"}`: stub"));
     assert!(prompt.contains("## Tool Schemas"));
@@ -1355,7 +1407,7 @@ fn test_full_mode_catalog_and_schemas_share_public_tool_set() {
     let tools = registry_with_tools(&["read_file", "ripgrep", "memory_search"]);
     let catalog: Vec<String> = tools.list_catalog().into_iter().map(|e| e.name).collect();
     let schema_names: Vec<String> = tools
-        .list_schemas()
+        .list_schemas(&schema_defaults())
         .into_iter()
         .filter_map(|s| s.get("name").and_then(|v| v.as_str()).map(String::from))
         .collect();
@@ -1365,8 +1417,8 @@ fn test_full_mode_catalog_and_schemas_share_public_tool_set() {
 #[test]
 fn test_lazy_native_catalog_lists_all_tools_plus_get_tool() {
     let tools = registry_with_tools(&["read_file", "memory_search"]);
-    let lazy = crate::lazy_tools::wrap_registry_lazy(tools).unwrap();
-    let prompt = build_system_prompt(&lazy, true, None);
+    let lazy = crate::lazy_tools::wrap_registry_lazy(tools, &schema_defaults()).unwrap();
+    let prompt = build_system_prompt(&lazy, &schema_defaults(), true, None);
     // The full catalog is advertised even though schemas are lazy-hidden.
     assert!(prompt.contains("- `{\"name\":\"read_file\"}`"));
     assert!(prompt.contains("- `{\"name\":\"memory_search\"}`"));
@@ -1382,8 +1434,8 @@ fn test_lazy_native_catalog_lists_all_tools_plus_get_tool() {
 #[test]
 fn test_lazy_text_mode_tool_schemas_only_carry_visible() {
     let tools = registry_with_tools(&["read_file", "memory_search"]);
-    let lazy = crate::lazy_tools::wrap_registry_lazy(tools).unwrap();
-    let prompt = build_system_prompt(&lazy, false, None);
+    let lazy = crate::lazy_tools::wrap_registry_lazy(tools, &schema_defaults()).unwrap();
+    let prompt = build_system_prompt(&lazy, &schema_defaults(), false, None);
     // Catalog lists everything…
     assert!(prompt.contains("- `{\"name\":\"read_file\"}`"));
     assert!(prompt.contains("- `{\"name\":\"memory_search\"}`"));
@@ -1398,10 +1450,11 @@ fn test_lazy_text_mode_tool_schemas_only_carry_visible() {
 #[test]
 fn test_memory_guidance_present_when_memory_schemas_lazy_hidden() {
     let tools = registry_with_tools(&["memory_search", "memory_save"]);
-    let lazy = crate::lazy_tools::wrap_registry_lazy(tools).unwrap();
+    let lazy = crate::lazy_tools::wrap_registry_lazy(tools, &schema_defaults()).unwrap();
     let memory = "## User Facts\n- Likes coffee";
     let prompt = build_system_prompt_with_session_runtime(
         &lazy,
+        &schema_defaults(),
         true,
         None,
         &[],

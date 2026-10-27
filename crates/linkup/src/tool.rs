@@ -418,16 +418,21 @@ mod tests {
 
     use super::*;
 
-    fn tool(base_url: String) -> LinkupSearchTool {
-        LinkupSearchTool::new(Arc::new(LinkupClient::for_test(
+    async fn tool(
+        base_url: String,
+    ) -> (LinkupSearchTool, chelix_agents::test_support::ConfigFixture) {
+        let fixture =
+            crate::test_support::fixture(Some(Secret::new("api-token".to_string()))).await;
+        let tool = LinkupSearchTool::new(Arc::new(LinkupClient::for_test(
             base_url,
-            Some(Secret::new("api-token".to_string())),
-        )))
+            fixture.service.clone(),
+        )));
+        (tool, fixture)
     }
 
-    #[test]
-    fn schema_preserves_the_reference_contract_with_strict_objects() {
-        let tool = LinkupSearchTool::new(Arc::new(LinkupClient::new(None, 300)));
+    #[tokio::test]
+    async fn schema_preserves_the_reference_contract_with_strict_objects() {
+        let (tool, _fixture) = tool("http://127.0.0.1:1".to_string()).await;
 
         assert_eq!(tool.description(), TOOL_DESCRIPTION);
         assert_eq!(
@@ -611,7 +616,8 @@ mod tests {
             .create_async()
             .await;
 
-        let value = tool(server.url())
+        let (tool, _fixture) = tool(server.url()).await;
+        let value = tool
             .execute(json!({"query": "rust"}))
             .await
             .unwrap_or_else(|error| panic!("tool execution failed: {error}"));
@@ -639,7 +645,8 @@ mod tests {
             .create_async()
             .await;
 
-        let error = tool(server.url())
+        let (tool, _fixture) = tool(server.url()).await;
+        let error = tool
             .execute(json!({"query": "rust"}))
             .await
             .err()
@@ -663,7 +670,8 @@ mod tests {
             .create_async()
             .await;
 
-        let error = tool(server.url())
+        let (tool, _fixture) = tool(server.url()).await;
+        let error = tool
             .execute(json!({"query": "rust"}))
             .await
             .err()
@@ -678,7 +686,8 @@ mod tests {
 
     #[tokio::test]
     async fn execute_preserves_the_registered_parameter_error_prefix() {
-        let error = tool("http://127.0.0.1:1".to_string())
+        let (tool, _fixture) = tool("http://127.0.0.1:1".to_string()).await;
+        let error = tool
             .execute(json!({}))
             .await
             .err()

@@ -193,16 +193,25 @@ fn parse_input(params: Value) -> Result<SearchRepositoriesInput> {
 mod tests {
     use {super::*, secrecy::Secret};
 
-    fn tool(base_url: String, token: Option<&str>) -> GithubSearchRepositoriesTool {
-        GithubSearchRepositoriesTool::new(Arc::new(GitHubClient::for_test(
+    async fn tool(
+        base_url: String,
+        token: Option<&str>,
+    ) -> (
+        GithubSearchRepositoriesTool,
+        chelix_agents::test_support::ConfigFixture,
+    ) {
+        let fixture =
+            crate::test_support::fixture(token.map(|value| Secret::new(value.to_string()))).await;
+        let tool = GithubSearchRepositoriesTool::new(Arc::new(GitHubClient::for_test(
             base_url,
-            token.map(|value| Secret::new(value.to_string())),
-        )))
+            fixture.service.clone(),
+        )));
+        (tool, fixture)
     }
 
-    #[test]
-    fn exposes_the_documented_description_and_a_strict_schema() {
-        let tool = tool("http://127.0.0.1:1".into(), None);
+    #[tokio::test]
+    async fn exposes_the_documented_description_and_a_strict_schema() {
+        let (tool, _fixture) = tool("http://127.0.0.1:1".into(), None).await;
 
         assert_eq!(tool.name(), "github_search_repositories");
         assert_eq!(tool.description(), "Search repositories via GitHub API.");
@@ -289,7 +298,8 @@ mod tests {
             .create_async()
             .await;
 
-        let result = tool(server.url(), None)
+        let (tool, _fixture) = tool(server.url(), None).await;
+        let result = tool
             .execute(json!({
                 "query": "language:Rust stars:>100",
                 "perPage": 2
@@ -322,7 +332,8 @@ mod tests {
             .create_async()
             .await;
 
-        let result = tool(server.url(), None)
+        let (tool, _fixture) = tool(server.url(), None).await;
+        let result = tool
             .execute(json!({ "query": "needle" }))
             .await
             .unwrap_or_else(|error| panic!("execute failed: {error}"));
@@ -343,10 +354,8 @@ mod tests {
             .create_async()
             .await;
 
-        let error = match tool(server.url(), None)
-            .execute(json!({ "query": "invalid" }))
-            .await
-        {
+        let (tool, _fixture) = tool(server.url(), None).await;
+        let error = match tool.execute(json!({ "query": "invalid" })).await {
             Ok(_) => panic!("expected a validation error"),
             Err(error) => error,
         };
@@ -367,10 +376,8 @@ mod tests {
             .create_async()
             .await;
 
-        let error = match tool(server.url(), None)
-            .execute(json!({ "query": "private" }))
-            .await
-        {
+        let (tool, _fixture) = tool(server.url(), None).await;
+        let error = match tool.execute(json!({ "query": "private" })).await {
             Ok(_) => panic!("expected a missing token error"),
             Err(error) => error,
         };
@@ -394,10 +401,8 @@ mod tests {
             .create_async()
             .await;
 
-        let error = match tool(server.url(), Some("pat-token"))
-            .execute(json!({ "query": "needle" }))
-            .await
-        {
+        let (tool, _fixture) = tool(server.url(), Some("pat-token")).await;
+        let error = match tool.execute(json!({ "query": "needle" })).await {
             Ok(_) => panic!("expected an authorization error"),
             Err(error) => error,
         };
@@ -406,39 +411,63 @@ mod tests {
         call.assert_async().await;
     }
 
-    #[tokio::test(start_paused = true)]
-    async fn rate_limited_response_is_retried_once_after_the_cooldown() {
-        let mut server = mockito::Server::new_async().await;
-        let limited = server
-            .mock("GET", "/search/repositories")
-            .match_query(mockito::Matcher::Any)
-            .with_status(429)
-            .with_header("retry-after", "1")
-            .with_body("API rate limit exceeded")
-            .expect(1)
-            .create_async()
-            .await;
-        let retried = server
-            .mock("GET", "/search/repositories")
-            .match_query(mockito::Matcher::Any)
-            .with_status(200)
-            .with_header("content-type", "application/json")
-            .with_body(json!({ "total_count": 0, "items": [] }).to_string())
-            .expect(1)
-            .create_async()
-            .await;
+    #[tokio::test]
+    async fn rate_limit_retry_uses_credentials_updated_between_attempts() -> anyhow::Result<()> {
+        use tokio::io::AsyncWriteExt;
 
-        let result = tool(server.url(), None)
-            .execute(json!({ "query": "needle" }))
-            .await
-            .unwrap_or_else(|error| panic!("execute failed: {error}"));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let base_url = format!("http://{}", listener.local_addr()?);
+        let (received_tx, received_rx) = tokio::sync::oneshot::channel();
+        let server = tokio::spawn(async move {
+            let (mut first, _) = listener.accept().await?;
+            let headers = crate::test_support::read_request(&mut first).await?;
+            assert!(headers.contains("Bearer initial\r\n"));
+            first.write_all(b"HTTP/1.1 429 Too Many Requests\r\nContent-Length: 0\r\nRetry-After: 0\r\nConnection: close\r\n\r\n").await?;
+            received_tx
+                .send(())
+                .map_err(|_| anyhow::anyhow!("response receiver dropped"))?;
+            drop(first);
 
-        assert_eq!(result, json!("No repositories found for this query."));
-        limited.assert_async().await;
-        retried.assert_async().await;
+            let (mut retry, _) = listener.accept().await?;
+            let headers = crate::test_support::read_request(&mut retry).await?;
+            assert!(headers.contains("Bearer next\r\n"));
+            let body = r#"{"total_count":0,"items":[]}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            retry.write_all(response.as_bytes()).await?;
+            Ok::<(), anyhow::Error>(())
+        });
+        let (tool, fixture) = tool(base_url, Some("initial")).await;
+        let pending = tool.execute(json!({ "query": "needle" }));
+        tokio::pin!(pending);
+        tokio::select! {
+            result = &mut pending => panic!("retry finished before config update: {result:?}"),
+            sent = received_rx => sent?,
+        }
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_secs(1), &mut pending)
+                .await
+                .is_err()
+        );
+        fixture
+            .service
+            .update(|config| {
+                config.tools.github.pat = Some(Secret::new("next".to_string()));
+                config.tools.github.request_timeout_secs = 1;
+                Ok(())
+            })
+            .await?;
+        assert_eq!(
+            pending.await?,
+            json!("No repositories found for this query.")
+        );
+        server.await??;
+        Ok(())
     }
 
-    #[tokio::test(start_paused = true)]
+    #[tokio::test]
     async fn repeated_rate_limit_is_not_reclassified_as_a_missing_token_error() {
         let mut server = mockito::Server::new_async().await;
         let limited = server
@@ -459,10 +488,8 @@ mod tests {
             .create_async()
             .await;
 
-        let error = match tool(server.url(), None)
-            .execute(json!({ "query": "needle" }))
-            .await
-        {
+        let (tool, _fixture) = tool(server.url(), None).await;
+        let error = match tool.execute(json!({ "query": "needle" })).await {
             Ok(_) => panic!("expected a rate limit error"),
             Err(error) => error,
         };
@@ -487,10 +514,8 @@ mod tests {
             .create_async()
             .await;
 
-        let error = match tool(server.url(), None)
-            .execute(json!({ "query": "needle" }))
-            .await
-        {
+        let (tool, _fixture) = tool(server.url(), None).await;
+        let error = match tool.execute(json!({ "query": "needle" })).await {
             Ok(_) => panic!("expected a rate limit error"),
             Err(error) => error,
         };

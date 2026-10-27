@@ -3,11 +3,11 @@ use {
     crate::rate_limit::RateLimitCoordinator,
     async_trait::async_trait,
     chelix_agents::{tool_context::ToolExecutionContext, tool_registry::AgentTool},
-    chelix_config::schema::ExaConfig,
+    chelix_config_service::ConfigService,
     secrecy::ExposeSecret,
     serde::Deserialize,
     serde_json::{Number, Value, json},
-    std::{sync::Arc, time::Duration},
+    std::{future::Future, time::Duration},
     time::{
         Date, OffsetDateTime,
         format_description::{self, well_known::Rfc3339},
@@ -450,13 +450,13 @@ fn map_api_error(status: u16, text: &str) -> Value {
 }
 
 pub struct ExaSearchTool {
-    config: Arc<ExaConfig>,
+    config: ConfigService,
     http: reqwest::Client,
     gate: RateLimitCoordinator,
     base_url: String,
 }
 impl ExaSearchTool {
-    pub fn new(config: Arc<ExaConfig>) -> Self {
+    pub fn new(config: ConfigService) -> Self {
         Self {
             config,
             http: chelix_common::http_client::build_default_http_client(),
@@ -465,14 +465,42 @@ impl ExaSearchTool {
         }
     }
 
-    fn request_error(&self, error: reqwest::Error) -> anyhow::Error {
+    async fn make_request(
+        &self,
+        body: &Value,
+    ) -> anyhow::Result<(reqwest::RequestBuilder, Duration)> {
+        let (token, timeout_secs) = self
+            .config
+            .read(|config| {
+                (
+                    config.tools.exa.token.clone(),
+                    config.tools.exa.request_timeout_secs,
+                )
+            })
+            .await?;
+        let token = token
+            .as_ref()
+            .map(ExposeSecret::expose_secret)
+            .map(String::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| anyhow::anyhow!("Exa API key is not configured in tools.exa.token"))?;
+        let timeout = Duration::from_secs(timeout_secs);
+        let request = self
+            .http
+            .post(&self.base_url)
+            .header("x-api-key", token)
+            .header(reqwest::header::USER_AGENT, "chelix")
+            .json(body)
+            .timeout(timeout);
+        Ok((request, timeout))
+    }
+
+    fn request_error(&self, error: reqwest::Error, timeout: Duration) -> anyhow::Error {
         use std::error::Error as _;
         let error = error.without_url();
         let mut message = if error.is_timeout() {
-            format!(
-                "Exa request timed out after {:?}: {error}",
-                Duration::from_secs(self.config.request_timeout_secs)
-            )
+            format!("Exa request timed out after {:?}: {error}", timeout)
         } else {
             error.to_string()
         };
@@ -490,12 +518,13 @@ impl ExaSearchTool {
     async fn send_once(
         &self,
         request: reqwest::RequestBuilder,
-    ) -> anyhow::Result<(reqwest::Response, bool)> {
+        timeout: Duration,
+    ) -> anyhow::Result<(reqwest::Response, Duration, bool)> {
         let permit = self.gate.acquire().await;
         let response = request
             .send()
             .await
-            .map_err(|error| self.request_error(error))?;
+            .map_err(|error| self.request_error(error, timeout))?;
         let retry_after = response
             .headers()
             .get(reqwest::header::RETRY_AFTER)
@@ -504,17 +533,21 @@ impl ExaSearchTool {
             response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS,
             retry_after,
         );
-        Ok((response, cooldown))
+        Ok((response, timeout, cooldown))
     }
 
-    async fn send_with_retry(
+    async fn send_with_retry<Fut>(
         &self,
         context: Option<&ToolExecutionContext>,
-        make_request: impl Fn() -> reqwest::RequestBuilder,
-    ) -> anyhow::Result<reqwest::Response> {
-        let (response, cooldown) = self.send_once(make_request()).await?;
+        make_request: impl Fn() -> Fut,
+    ) -> anyhow::Result<(reqwest::Response, Duration)>
+    where
+        Fut: Future<Output = anyhow::Result<(reqwest::RequestBuilder, Duration)>>,
+    {
+        let (request, timeout) = make_request().await?;
+        let (response, timeout, cooldown) = self.send_once(request, timeout).await?;
         if !cooldown {
-            return Ok(response);
+            return Ok((response, timeout));
         }
         #[cfg(feature = "tracing")]
         tracing::warn!(
@@ -524,13 +557,14 @@ impl ExaSearchTool {
         if let Some(context) = context {
             context.record_retry();
         }
-        self.send_once(make_request())
+        let (request, timeout) = make_request().await?;
+        self.send_once(request, timeout)
             .await
-            .map(|(response, _)| response)
+            .map(|(response, timeout, _)| (response, timeout))
     }
 
     #[cfg(test)]
-    fn for_test(config: Arc<ExaConfig>, base_url: String) -> Self {
+    fn for_test(config: ConfigService, base_url: String) -> Self {
         Self {
             base_url,
             ..Self::new(config)
@@ -549,15 +583,6 @@ impl ExaSearchTool {
             .ok_or_else(|| anyhow::anyhow!("exa_search parameters must be an object"))?;
         map.retain(|name, _| !name.starts_with('_'));
         let input = normalize(serde_json::from_value(params)?)?;
-        let token = self
-            .config
-            .token
-            .as_ref()
-            .map(ExposeSecret::expose_secret)
-            .map(String::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .ok_or_else(|| anyhow::anyhow!("Exa API key is not configured in tools.exa.token"))?;
         let mut body =
             json!({ "query": input.query, "type": "auto", "numResults": input.max_results });
         for (key, value) in [
@@ -580,21 +605,14 @@ impl ExaSearchTool {
                 body[key] = json!([value]);
             }
         }
-        let response = self
-            .send_with_retry(context, || {
-                self.http
-                    .post(&self.base_url)
-                    .header("x-api-key", token)
-                    .header(reqwest::header::USER_AGENT, "chelix")
-                    .json(&body)
-                    .timeout(Duration::from_secs(self.config.request_timeout_secs))
-            })
+        let (response, timeout) = self
+            .send_with_retry(context, || self.make_request(&body))
             .await?;
         let status = response.status();
         let text = response
             .text()
             .await
-            .map_err(|error| self.request_error(error))?;
+            .map_err(|error| self.request_error(error, timeout))?;
         if !status.is_success() {
             return Err(anyhow::anyhow!(serde_json::to_string_pretty(
                 &map_api_error(status.as_u16(), &text)
@@ -661,7 +679,20 @@ impl AgentTool for ExaSearchTool {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, secrecy::Secret};
+    use {
+        super::*,
+        chelix_agents::test_support::ConfigFixture,
+        chelix_config::{ChelixConfig, schema::ExaConfig},
+        secrecy::Secret,
+    };
+
+    pub(super) async fn fixture(provider: ExaConfig) -> ConfigFixture {
+        let mut config = ChelixConfig::default();
+        config.tools.exa = provider;
+        ConfigFixture::new(config)
+            .await
+            .unwrap_or_else(|error| panic!("fixture failed: {error}"))
+    }
 
     #[test]
     fn normalizes_dates_and_escapes_markdown() {
@@ -717,7 +748,8 @@ mod tests {
 
     #[tokio::test]
     async fn missing_key_fails_before_http() {
-        let tool = ExaSearchTool::new(Arc::new(ExaConfig::default()));
+        let fixture = fixture(ExaConfig::default()).await;
+        let tool = ExaSearchTool::new(fixture.service.clone());
         let error = tool
             .execute(json!({ "query": "sample" }))
             .await
@@ -810,13 +842,13 @@ mod tests {
             .with_body(r#"{"requestId":"abc","results":[{"title":"C++","url":"https://example.org/page","score":0.5,"publishedDate":"2025-01-02T23:00:00-05:00","author":"A*B"}]}"#)
             .create_async()
             .await;
-        let tool = ExaSearchTool::for_test(
-            Arc::new(ExaConfig {
-                token: Some(Secret::new("test-key".into())),
-                request_timeout_secs: 10,
-            }),
-            format!("{}/search", server.url()),
-        );
+        let fixture = fixture(ExaConfig {
+            token: Some(Secret::new("test-key".into())),
+            request_timeout_secs: 10,
+        })
+        .await;
+        let tool =
+            ExaSearchTool::for_test(fixture.service.clone(), format!("{}/search", server.url()));
         let result = tool
             .execute(json!({
                 "query": "sample", "maxResults": 4, "domain": "https://example.org/path",
@@ -852,13 +884,13 @@ mod tests {
             .expect(1)
             .create_async()
             .await;
-        let tool = ExaSearchTool::for_test(
-            Arc::new(ExaConfig {
-                token: Some(Secret::new("test-key".into())),
-                request_timeout_secs: 10,
-            }),
-            format!("{}/search", server.url()),
-        );
+        let fixture = fixture(ExaConfig {
+            token: Some(Secret::new("test-key".into())),
+            request_timeout_secs: 10,
+        })
+        .await;
+        let tool =
+            ExaSearchTool::for_test(fixture.service.clone(), format!("{}/search", server.url()));
         let context = ToolExecutionContext::for_session(chelix_sessions::SessionKey::new(
             "session:search-test",
         ));
@@ -886,13 +918,13 @@ mod tests {
             .with_body(r#"{"requestId":"abc","error":{"message":"failed"}}"#)
             .create_async()
             .await;
-        let tool = ExaSearchTool::for_test(
-            Arc::new(ExaConfig {
-                token: Some(Secret::new("test-key".into())),
-                request_timeout_secs: 10,
-            }),
-            format!("{}/search", server.url()),
-        );
+        let fixture = fixture(ExaConfig {
+            token: Some(Secret::new("test-key".into())),
+            request_timeout_secs: 10,
+        })
+        .await;
+        let tool =
+            ExaSearchTool::for_test(fixture.service.clone(), format!("{}/search", server.url()));
         let error = tool
             .execute(json!({"query": "sample"}))
             .await
@@ -913,13 +945,13 @@ mod tests {
             .with_body(r#"{"error":"Invalid API key","tag":"INVALID_API_KEY"}"#)
             .create_async()
             .await;
-        let tool = ExaSearchTool::for_test(
-            Arc::new(ExaConfig {
-                token: Some(Secret::new("test-key".into())),
-                request_timeout_secs: 10,
-            }),
-            format!("{}/search", server.url()),
-        );
+        let fixture = fixture(ExaConfig {
+            token: Some(Secret::new("test-key".into())),
+            request_timeout_secs: 10,
+        })
+        .await;
+        let tool =
+            ExaSearchTool::for_test(fixture.service.clone(), format!("{}/search", server.url()));
         let error = tool
             .execute(json!({ "query": "sample" }))
             .await
@@ -931,3 +963,7 @@ mod tests {
         mock.assert_async().await;
     }
 }
+
+#[cfg(test)]
+#[path = "config_tests.rs"]
+mod config_tests;

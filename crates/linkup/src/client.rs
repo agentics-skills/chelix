@@ -72,8 +72,7 @@ impl LinkupResponse {
 pub struct LinkupClient {
     http: reqwest::Client,
     base_url: String,
-    token: Option<Secret<String>>,
-    request_timeout: Option<Duration>,
+    config_service: chelix_config_service::ConfigService,
     usage_limit: UsageLimitCoordinator,
     rate_limit: RateLimitCoordinator,
 }
@@ -81,49 +80,30 @@ pub struct LinkupClient {
 impl LinkupClient {
     /// Build a client for the public Linkup API.
     #[must_use]
-    pub fn new(token: Option<Secret<String>>, request_timeout_secs: u64) -> Self {
+    pub fn new(config_service: chelix_config_service::ConfigService) -> Self {
         Self {
             http: chelix_common::http_client::build_default_http_client(),
             base_url: LINKUP_API_BASE_URL.to_string(),
-            token,
-            request_timeout: Some(Duration::from_secs(request_timeout_secs)),
+            config_service,
             usage_limit: UsageLimitCoordinator::default(),
             rate_limit: RateLimitCoordinator::default(),
         }
     }
 
+    /// Build a client pointed at a test double.
     #[cfg(test)]
-    pub(crate) fn for_test(base_url: String, token: Option<Secret<String>>) -> Self {
-        Self {
-            http: chelix_common::http_client::build_default_http_client(),
-            base_url,
-            token,
-            request_timeout: None,
-            usage_limit: UsageLimitCoordinator::default(),
-            rate_limit: RateLimitCoordinator::default(),
-        }
-    }
-
-    #[cfg(test)]
-    fn for_test_with_timeout(
+    pub(crate) fn for_test(
         base_url: String,
-        token: Option<Secret<String>>,
-        request_timeout: Duration,
+        config_service: chelix_config_service::ConfigService,
     ) -> Self {
         Self {
-            http: chelix_common::http_client::build_default_http_client(),
             base_url,
-            token,
-            request_timeout: Some(request_timeout),
-            usage_limit: UsageLimitCoordinator::default(),
-            rate_limit: RateLimitCoordinator::default(),
+            ..Self::new(config_service)
         }
     }
 
-    fn authorization_header(&self) -> Result<HeaderValue> {
-        let token = self
-            .token
-            .as_ref()
+    fn authorization_header(token: Option<&Secret<String>>) -> Result<HeaderValue> {
+        let token = token
             .map(ExposeSecret::expose_secret)
             .map(String::as_str)
             .map(str::trim)
@@ -137,10 +117,8 @@ impl LinkupClient {
         Ok(authorization)
     }
 
-    fn map_request_error(&self, error: reqwest::Error) -> Error {
-        if error.is_timeout()
-            && let Some(request_timeout) = self.request_timeout
-        {
+    fn map_request_error(error: reqwest::Error, request_timeout: Duration) -> Error {
+        if error.is_timeout() {
             #[cfg(feature = "tracing")]
             tracing::warn!(
                 timeout = ?request_timeout,
@@ -153,32 +131,37 @@ impl LinkupClient {
         error.into()
     }
 
-    async fn post_once(
-        &self,
-        body: &LinkupSearchRequest<'_>,
-        authorization: &HeaderValue,
-    ) -> Result<LinkupResponse> {
+    async fn post_once(&self, body: &LinkupSearchRequest<'_>) -> Result<LinkupResponse> {
         let rate_limit_permit = self.rate_limit.acquire().await;
         self.usage_limit.acquire().await;
         let url = format!(
             "{}{LINKUP_SEARCH_PATH}",
             self.base_url.trim_end_matches('/')
         );
-        let mut request = self
+        let (token, request_timeout_secs) = self
+            .config_service
+            .read(|config| {
+                (
+                    config.tools.linkup.token.clone(),
+                    config.tools.linkup.request_timeout_secs,
+                )
+            })
+            .await?;
+        let authorization = Self::authorization_header(token.as_ref())?;
+        let request_timeout = Duration::from_secs(request_timeout_secs);
+        let request = self
             .http
             .post(url)
-            .header(reqwest::header::AUTHORIZATION, authorization.clone())
+            .header(reqwest::header::AUTHORIZATION, authorization)
             .header(reqwest::header::CONTENT_TYPE, "application/json")
             .header(reqwest::header::USER_AGENT, LINKUP_USER_AGENT)
-            .json(body);
-        if let Some(request_timeout) = self.request_timeout {
-            request = request.timeout(request_timeout);
-        }
+            .json(body)
+            .timeout(request_timeout);
 
         let raw = request
             .send()
             .await
-            .map_err(|error| self.map_request_error(error))?;
+            .map_err(|error| Self::map_request_error(error, request_timeout))?;
         let status = raw.status();
         let retry_after = raw
             .headers()
@@ -191,7 +174,7 @@ impl LinkupClient {
             body: raw
                 .text()
                 .await
-                .map_err(|error| self.map_request_error(error))?,
+                .map_err(|error| Self::map_request_error(error, request_timeout))?,
         };
         rate_limit_permit.complete(
             response.is_rate_limited(),
@@ -207,8 +190,12 @@ impl LinkupClient {
     /// Execute `POST /v1/search` and retry once after a usable shared cooldown.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, body)))]
     pub(crate) async fn search(&self, body: &LinkupSearchRequest<'_>) -> Result<LinkupResponse> {
-        let authorization = self.authorization_header()?;
-        let response = self.post_once(body, &authorization).await?;
+        let token = self
+            .config_service
+            .read(|config| config.tools.linkup.token.clone())
+            .await?;
+        Self::authorization_header(token.as_ref())?;
+        let response = self.post_once(body).await?;
         let Some(cooldown_ms) = response
             .is_rate_limited()
             .then(|| response.rate_limit_cooldown_ms())
@@ -223,13 +210,16 @@ impl LinkupClient {
             cooldown_ms,
             "Linkup search hit a rate limit; retrying once through the shared cooldown gate"
         );
-        self.post_once(body, &authorization).await
+        self.post_once(body).await
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use {mockito::Matcher, serde_json::json};
+    use {
+        crate::test_support::fixture, chelix_agents::test_support::ConfigFixture,
+        chelix_config::ChelixConfig, mockito::Matcher, secrecy::Secret, serde_json::json,
+    };
 
     use super::*;
 
@@ -269,8 +259,8 @@ mod tests {
             .expect(1)
             .create_async()
             .await;
-        let client =
-            LinkupClient::for_test(server.url(), Some(Secret::new("api-token".to_string())));
+        let fixture = fixture(Some(Secret::new("api-token".to_string()))).await;
+        let client = LinkupClient::for_test(server.url(), fixture.service.clone());
 
         let response = client
             .search(&request(Some(&domains)))
@@ -282,8 +272,83 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn next_request_uses_updated_credentials_and_timeout_through_body_read()
+    -> anyhow::Result<()> {
+        use tokio::io::AsyncWriteExt;
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let base_url = format!("http://{}", listener.local_addr()?);
+        let (body_tx, body_rx) = tokio::sync::oneshot::channel();
+        let server = tokio::spawn(async move {
+            let (mut first, _) = listener.accept().await?;
+            let headers = crate::test_support::read_request(&mut first).await?;
+            assert!(headers.contains("Bearer initial\r\n"));
+            first
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok")
+                .await?;
+            drop(first);
+
+            let (mut second, _) = listener.accept().await?;
+            let headers = crate::test_support::read_request(&mut second).await?;
+            assert!(headers.contains("Bearer next\r\n"));
+            second
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\no")
+                .await?;
+            body_tx
+                .send(())
+                .map_err(|_| anyhow::anyhow!("body receiver dropped"))?;
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            Ok::<(), anyhow::Error>(())
+        });
+        let mut config = ChelixConfig::default();
+        config.tools.linkup.token = Some(Secret::new("initial".to_string()));
+        config.tools.linkup.request_timeout_secs = 3;
+        let fixture = ConfigFixture::new(config).await?;
+        let client = LinkupClient::for_test(base_url, fixture.service.clone());
+        let body = request(None);
+        assert_eq!(client.search(&body).await?.body(), "ok");
+
+        fixture
+            .service
+            .update(|config| {
+                config.tools.linkup.token = Some(Secret::new("next".to_string()));
+                config.tools.linkup.request_timeout_secs = 1;
+                Ok(())
+            })
+            .await?;
+        let update = async {
+            body_rx.await?;
+            fixture
+                .service
+                .update(|config| {
+                    config.tools.linkup.request_timeout_secs = 3;
+                    Ok(())
+                })
+                .await?;
+            Ok::<(), anyhow::Error>(())
+        };
+        let pending = client.search(&body);
+        tokio::pin!(pending);
+        tokio::select! {
+            biased;
+            result = &mut pending => panic!("request finished before config update: {result:?}"),
+            updated = update => updated?,
+        }
+        let result = pending.await;
+        let error = result
+            .err()
+            .unwrap_or_else(|| panic!("expected a body timeout"));
+        assert_eq!(error.to_string(), "Linkup request timed out after 1s");
+        server.abort();
+        let _ = server.await;
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn missing_token_fails_before_sending_a_request() {
-        let client = LinkupClient::for_test("http://127.0.0.1:1".to_string(), None);
+        let fixture = fixture(None).await;
+        let client =
+            LinkupClient::for_test("http://127.0.0.1:1".to_string(), fixture.service.clone());
 
         let error = client
             .search(&request(None))
@@ -308,8 +373,8 @@ mod tests {
             .expect(1)
             .create_async()
             .await;
-        let client =
-            LinkupClient::for_test(server.url(), Some(Secret::new("api-token".to_string())));
+        let fixture = fixture(Some(Secret::new("api-token".to_string()))).await;
+        let client = LinkupClient::for_test(server.url(), fixture.service.clone());
 
         let error = client
             .search(&request(None))
@@ -322,40 +387,65 @@ mod tests {
         call.assert_async().await;
     }
 
-    #[tokio::test(start_paused = true)]
-    async fn numeric_retry_after_retries_once_through_the_shared_cooldown() {
-        let mut server = mockito::Server::new_async().await;
-        let limited = server
-            .mock("POST", "/v1/search")
-            .with_status(429)
-            .with_header("retry-after", "0")
-            .with_body("slow down")
-            .expect(1)
-            .create_async()
-            .await;
-        let recovered = server
-            .mock("POST", "/v1/search")
-            .with_status(200)
-            .with_body(r#"{"results":[]}"#)
-            .expect(1)
-            .create_async()
-            .await;
-        let client =
-            LinkupClient::for_test(server.url(), Some(Secret::new("api-token".to_string())));
+    #[tokio::test]
+    async fn numeric_retry_after_retries_with_updated_credentials_through_the_shared_cooldown()
+    -> anyhow::Result<()> {
+        use tokio::io::AsyncWriteExt;
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let base_url = format!("http://{}", listener.local_addr()?);
+        let (received_tx, received_rx) = tokio::sync::oneshot::channel();
+        let server = tokio::spawn(async move {
+            let (mut first, _) = listener.accept().await?;
+            let headers = crate::test_support::read_request(&mut first).await?;
+            assert!(headers.contains("Bearer initial\r\n"));
+            first.write_all(b"HTTP/1.1 429 Too Many Requests\r\nContent-Length: 0\r\nRetry-After: 0\r\nConnection: close\r\n\r\n").await?;
+            received_tx
+                .send(())
+                .map_err(|_| anyhow::anyhow!("response receiver dropped"))?;
+            drop(first);
+
+            let (mut retry, _) = listener.accept().await?;
+            let headers = crate::test_support::read_request(&mut retry).await?;
+            assert!(headers.contains("Bearer next\r\n"));
+            let body = r#"{"results":[]}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            retry.write_all(response.as_bytes()).await?;
+            Ok::<(), anyhow::Error>(())
+        });
+        let fixture = fixture(Some(Secret::new("initial".to_string()))).await;
+        let client = LinkupClient::for_test(base_url, fixture.service.clone());
         let started = tokio::time::Instant::now();
-
-        let response = client
-            .search(&request(None))
-            .await
-            .unwrap_or_else(|error| panic!("search failed: {error}"));
-
-        assert_eq!(response.body(), r#"{"results":[]}"#);
-        assert_eq!(
-            tokio::time::Instant::now() - started,
-            Duration::from_millis(LINKUP_RATE_LIMIT_COOLDOWN_BUFFER_MS)
+        let body = request(None);
+        let pending = client.search(&body);
+        tokio::pin!(pending);
+        tokio::select! {
+            result = &mut pending => panic!("retry finished before config update: {result:?}"),
+            sent = received_rx => sent?,
+        }
+        assert!(
+            tokio::time::timeout(Duration::from_secs(1), &mut pending)
+                .await
+                .is_err()
         );
-        limited.assert_async().await;
-        recovered.assert_async().await;
+        fixture
+            .service
+            .update(|config| {
+                config.tools.linkup.token = Some(Secret::new("next".to_string()));
+                config.tools.linkup.request_timeout_secs = 1;
+                Ok(())
+            })
+            .await?;
+        assert_eq!(pending.await?.body(), r#"{"results":[]}"#);
+        assert!(
+            tokio::time::Instant::now() - started
+                >= Duration::from_millis(LINKUP_RATE_LIMIT_COOLDOWN_BUFFER_MS)
+        );
+        server.await??;
+        Ok(())
     }
 
     #[tokio::test]
@@ -368,8 +458,8 @@ mod tests {
             .expect(1)
             .create_async()
             .await;
-        let client =
-            LinkupClient::for_test(server.url(), Some(Secret::new("api-token".to_string())));
+        let fixture = fixture(Some(Secret::new("api-token".to_string()))).await;
+        let client = LinkupClient::for_test(server.url(), fixture.service.clone());
 
         let response = client
             .search(&request(None))
@@ -382,39 +472,63 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn timed_out_probe_reopens_the_shared_gate() {
+    async fn timed_out_probe_reopens_the_shared_gate() -> anyhow::Result<()> {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .unwrap_or_else(|error| panic!("test listener failed to bind: {error}"));
         let address = listener
             .local_addr()
             .unwrap_or_else(|error| panic!("test listener has no local address: {error}"));
+        let (received_tx, received_rx) = tokio::sync::oneshot::channel();
         let server = tokio::spawn(async move {
-            let (_socket, _) = listener
-                .accept()
-                .await
-                .unwrap_or_else(|error| panic!("test listener failed to accept: {error}"));
+            let (mut socket, _) = listener.accept().await?;
+            crate::test_support::read_request(&mut socket).await?;
+            received_tx
+                .send(())
+                .map_err(|_| anyhow::anyhow!("request receiver dropped"))?;
             tokio::time::sleep(Duration::from_secs(5)).await;
+            Ok::<(), anyhow::Error>(())
         });
-        let client = LinkupClient::for_test_with_timeout(
-            format!("http://{address}"),
-            Some(Secret::new("api-token".to_string())),
-            Duration::from_millis(50),
-        );
+        let mut config = ChelixConfig::default();
+        config.tools.linkup.token = Some(Secret::new("api-token".to_string()));
+        config.tools.linkup.request_timeout_secs = 1;
+        let fixture = ConfigFixture::new(config)
+            .await
+            .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
+        let client = LinkupClient::for_test(format!("http://{address}"), fixture.service.clone());
         client.rate_limit.acquire().await.complete(true, Some(0));
 
-        let error = client
-            .search(&request(None))
-            .await
+        let update = async {
+            received_rx.await?;
+            fixture
+                .service
+                .update(|config| {
+                    config.tools.linkup.request_timeout_secs = 2;
+                    Ok(())
+                })
+                .await?;
+            Ok::<(), anyhow::Error>(())
+        };
+        let body = request(None);
+        let pending = client.search(&body);
+        tokio::pin!(pending);
+        tokio::select! {
+            biased;
+            result = &mut pending => panic!("request finished before config update: {result:?}"),
+            updated = update => updated?,
+        }
+        let result = pending.await;
+        let error = result
             .err()
             .unwrap_or_else(|| panic!("expected a request timeout"));
 
-        assert_eq!(error.to_string(), "Linkup request timed out after 50ms");
+        assert_eq!(error.to_string(), "Linkup request timed out after 1s");
         let permit = tokio::time::timeout(Duration::from_millis(50), client.rate_limit.acquire())
             .await
             .unwrap_or_else(|_| panic!("shared gate remained blocked after probe timeout"));
         permit.complete(false, None);
         server.abort();
         let _ = server.await;
+        Ok(())
     }
 }

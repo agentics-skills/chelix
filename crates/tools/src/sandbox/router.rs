@@ -3,6 +3,7 @@
 use std::{collections::HashSet, sync::Arc};
 
 use {
+    chelix_config_service::ConfigService,
     tokio::sync::RwLock,
     tracing::{debug, info},
 };
@@ -24,32 +25,40 @@ use {
 };
 
 /// Create the appropriate sandbox backend based on config and platform.
-pub fn create_sandbox(config: SandboxConfig) -> Result<Arc<dyn Sandbox>> {
+pub fn create_sandbox(
+    config: SandboxConfig,
+    config_service: ConfigService,
+) -> Result<Arc<dyn Sandbox>> {
     let effective_image = shared_sandbox_image(&config);
-    create_sandbox_with_global_image(config, effective_image)
+    create_sandbox_with_global_image(config, effective_image, config_service)
 }
 
 fn create_sandbox_with_global_image(
     config: SandboxConfig,
     effective_image: SharedSandboxImage,
+    config_service: ConfigService,
 ) -> Result<Arc<dyn Sandbox>> {
     if config.mode == SandboxMode::Off {
         return Ok(Arc::new(NoSandbox));
     }
 
-    select_backend_with_global_image(config, effective_image)
+    select_backend_with_global_image(config, effective_image, config_service)
 }
 
 /// Select the sandbox backend based on config and platform availability.
 #[cfg(test)]
-pub(crate) fn select_backend(config: SandboxConfig) -> Result<Arc<dyn Sandbox>> {
+pub(crate) fn select_backend(
+    config: SandboxConfig,
+    config_service: ConfigService,
+) -> Result<Arc<dyn Sandbox>> {
     let effective_image = shared_sandbox_image(&config);
-    select_backend_with_global_image(config, effective_image)
+    select_backend_with_global_image(config, effective_image, config_service)
 }
 
 fn select_backend_with_global_image(
     config: SandboxConfig,
     effective_image: SharedSandboxImage,
+    config_service: ConfigService,
 ) -> Result<Arc<dyn Sandbox>> {
     match config.backend {
         SandboxBackend::Docker => {
@@ -62,6 +71,7 @@ fn select_backend_with_global_image(
             Ok(Arc::new(DockerSandbox::new_with_global_image(
                 config,
                 effective_image,
+                config_service,
             )))
         },
         SandboxBackend::Podman => {
@@ -73,9 +83,12 @@ fn select_backend_with_global_image(
             Ok(Arc::new(DockerSandbox::podman_with_global_image(
                 config,
                 effective_image,
+                config_service,
             )))
         },
-        SandboxBackend::AppleContainer => create_apple_backend(config, effective_image),
+        SandboxBackend::AppleContainer => {
+            create_apple_backend(config, effective_image, config_service)
+        },
     }
 }
 
@@ -83,6 +96,7 @@ fn select_backend_with_global_image(
 fn create_apple_backend(
     config: SandboxConfig,
     effective_image: SharedSandboxImage,
+    config_service: ConfigService,
 ) -> Result<Arc<dyn Sandbox>> {
     if !is_cli_available("container") || !ensure_apple_container_service() {
         return Err(Error::message(
@@ -92,6 +106,7 @@ fn create_apple_backend(
     Ok(Arc::new(AppleContainerSandbox::new_with_global_image(
         config,
         effective_image,
+        config_service,
     )))
 }
 
@@ -99,6 +114,7 @@ fn create_apple_backend(
 fn create_apple_backend(
     _config: SandboxConfig,
     _effective_image: SharedSandboxImage,
+    _config_service: ConfigService,
 ) -> Result<Arc<dyn Sandbox>> {
     Err(Error::message(
         "Apple Container sandbox is only available on macOS",
@@ -177,11 +193,15 @@ impl SandboxRouter {
     pub fn new(
         config: SandboxConfig,
         owner_resolver: Option<Arc<dyn SandboxOwnerResolver>>,
+        config_service: ConfigService,
     ) -> Result<Self> {
         Self::require_owner_resolver(&config, owner_resolver.as_ref())?;
         let effective_image = shared_sandbox_image(&config);
-        let backend =
-            create_sandbox_with_global_image(config.clone(), Arc::clone(&effective_image))?;
+        let backend = create_sandbox_with_global_image(
+            config.clone(),
+            Arc::clone(&effective_image),
+            config_service,
+        )?;
         let (event_tx, _) = tokio::sync::broadcast::channel(32);
         Ok(Self {
             config,

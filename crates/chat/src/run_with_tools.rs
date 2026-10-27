@@ -655,6 +655,7 @@ fn compaction_reminder_stalled(
 }
 
 pub(crate) async fn run_with_tools(
+    config_service: &chelix_config_service::ConfigService,
     persona: PromptPersona,
     mut compaction_reminder: crate::compaction_reminder::CompactionReminder,
     runtime_limits: AgentRuntimeLimits,
@@ -793,7 +794,8 @@ pub(crate) async fn run_with_tools(
             memory_setup,
             visible_tools,
             skill_files,
-        )
+            config_service,
+        ).await
     };
     let filtered_registry = match filtered_registry {
         Ok(registry) => registry,
@@ -870,8 +872,19 @@ pub(crate) async fn run_with_tools(
     // - Off: minimal prompt without tools
     let prompt_limits = prompt_build_limits_from_config(&persona.config);
     let system_prompt = if tools_enabled {
+        let defaults = match chelix_agents::tool_registry::ToolSchemaDefaults::read(config_service, agent_id).await {
+            Ok(defaults) => defaults,
+            Err(error) => {
+                warn!(run_id, error = %error, "failed to read tool schema defaults");
+                crate::ui_history_ingress::fail_run(ui_run.as_ref(), state, run_id, error.to_string(), provider_name, None).await;
+                let error_obj = parse_chat_error(&error.to_string(), Some(provider_name));
+                deliver_channel_error(state, session_key, &error_obj).await;
+                return ChatRunOutcome::Failed;
+            },
+        };
         build_system_prompt_with_session_runtime_details(
             &filtered_registry,
+            &defaults,
             native_tools,
             project_context,
             skills,
@@ -1190,6 +1203,8 @@ pub(crate) async fn run_with_tools(
             provider_ref.clone(),
             &filtered_registry,
             &persona.config.tools,
+            config_service,
+            agent_id,
             &system_prompt,
             &effective_user_content,
             Some(&on_event),
@@ -1204,7 +1219,6 @@ pub(crate) async fn run_with_tools(
             cancellation_token,
             AgentLoopLimits {
                 max_tools_threshold: runtime_limits.max_tools_threshold,
-                max_tool_result_bytes: Some(runtime_limits.max_tool_result_bytes),
                 automatic_checkpointing: true,
                 resume_from_history,
                 resume_after_checkpoint: resume_from_history,

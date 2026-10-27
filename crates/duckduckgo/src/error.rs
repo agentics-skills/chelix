@@ -7,6 +7,8 @@ pub(crate) enum Error {
     #[error("{message}")]
     Message { message: String },
     #[error(transparent)]
+    Config(#[from] chelix_config_service::Error),
+    #[error(transparent)]
     Request(#[from] reqwest::Error),
     #[error(transparent)]
     UrlParse(#[from] url::ParseError),

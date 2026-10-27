@@ -49,6 +49,6 @@ A rate-limited response is retried once while the call retains the serial queue 
 request_timeout_secs = 300
 ```
 
-The value must be at least `1`.
+The value must be at least `1`. Each call reads this value from the configuration service immediately before establishing its deadline. The selected deadline applies through completion; subsequent calls read the current value.
 
 The current transport uses one fixed Chrome user agent. HTTP execution is isolated behind the DuckDuckGo crate's transport boundary so the request implementation can be replaced without changing the tool contract, parser, queue, or result formatting.

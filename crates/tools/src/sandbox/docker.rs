@@ -2,6 +2,7 @@
 
 use {
     async_trait::async_trait,
+    chelix_config_service::ConfigService,
     chelix_protocol::{
         TOOLS_SERVICE_CONTAINER_PORT, TOOLS_SERVICE_HEALTH_PATH, TOOLS_SERVICE_PROTOCOL_VERSION,
         TOOLS_SERVICE_TOKEN_ENV, ToolsServiceHealth,
@@ -83,6 +84,7 @@ struct OciContainerConfig {
 pub struct DockerSandbox {
     pub config: SandboxConfig,
     effective_image: SharedSandboxImage,
+    config_service: ConfigService,
     pub(crate) kind: BackendKind,
     cli: &'static str,
     /// Container names that have already been provisioned in this process.
@@ -96,18 +98,20 @@ pub struct DockerSandbox {
 }
 
 impl DockerSandbox {
-    pub fn new(config: SandboxConfig) -> Self {
+    pub fn new(config: SandboxConfig, config_service: ConfigService) -> Self {
         let effective_image = shared_sandbox_image(&config);
-        Self::new_with_global_image(config, effective_image)
+        Self::new_with_global_image(config, effective_image, config_service)
     }
 
     pub(crate) fn new_with_global_image(
         config: SandboxConfig,
         effective_image: SharedSandboxImage,
+        config_service: ConfigService,
     ) -> Self {
         Self {
             config,
             effective_image,
+            config_service,
             kind: BackendKind::Docker,
             cli: "docker",
             provisioned: Mutex::new(HashSet::new()),
@@ -117,18 +121,20 @@ impl DockerSandbox {
         }
     }
 
-    pub fn podman(config: SandboxConfig) -> Self {
+    pub fn podman(config: SandboxConfig, config_service: ConfigService) -> Self {
         let effective_image = shared_sandbox_image(&config);
-        Self::podman_with_global_image(config, effective_image)
+        Self::podman_with_global_image(config, effective_image, config_service)
     }
 
     pub(crate) fn podman_with_global_image(
         config: SandboxConfig,
         effective_image: SharedSandboxImage,
+        config_service: ConfigService,
     ) -> Self {
         Self {
             config,
             effective_image,
+            config_service,
             kind: BackendKind::Podman,
             cli: "podman",
             provisioned: Mutex::new(HashSet::new()),
@@ -139,11 +145,16 @@ impl DockerSandbox {
     }
 
     #[cfg(test)]
-    pub(crate) fn with_cli(config: SandboxConfig, cli: &'static str) -> Self {
+    pub(crate) fn with_cli(
+        config: SandboxConfig,
+        cli: &'static str,
+        config_service: ConfigService,
+    ) -> Self {
         let effective_image = shared_sandbox_image(&config);
         Self {
             config,
             effective_image,
+            config_service,
             kind: BackendKind::Docker,
             cli,
             provisioned: Mutex::new(HashSet::new()),
@@ -478,10 +489,6 @@ impl DockerSandbox {
         ));
         args.extend(self.mount_args(id)?);
 
-        let terminal_size = self
-            .config
-            .terminal_size
-            .ok_or_else(|| Error::message("tools.execute_command.terminal_size is required"))?;
         args.push(image.clone());
         args.extend([
             "chelix-tools-service".to_string(),
@@ -489,6 +496,16 @@ impl DockerSandbox {
             format!("0.0.0.0:{TOOLS_SERVICE_CONTAINER_PORT}"),
             "--working-dir".to_string(),
             self.workspace_dir().to_string(),
+        ]);
+        let terminal_size = self
+            .config_service
+            .read(|config| config.tools.execute_command.terminal_size)
+            .await
+            .map_err(|error| {
+                Error::external("failed to read tools.execute_command.terminal_size", error)
+            })?
+            .ok_or_else(|| Error::message("tools.execute_command.terminal_size is required"))?;
+        args.extend([
             "--terminal-cols".to_string(),
             terminal_size.cols.to_string(),
             "--terminal-rows".to_string(),

@@ -136,9 +136,10 @@ fn parse_input(mut params: Value) -> Result<DuckDuckGoSearchInput> {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
-
-    use {async_trait::async_trait, reqwest::StatusCode, url::Url};
+    use {
+        async_trait::async_trait, chelix_agents::test_support::ConfigFixture,
+        chelix_config::ChelixConfig, reqwest::StatusCode, url::Url,
+    };
 
     use crate::transport::{HttpResponse, HttpTransport};
 
@@ -157,17 +158,21 @@ mod tests {
         }
     }
 
-    fn tool() -> DuckDuckGoSearchTool {
-        DuckDuckGoSearchTool::new(Arc::new(DuckDuckGoClient::for_test(
+    async fn tool() -> (DuckDuckGoSearchTool, ConfigFixture) {
+        let fixture = ConfigFixture::new(ChelixConfig::default())
+            .await
+            .unwrap_or_else(|error| panic!("fixture failed: {error}"));
+        let tool = DuckDuckGoSearchTool::new(Arc::new(DuckDuckGoClient::for_test(
             Arc::new(EmptyTransport),
             "https://duckduckgo.test/html/".to_string(),
-            Duration::from_secs(30),
-        )))
+            fixture.service.clone(),
+        )));
+        (tool, fixture)
     }
 
-    #[test]
-    fn exposes_expected_name_description_and_schema() {
-        let tool = tool();
+    #[tokio::test]
+    async fn exposes_expected_name_description_and_schema() {
+        let (tool, _fixture) = tool().await;
         assert_eq!(tool.name(), "duckduckgo_search");
         assert_eq!(tool.description(), "Search the web using DuckDuckGo");
         assert_eq!(
@@ -199,9 +204,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn accepts_runner_internal_metadata_during_validation() {
-        let tool = tool();
+    #[tokio::test]
+    async fn accepts_runner_internal_metadata_during_validation() {
+        let (tool, _fixture) = tool().await;
         tool.validate(&json!({
             "query": "latest NASA Artemis II mission update",
             "page": 1,
@@ -212,9 +217,10 @@ mod tests {
         .unwrap_or_else(|error| panic!("internal metadata was not removed: {error}"));
     }
 
-    #[test]
-    fn rejects_unknown_public_parameter_during_validation() {
-        let error = match tool().validate(&json!({
+    #[tokio::test]
+    async fn rejects_unknown_public_parameter_during_validation() {
+        let (tool, _fixture) = tool().await;
+        let error = match tool.validate(&json!({
             "query": "rust",
             "unexpected": true,
             "_session_key": "session:123"

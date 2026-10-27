@@ -165,7 +165,7 @@ impl GithubSearchCodeTool {
     async fn run(&self, params: Value) -> Result<String> {
         let input = parse_input(params)?;
         // GitHub requires authentication for the code search endpoint.
-        self.client.require_token()?;
+        self.client.require_token().await?;
         let response = self
             .search_code(&input)
             .await
@@ -187,16 +187,25 @@ fn parse_input(params: Value) -> Result<SearchCodeInput> {
 mod tests {
     use {super::*, secrecy::Secret};
 
-    fn tool(base_url: String, token: Option<&str>) -> GithubSearchCodeTool {
-        GithubSearchCodeTool::new(Arc::new(GitHubClient::for_test(
+    async fn tool(
+        base_url: String,
+        token: Option<&str>,
+    ) -> (
+        GithubSearchCodeTool,
+        chelix_agents::test_support::ConfigFixture,
+    ) {
+        let fixture =
+            crate::test_support::fixture(token.map(|value| Secret::new(value.to_string()))).await;
+        let tool = GithubSearchCodeTool::new(Arc::new(GitHubClient::for_test(
             base_url,
-            token.map(|value| Secret::new(value.to_string())),
-        )))
+            fixture.service.clone(),
+        )));
+        (tool, fixture)
     }
 
-    #[test]
-    fn exposes_the_documented_description_and_a_strict_schema() {
-        let tool = tool("http://127.0.0.1:1".into(), None);
+    #[tokio::test]
+    async fn exposes_the_documented_description_and_a_strict_schema() {
+        let (tool, _fixture) = tool("http://127.0.0.1:1".into(), None).await;
 
         assert_eq!(tool.name(), "github_search_code");
         assert_eq!(tool.description(), "Search code via GitHub API.");
@@ -255,10 +264,8 @@ mod tests {
             .create_async()
             .await;
 
-        let error = match tool(server.url(), None)
-            .execute(json!({ "query": "needle" }))
-            .await
-        {
+        let (tool, _fixture) = tool(server.url(), None).await;
+        let error = match tool.execute(json!({ "query": "needle" })).await {
             Ok(_) => panic!("expected a missing token error"),
             Err(error) => error,
         };
@@ -309,7 +316,8 @@ mod tests {
             .create_async()
             .await;
 
-        let result = tool(server.url(), Some("pat-token"))
+        let (tool, _fixture) = tool(server.url(), Some("pat-token")).await;
+        let result = tool
             .execute(json!({ "query": "repo:o/r needle", "perPage": 2 }))
             .await
             .unwrap_or_else(|error| panic!("execute failed: {error}"));
@@ -339,7 +347,8 @@ mod tests {
             .create_async()
             .await;
 
-        let result = tool(server.url(), Some("pat-token"))
+        let (tool, _fixture) = tool(server.url(), Some("pat-token")).await;
+        let result = tool
             .execute(json!({ "query": "needle" }))
             .await
             .unwrap_or_else(|error| panic!("execute failed: {error}"));
@@ -360,10 +369,8 @@ mod tests {
             .create_async()
             .await;
 
-        let error = match tool(server.url(), Some("pat-token"))
-            .execute(json!({ "query": "needle" }))
-            .await
-        {
+        let (tool, _fixture) = tool(server.url(), Some("pat-token")).await;
+        let error = match tool.execute(json!({ "query": "needle" })).await {
             Ok(_) => panic!("expected an authorization error"),
             Err(error) => error,
         };
@@ -375,7 +382,7 @@ mod tests {
         call.assert_async().await;
     }
 
-    #[tokio::test(start_paused = true)]
+    #[tokio::test]
     async fn rate_limited_response_is_retried_once_after_the_cooldown() {
         let mut server = mockito::Server::new_async().await;
         let limited = server
@@ -397,7 +404,8 @@ mod tests {
             .create_async()
             .await;
 
-        let result = tool(server.url(), Some("pat-token"))
+        let (tool, _fixture) = tool(server.url(), Some("pat-token")).await;
+        let result = tool
             .execute(json!({ "query": "needle" }))
             .await
             .unwrap_or_else(|error| panic!("execute failed: {error}"));
@@ -419,10 +427,8 @@ mod tests {
             .create_async()
             .await;
 
-        let error = match tool(server.url(), Some("pat-token"))
-            .execute(json!({ "query": "needle" }))
-            .await
-        {
+        let (tool, _fixture) = tool(server.url(), Some("pat-token")).await;
+        let error = match tool.execute(json!({ "query": "needle" })).await {
             Ok(_) => panic!("expected a rate limit error"),
             Err(error) => error,
         };

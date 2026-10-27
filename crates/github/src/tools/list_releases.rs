@@ -197,16 +197,25 @@ mod tests {
         secrecy::Secret,
     };
 
-    fn tool(base_url: String, token: Option<&str>) -> GithubListReleasesTool {
-        GithubListReleasesTool::new(Arc::new(GitHubClient::for_test(
+    async fn tool(
+        base_url: String,
+        token: Option<&str>,
+    ) -> (
+        GithubListReleasesTool,
+        chelix_agents::test_support::ConfigFixture,
+    ) {
+        let fixture =
+            crate::test_support::fixture(token.map(|value| Secret::new(value.to_string()))).await;
+        let tool = GithubListReleasesTool::new(Arc::new(GitHubClient::for_test(
             base_url,
-            token.map(|value| Secret::new(value.to_string())),
-        )))
+            fixture.service.clone(),
+        )));
+        (tool, fixture)
     }
 
-    #[test]
-    fn exposes_the_reference_description_and_a_strict_schema() {
-        let tool = tool("http://127.0.0.1:1".into(), None);
+    #[tokio::test]
+    async fn exposes_the_reference_description_and_a_strict_schema() {
+        let (tool, _fixture) = tool("http://127.0.0.1:1".into(), None).await;
 
         assert_eq!(tool.name(), "github_list_releases");
         assert_eq!(
@@ -311,7 +320,8 @@ mod tests {
             .create_async()
             .await;
 
-        let result = tool(server.url(), None)
+        let (tool, _fixture) = tool(server.url(), None).await;
+        let result = tool
             .execute(json!({
                 "owner": " owner ",
                 "repo": " repo ",
@@ -345,7 +355,8 @@ mod tests {
             .create_async()
             .await;
 
-        let result = tool(server.url(), None)
+        let (tool, _fixture) = tool(server.url(), None).await;
+        let result = tool
             .execute(json!({ "owner": "o", "repo": "r" }))
             .await
             .unwrap_or_else(|error| panic!("execute failed: {error}"));
@@ -365,10 +376,8 @@ mod tests {
             .create_async()
             .await;
 
-        let error = match tool(server.url(), None)
-            .execute(json!({ "owner": "o", "repo": "r" }))
-            .await
-        {
+        let (tool, _fixture) = tool(server.url(), None).await;
+        let error = match tool.execute(json!({ "owner": "o", "repo": "r" })).await {
             Ok(_) => panic!("expected a retrieval error"),
             Err(error) => error,
         };
@@ -377,7 +386,7 @@ mod tests {
         call.assert_async().await;
     }
 
-    #[tokio::test(start_paused = true)]
+    #[tokio::test]
     async fn rate_limited_response_is_retried_once_after_the_cooldown() {
         let mut server = mockito::Server::new_async().await;
         let limited = server
@@ -397,7 +406,8 @@ mod tests {
             .create_async()
             .await;
 
-        let result = tool(server.url(), None)
+        let (tool, _fixture) = tool(server.url(), None).await;
+        let result = tool
             .execute(json!({ "owner": "o", "repo": "r" }))
             .await
             .unwrap_or_else(|error| panic!("execute failed: {error}"));
@@ -418,10 +428,8 @@ mod tests {
             .create_async()
             .await;
 
-        let error = match tool(server.url(), None)
-            .execute(json!({ "owner": "o", "repo": "r" }))
-            .await
-        {
+        let (tool, _fixture) = tool(server.url(), None).await;
+        let error = match tool.execute(json!({ "owner": "o", "repo": "r" })).await {
             Ok(_) => panic!("expected a rate-limit error"),
             Err(error) => error,
         };

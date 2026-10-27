@@ -105,7 +105,7 @@ mod tests {
 
         sync_mcp_tools(&manager, &registry).await;
         let reg_guard = registry.read().await;
-        assert!(reg_guard.list_schemas().is_empty());
+        assert!(reg_guard.list_names().is_empty());
     }
 
     #[tokio::test]
@@ -127,7 +127,7 @@ mod tests {
         sync_mcp_tools(&manager, &registry).await;
         let reg_guard = registry.read().await;
         assert!(
-            reg_guard.list_schemas().is_empty(),
+            reg_guard.list_names().is_empty(),
             "stale MCP tools should be removed"
         );
     }
@@ -150,8 +150,8 @@ mod tests {
 
         sync_mcp_tools(&manager, &registry).await;
         let reg_guard = registry.read().await;
-        let schemas = reg_guard.list_schemas();
-        assert_eq!(schemas.len(), 1, "non-MCP tool should survive sync");
-        assert_eq!(schemas[0]["name"], "builtin_tool");
+        let names = reg_guard.list_names();
+        assert_eq!(names.len(), 1, "non-MCP tool should survive sync");
+        assert_eq!(names[0], "builtin_tool");
     }
 }

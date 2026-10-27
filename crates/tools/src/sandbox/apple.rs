@@ -6,6 +6,8 @@ use std::collections::HashMap;
 #[cfg(target_os = "macos")]
 use async_trait::async_trait;
 #[cfg(target_os = "macos")]
+use chelix_config_service::ConfigService;
+#[cfg(target_os = "macos")]
 use chelix_protocol::{TOOLS_SERVICE_CONTAINER_PORT, TOOLS_SERVICE_TOKEN_ENV};
 use tracing::{debug, info, warn};
 
@@ -41,23 +43,26 @@ use crate::error::{Error, Result};
 pub struct AppleContainerSandbox {
     pub config: SandboxConfig,
     effective_image: SharedSandboxImage,
+    config_service: ConfigService,
     tools_endpoints: RwLock<HashMap<String, ToolsServiceEndpoint>>,
 }
 
 #[cfg(target_os = "macos")]
 impl AppleContainerSandbox {
-    pub fn new(config: SandboxConfig) -> Self {
+    pub fn new(config: SandboxConfig, config_service: ConfigService) -> Self {
         let effective_image = shared_sandbox_image(&config);
-        Self::new_with_global_image(config, effective_image)
+        Self::new_with_global_image(config, effective_image, config_service)
     }
 
     pub(crate) fn new_with_global_image(
         config: SandboxConfig,
         effective_image: SharedSandboxImage,
+        config_service: ConfigService,
     ) -> Self {
         Self {
             config,
             effective_image,
+            config_service,
             tools_endpoints: RwLock::new(HashMap::new()),
         }
     }
@@ -439,8 +444,12 @@ impl Sandbox for AppleContainerSandbox {
             let image = self.resolve_local_image(&effective_image).await?;
             let mounts = self.mount_specs(id)?;
             let terminal_size = self
-                .config
-                .terminal_size
+                .config_service
+                .read(|config| config.tools.execute_command.terminal_size)
+                .await
+                .map_err(|error| {
+                    Error::external("failed to read tools.execute_command.terminal_size", error)
+                })?
                 .ok_or_else(|| Error::message("tools.execute_command.terminal_size is required"))?;
             let endpoint = Self::allocate_tools_endpoint()?;
             Self::run_container(

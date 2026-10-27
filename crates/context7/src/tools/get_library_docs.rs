@@ -148,13 +148,23 @@ fn parse_input(params: Value) -> Result<GetLibraryDocsInput> {
 mod tests {
     use super::*;
 
-    fn tool(base_url: String) -> Context7GetLibraryDocsTool {
-        Context7GetLibraryDocsTool::new(Arc::new(Context7Client::for_test(base_url, Vec::new())))
+    async fn tool(
+        base_url: String,
+    ) -> (
+        Context7GetLibraryDocsTool,
+        chelix_agents::test_support::ConfigFixture,
+    ) {
+        let fixture = crate::test_support::fixture(Vec::new()).await;
+        let tool = Context7GetLibraryDocsTool::new(Arc::new(Context7Client::for_test(
+            base_url,
+            fixture.service.clone(),
+        )));
+        (tool, fixture)
     }
 
-    #[test]
-    fn exposes_the_current_description_and_schema() {
-        let tool = tool("http://127.0.0.1:1".into());
+    #[tokio::test]
+    async fn exposes_the_current_description_and_schema() {
+        let (tool, _fixture) = tool("http://127.0.0.1:1".into()).await;
 
         assert_eq!(tool.name(), "context7_get_library_docs");
         assert_eq!(tool.description(), TOOL_DESCRIPTION);
@@ -188,7 +198,8 @@ mod tests {
             .create_async()
             .await;
 
-        let value = tool(server.url())
+        let (tool, _fixture) = tool(server.url()).await;
+        let value = tool
             .execute(json!({
                 "libraryId": " /vercel/next.js ",
                 "query": " React hooks cleanup "
@@ -214,7 +225,8 @@ mod tests {
             .create_async()
             .await;
 
-        let value = tool(server.url())
+        let (tool, _fixture) = tool(server.url()).await;
+        let value = tool
             .execute(json!({"libraryId": "/unknown/library", "query": "routing"}))
             .await
             .unwrap_or_else(|error| panic!("tool execution failed: {error}"));
@@ -238,7 +250,8 @@ mod tests {
             .create_async()
             .await;
 
-        let value = tool(server.url())
+        let (tool, _fixture) = tool(server.url()).await;
+        let value = tool
             .execute(json!({"libraryId": "/unknown/library", "query": "routing"}))
             .await
             .unwrap_or_else(|error| panic!("tool execution failed: {error}"));
@@ -247,7 +260,7 @@ mod tests {
         call.assert_async().await;
     }
 
-    #[tokio::test(start_paused = true)]
+    #[tokio::test]
     async fn exhausted_rate_limit_is_returned_as_a_tool_error() {
         let mut server = mockito::Server::new_async().await;
         let query_matcher = mockito::Matcher::AllOf(vec![
@@ -272,7 +285,8 @@ mod tests {
             .create_async()
             .await;
 
-        let error = match tool(server.url())
+        let (tool, _fixture) = tool(server.url()).await;
+        let error = match tool
             .execute(json!({"libraryId": "/vercel/next.js", "query": "routing"}))
             .await
         {
@@ -290,6 +304,7 @@ mod tests {
 
     #[tokio::test]
     async fn server_errors_are_returned_as_tool_errors() {
+        let fixture = crate::test_support::fixture(Vec::new()).await;
         for status in [500, 502, 503] {
             let mut server = mockito::Server::new_async().await;
             let body = format!("server error {status}");
@@ -305,7 +320,11 @@ mod tests {
                 .create_async()
                 .await;
 
-            let error = match tool(server.url())
+            let tool = Context7GetLibraryDocsTool::new(Arc::new(Context7Client::for_test(
+                server.url(),
+                fixture.service.clone(),
+            )));
+            let error = match tool
                 .execute(json!({"libraryId": "/vercel/next.js", "query": "routing"}))
                 .await
             {
@@ -325,7 +344,8 @@ mod tests {
 
     #[tokio::test]
     async fn preserves_the_registered_error_prefix() {
-        let error = match tool("http://127.0.0.1:1".into()).execute(json!({})).await {
+        let (tool, _fixture) = tool("http://127.0.0.1:1".into()).await;
+        let error = match tool.execute(json!({})).await {
             Ok(value) => panic!("expected tool error, got: {value}"),
             Err(error) => error,
         };

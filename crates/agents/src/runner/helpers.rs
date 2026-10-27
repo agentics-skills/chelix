@@ -236,9 +236,6 @@ impl From<&ToolCall> for RunnerToolCall {
 #[derive(Debug, Clone, Copy)]
 pub struct AgentLoopLimits {
     pub max_tools_threshold: usize,
-    /// Per-agent override for the in-context tool result byte budget.
-    /// Falls back to `tools.max_tool_result_bytes` when `None`.
-    pub max_tool_result_bytes: Option<usize>,
     /// Allow the runner to pause at 85% for a session-backed checkpoint.
     pub automatic_checkpointing: bool,
     /// Resume from history that already includes the current user turn.

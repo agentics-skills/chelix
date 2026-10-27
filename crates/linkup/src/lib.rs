@@ -5,6 +5,8 @@
 //! by `tools.linkup.request_timeout_secs`.
 
 pub mod config_validation;
+#[cfg(all(test, feature = "runtime"))]
+mod test_support;
 
 #[cfg(feature = "runtime")]
 mod api;

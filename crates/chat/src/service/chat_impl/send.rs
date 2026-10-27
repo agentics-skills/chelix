@@ -908,6 +908,7 @@ impl LiveChatService {
 
         let queued_prompts = Arc::clone(&self.queued_prompts);
         let skill_files = Arc::clone(&self.skill_files);
+        let config_service = self.config_service.clone();
         let memory_forget_provider_resolver = MemoryForgetProviderResolver::new(
             Arc::clone(&self.providers),
             Arc::clone(&self.session_metadata),
@@ -998,6 +999,7 @@ impl LiveChatService {
                     .await
                 } else {
                     run_with_tools(
+                        &config_service,
                         persona,
                         compaction_reminder,
                         runtime_limits,

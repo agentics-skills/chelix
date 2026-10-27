@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use {chelix_agents::tool_registry::ToolRegistry, chelix_config::schema::GitHubConfig};
+use {chelix_agents::tool_registry::ToolRegistry, chelix_config_service::ConfigService};
 
 use crate::{
     client::GitHubClient,
@@ -19,11 +19,8 @@ use crate::{
 /// The tools are always registered: a missing personal access token is
 /// reported at call time as an explicit tool error rather than by silently
 /// hiding the tools.
-pub fn register_tools(registry: &mut ToolRegistry, config: &GitHubConfig) {
-    let client = Arc::new(GitHubClient::new(
-        config.pat.clone(),
-        config.request_timeout_secs,
-    ));
+pub fn register_tools(registry: &mut ToolRegistry, config_service: ConfigService) {
+    let client = Arc::new(GitHubClient::new(config_service));
     registry.register(Box::new(GithubGetDirectoryContentsTool::new(Arc::clone(
         &client,
     ))));
@@ -51,10 +48,14 @@ pub fn register_tools(registry: &mut ToolRegistry, config: &GitHubConfig) {
 mod tests {
     use super::*;
 
-    #[test]
-    fn registers_the_complete_tool_set() {
+    #[tokio::test]
+    async fn registers_the_complete_tool_set() {
         let mut registry = ToolRegistry::new();
-        register_tools(&mut registry, &GitHubConfig::default());
+        let fixture =
+            chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+                .await
+                .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
+        register_tools(&mut registry, fixture.service.clone());
 
         let names: Vec<String> = registry
             .list_catalog()

@@ -99,9 +99,11 @@ impl AgentTool for AgentScopedSkillTool {
         self.inner.parameters_schema()
     }
 
-    fn parameters_schema_with_max_tool_result_bytes(&self, bytes: usize) -> Value {
-        self.inner
-            .parameters_schema_with_max_tool_result_bytes(bytes)
+    fn parameters_schema_with_defaults(
+        &self,
+        defaults: &chelix_agents::tool_registry::ToolSchemaDefaults,
+    ) -> Value {
+        self.inner.parameters_schema_with_defaults(defaults)
     }
 
     fn validate(&self, params: &Value) -> anyhow::Result<()> {

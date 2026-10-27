@@ -213,8 +213,12 @@ fn test_sandbox_config_serde() {
     assert_eq!(config.resource_limits.memory_limit.as_deref(), Some("1G"));
 }
 
-#[test]
-fn test_docker_resource_args() {
+#[tokio::test]
+async fn test_docker_resource_args() {
+    let fixture =
+        chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+            .await
+            .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
     let config = SandboxConfig {
         resource_limits: ResourceLimits {
             memory_limit: Some("256M".into()),
@@ -223,7 +227,7 @@ fn test_docker_resource_args() {
         },
         ..Default::default()
     };
-    let docker = DockerSandbox::new(config);
+    let docker = DockerSandbox::new(config, fixture.service.clone());
     let args = docker.resource_args();
     assert_eq!(args, vec![
         "--memory",
@@ -235,9 +239,13 @@ fn test_docker_resource_args() {
     ]);
 }
 
-#[test]
-fn test_docker_resource_args_default_to_one_cpu() {
-    let docker = DockerSandbox::new(SandboxConfig::default());
+#[tokio::test]
+async fn test_docker_resource_args_default_to_one_cpu() {
+    let fixture =
+        chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+            .await
+            .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
+    let docker = DockerSandbox::new(SandboxConfig::default(), fixture.service.clone());
 
     assert_eq!(docker.resource_args(), vec!["--cpus", "1"]);
 }
@@ -257,14 +265,21 @@ fn test_sandbox_id() -> SandboxId {
     }
 }
 
-#[test]
-fn test_docker_mount_args_include_data_dir_rw() {
+#[tokio::test]
+async fn test_docker_mount_args_include_data_dir_rw() {
+    let fixture =
+        chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+            .await
+            .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
     let temp_dir = tempfile::tempdir().unwrap();
     let host_data_dir = temp_dir.path().join("chelix-data");
-    let docker = DockerSandbox::new(SandboxConfig {
-        host_data_dir: Some(host_data_dir.clone()),
-        ..Default::default()
-    });
+    let docker = DockerSandbox::new(
+        SandboxConfig {
+            host_data_dir: Some(host_data_dir.clone()),
+            ..Default::default()
+        },
+        fixture.service.clone(),
+    );
     let args = docker.mount_args(&test_sandbox_id()).unwrap();
     let guest_data_dir = chelix_config::data_dir();
     let volume = mount_volume_for_guest(&args, &guest_data_dir.display().to_string()).unwrap();
@@ -279,8 +294,12 @@ fn test_docker_mount_args_include_data_dir_rw() {
     );
 }
 
-#[test]
-fn test_data_mount_exposes_agent_state_paths_in_sandbox_namespace() {
+#[tokio::test]
+async fn test_data_mount_exposes_agent_state_paths_in_sandbox_namespace() {
+    let _fixture =
+        chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+            .await
+            .unwrap();
     let temp_dir = tempfile::tempdir().unwrap();
     let host_data_dir = temp_dir.path().join("chelix-data");
     for relative in ["memory", "logs", "skills", "sessions"] {
@@ -318,20 +337,27 @@ fn test_data_mount_exposes_agent_state_paths_in_sandbox_namespace() {
     }
 }
 
-#[test]
-fn test_docker_mount_args_include_custom_declarative_mount() {
+#[tokio::test]
+async fn test_docker_mount_args_include_custom_declarative_mount() {
+    let fixture =
+        chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+            .await
+            .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
     let temp_dir = tempfile::tempdir().unwrap();
     let custom_host = temp_dir.path().join("reference");
     let custom_guest = PathBuf::from("/opt/reference");
-    let docker = DockerSandbox::new(SandboxConfig {
-        host_data_dir: Some(temp_dir.path().join("chelix-data")),
-        mounts: vec![chelix_config::container_mounts::SandboxMount {
-            host: custom_host.clone(),
-            guest: custom_guest.clone(),
-            mode: chelix_config::container_mounts::MountMode::Ro,
-        }],
-        ..Default::default()
-    });
+    let docker = DockerSandbox::new(
+        SandboxConfig {
+            host_data_dir: Some(temp_dir.path().join("chelix-data")),
+            mounts: vec![chelix_config::container_mounts::SandboxMount {
+                host: custom_host.clone(),
+                guest: custom_guest.clone(),
+                mode: chelix_config::container_mounts::MountMode::Ro,
+            }],
+            ..Default::default()
+        },
+        fixture.service.clone(),
+    );
     let args = docker.mount_args(&test_sandbox_id()).unwrap();
     let expected_volume = format!("{}:{}:ro", custom_host.display(), custom_guest.display());
 
@@ -356,27 +382,41 @@ fn test_podman_hardening_args_do_not_require_host_init_binary() {
     assert!(!args.contains(&"--init".to_string()));
 }
 
-#[test]
-fn test_docker_mount_args_omit_home_when_persistence_is_off() {
+#[tokio::test]
+async fn test_docker_mount_args_omit_home_when_persistence_is_off() {
+    let fixture =
+        chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+            .await
+            .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
     let temp_dir = tempfile::tempdir().unwrap();
-    let docker = DockerSandbox::new(SandboxConfig {
-        home_persistence: HomePersistence::Off,
-        host_data_dir: Some(temp_dir.path().join("chelix-data")),
-        ..Default::default()
-    });
+    let docker = DockerSandbox::new(
+        SandboxConfig {
+            home_persistence: HomePersistence::Off,
+            host_data_dir: Some(temp_dir.path().join("chelix-data")),
+            ..Default::default()
+        },
+        fixture.service.clone(),
+    );
     let args = docker.mount_args(&test_sandbox_id()).unwrap();
 
     assert!(mount_volume_for_guest(&args, "/home/sandbox").is_none());
 }
 
-#[test]
-fn test_docker_mount_args_include_default_shared_home() {
+#[tokio::test]
+async fn test_docker_mount_args_include_default_shared_home() {
+    let fixture =
+        chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+            .await
+            .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
     let temp_dir = tempfile::tempdir().unwrap();
     let host_data_dir = temp_dir.path().join("chelix-data");
-    let docker = DockerSandbox::new(SandboxConfig {
-        host_data_dir: Some(host_data_dir.clone()),
-        ..Default::default()
-    });
+    let docker = DockerSandbox::new(
+        SandboxConfig {
+            host_data_dir: Some(host_data_dir.clone()),
+            ..Default::default()
+        },
+        fixture.service.clone(),
+    );
     let args = docker.mount_args(&test_sandbox_id()).unwrap();
     let expected_host_dir = host_data_dir.join("sandbox/home/shared");
     let expected_volume = format!("{}:/home/sandbox:rw", expected_host_dir.display());
@@ -387,15 +427,22 @@ fn test_docker_mount_args_include_default_shared_home() {
     );
 }
 
-#[test]
-fn test_docker_mount_args_support_custom_shared_home() {
+#[tokio::test]
+async fn test_docker_mount_args_support_custom_shared_home() {
+    let fixture =
+        chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+            .await
+            .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
     let temp_dir = tempfile::tempdir().unwrap();
     let shared_home = temp_dir.path().join("custom-shared");
-    let docker = DockerSandbox::new(SandboxConfig {
-        host_data_dir: Some(temp_dir.path().join("chelix-data")),
-        shared_home_dir: Some(shared_home.clone()),
-        ..Default::default()
-    });
+    let docker = DockerSandbox::new(
+        SandboxConfig {
+            host_data_dir: Some(temp_dir.path().join("chelix-data")),
+            shared_home_dir: Some(shared_home.clone()),
+            ..Default::default()
+        },
+        fixture.service.clone(),
+    );
     let args = docker.mount_args(&test_sandbox_id()).unwrap();
     let expected_volume = format!("{}:/home/sandbox:rw", shared_home.display());
 
@@ -405,15 +452,22 @@ fn test_docker_mount_args_support_custom_shared_home() {
     );
 }
 
-#[test]
-fn test_docker_mount_args_append_sanitized_session_to_home() {
+#[tokio::test]
+async fn test_docker_mount_args_append_sanitized_session_to_home() {
+    let fixture =
+        chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+            .await
+            .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
     let temp_dir = tempfile::tempdir().unwrap();
     let host_data_dir = temp_dir.path().join("chelix-data");
-    let docker = DockerSandbox::new(SandboxConfig {
-        home_persistence: HomePersistence::Session,
-        host_data_dir: Some(host_data_dir.clone()),
-        ..Default::default()
-    });
+    let docker = DockerSandbox::new(
+        SandboxConfig {
+            home_persistence: HomePersistence::Session,
+            host_data_dir: Some(host_data_dir.clone()),
+            ..Default::default()
+        },
+        fixture.service.clone(),
+    );
     let id = SandboxId {
         scope: SandboxScope::Session,
         key: "sess:/weird key".into(),
@@ -430,7 +484,11 @@ fn test_docker_mount_args_append_sanitized_session_to_home() {
 
 #[tokio::test]
 async fn test_provisioning_guard_skips_second_call() {
-    let docker = DockerSandbox::new(SandboxConfig::default());
+    let fixture =
+        chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+            .await
+            .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
+    let docker = DockerSandbox::new(SandboxConfig::default(), fixture.service.clone());
     let name = "chelix-sandbox-test-guard";
 
     // First insertion succeeds.
@@ -450,6 +508,10 @@ async fn test_provisioning_guard_skips_second_call() {
 #[cfg(unix)]
 #[tokio::test]
 async fn test_provisioning_guard_cleared_only_after_successful_cleanup() {
+    let fixture =
+        chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+            .await
+            .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
     use std::os::unix::fs::PermissionsExt;
 
     let directory = tempfile::tempdir().unwrap();
@@ -468,7 +530,7 @@ fi
     .unwrap();
     std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o755)).unwrap();
     let cli: &'static str = Box::leak(cli.to_string_lossy().into_owned().into_boxed_str());
-    let docker = DockerSandbox::with_cli(SandboxConfig::default(), cli);
+    let docker = DockerSandbox::with_cli(SandboxConfig::default(), cli, fixture.service.clone());
     let id = SandboxId {
         scope: SandboxScope::Session,
         key: "test-cleanup".into(),
@@ -490,7 +552,11 @@ fi
 
 #[tokio::test]
 async fn test_provisioning_guard_independent_containers() {
-    let docker = DockerSandbox::new(SandboxConfig::default());
+    let fixture =
+        chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+            .await
+            .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
+    let docker = DockerSandbox::new(SandboxConfig::default(), fixture.service.clone());
 
     docker
         .provisioned
@@ -503,16 +569,20 @@ async fn test_provisioning_guard_independent_containers() {
     assert!(!guard.contains("container-b"));
 }
 
-#[test]
-fn test_podman_build_verifies_image_in_store() {
+#[tokio::test]
+async fn test_podman_build_verifies_image_in_store() {
+    let fixture =
+        chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+            .await
+            .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
     // The Podman constructor must set `kind = BackendKind::Podman` so the
     // post-build verification branch in `build_image` activates.
-    let sandbox = DockerSandbox::podman(SandboxConfig::default());
+    let sandbox = DockerSandbox::podman(SandboxConfig::default(), fixture.service.clone());
     assert_eq!(sandbox.kind, BackendKind::Podman);
     assert_eq!(sandbox.backend_id(), SandboxBackendId::Podman);
 
     // Docker constructor must NOT be Podman.
-    let docker = DockerSandbox::new(SandboxConfig::default());
+    let docker = DockerSandbox::new(SandboxConfig::default(), fixture.service.clone());
     assert_eq!(docker.kind, BackendKind::Docker);
     assert_ne!(docker.kind, BackendKind::Podman);
 }

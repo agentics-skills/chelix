@@ -172,6 +172,8 @@ pub async fn run_agent_loop_streaming_with_limits(
     provider: Arc<dyn LlmProvider>,
     tools: &ToolRegistry,
     tools_config: &chelix_config::schema::ToolsConfig,
+    config_service: &chelix_config_service::ConfigService,
+    agent_id: &str,
     system_prompt: &str,
     user_content: &UserContent,
     on_event: Option<&OnEvent>,
@@ -189,9 +191,6 @@ pub async fn run_agent_loop_streaming_with_limits(
     let tool_mode = provider.tool_mode();
     let native_tools = matches!(tool_mode, ToolMode::Native);
     let text_tools = matches!(tool_mode, ToolMode::Text);
-    let max_tool_result_bytes = limits
-        .max_tool_result_bytes
-        .unwrap_or(tools_config.max_tool_result_bytes);
     let max_auto_continues = tools_config.agent_max_auto_continues;
     let auto_continue_min_tool_calls = tools_config.agent_auto_continue_min_tool_calls;
 
@@ -313,7 +312,9 @@ pub async fn run_agent_loop_streaming_with_limits(
         // for this single turn so the model is forced to respond in text
         // (issue #658).
         let schemas_for_api = if native_tools && !strip_tools_next_iter {
-            let schemas = tools.list_schemas();
+            let defaults =
+                crate::tool_registry::ToolSchemaDefaults::read(config_service, agent_id).await?;
+            let schemas = tools.list_schemas(&defaults);
             match tool_choice.as_ref() {
                 Some(ToolChoice::None) => vec![],
                 Some(ToolChoice::Any) if schemas.is_empty() => {
@@ -1090,7 +1091,8 @@ pub async fn run_agent_loop_streaming_with_limits(
         let executor = ToolInvocationExecutor {
             tools,
             tool_result_store: &tool_result_store,
-            max_tool_result_bytes,
+            config_service,
+            agent_id,
             tool_context: tool_context.as_ref(),
             hook_registry: hook_registry.as_ref(),
             session_key: &session_key_for_hooks,

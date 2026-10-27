@@ -100,6 +100,9 @@ fn load_validators() -> Vec<Arc<dyn ConfigValidator>> {
             chelix_felo::config_validation::validate_config,
         )),
         Arc::new(SyncValidator(
+            chelix_duckduckgo::config_validation::validate_config,
+        )),
+        Arc::new(SyncValidator(
             chelix_tools::config_validation::validate_load_config,
         )),
     ]
@@ -239,6 +242,7 @@ mod tests {
             "providers.voice-openai",
             "sandbox.archived_session_retention_days",
             "tools.context7.request_timeout_secs",
+            "tools.duckduckgo.request_timeout_secs",
             "tools.exa.request_timeout_secs",
             "tools.execute_command.terminal_size",
             "tools.felo.request_timeout_secs",

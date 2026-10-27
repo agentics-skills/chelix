@@ -275,13 +275,23 @@ fn parse_input(params: Value) -> Result<SearchIssuesInput> {
 mod tests {
     use super::*;
 
-    fn tool(base_url: String) -> GithubSearchIssuesTool {
-        GithubSearchIssuesTool::new(Arc::new(GitHubClient::for_test(base_url, None)))
+    async fn tool(
+        base_url: String,
+    ) -> (
+        GithubSearchIssuesTool,
+        chelix_agents::test_support::ConfigFixture,
+    ) {
+        let fixture = crate::test_support::fixture(None).await;
+        let tool = GithubSearchIssuesTool::new(Arc::new(GitHubClient::for_test(
+            base_url,
+            fixture.service.clone(),
+        )));
+        (tool, fixture)
     }
 
-    #[test]
-    fn exposes_the_reference_description_and_a_strict_schema() {
-        let tool = tool("http://127.0.0.1:1".into());
+    #[tokio::test]
+    async fn exposes_the_reference_description_and_a_strict_schema() {
+        let (tool, _fixture) = tool("http://127.0.0.1:1".into()).await;
 
         assert_eq!(tool.name(), "github_search_issues");
         assert_eq!(tool.description(), "Search issues via GitHub API.");
@@ -402,7 +412,8 @@ mod tests {
             .create_async()
             .await;
 
-        let result = tool(server.url())
+        let (tool, _fixture) = tool(server.url()).await;
+        let result = tool
             .execute(json!({ "query": " repo:o/r bug ", "perPage": 2 }))
             .await
             .unwrap_or_else(|error| panic!("execute failed: {error}"));
@@ -445,7 +456,8 @@ mod tests {
             .create_async()
             .await;
 
-        let result = tool(server.url())
+        let (tool, _fixture) = tool(server.url()).await;
+        let result = tool
             .execute(json!({ "query": "is:issue repo:o/r" }))
             .await
             .unwrap_or_else(|error| panic!("execute failed: {error}"));
@@ -466,10 +478,8 @@ mod tests {
             .create_async()
             .await;
 
-        let error = match tool(server.url())
-            .execute(json!({ "query": "is:issue invalid" }))
-            .await
-        {
+        let (tool, _fixture) = tool(server.url()).await;
+        let error = match tool.execute(json!({ "query": "is:issue invalid" })).await {
             Ok(_) => panic!("expected a retrieval error"),
             Err(error) => error,
         };
@@ -490,7 +500,8 @@ mod tests {
             .create_async()
             .await;
 
-        let error = match tool(server.url()).execute(json!({ "query": "bug" })).await {
+        let (tool, _fixture) = tool(server.url()).await;
+        let error = match tool.execute(json!({ "query": "bug" })).await {
             Ok(_) => panic!("expected a rate-limit error"),
             Err(error) => error,
         };
@@ -502,7 +513,7 @@ mod tests {
         call.assert_async().await;
     }
 
-    #[tokio::test(start_paused = true)]
+    #[tokio::test]
     async fn rate_limited_response_is_retried_once_after_the_cooldown() {
         let mut server = mockito::Server::new_async().await;
         let limited = server
@@ -524,7 +535,8 @@ mod tests {
             .create_async()
             .await;
 
-        let result = tool(server.url())
+        let (tool, _fixture) = tool(server.url()).await;
+        let result = tool
             .execute(json!({ "query": "bug" }))
             .await
             .unwrap_or_else(|error| panic!("execute failed: {error}"));
