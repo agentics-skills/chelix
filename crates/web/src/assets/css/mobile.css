@@ -168,10 +168,10 @@ html {
     pointer-events: auto;
   }
 
-  /* Larger session items on mobile */
+  /* Compact session rows with mobile touch targets. */
   .session-item {
-    padding: 12px 14px;
-    min-height: 56px;
+    --session-row-padding: 5px;
+    min-height: 44px;
   }
 
   /* Session actions always visible on touch */
