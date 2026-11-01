@@ -149,8 +149,8 @@ subscriptions. The frontend contract is in `src/types/ui-history.ts`.
 - **Provider items**: segment/item IDs and item positions originate in Rust;
   `provider-segment-reducer.ts` renders reasoning from those ordered items.
 - **One disclosure per segment**: `session-render.ts` keeps a retained
-  assistant's reasoning disclosure while updating its text body. Every `active`
-  revision renders it open with the `Thinking` summary; manually closing it while
+  assistant's reasoning disclosure while updating its text body. Each rendered
+  `active` snapshot opens it with the `Thinking` summary; manually closing it while
   active lasts only until the next revision. The first non-active render, whether
   it follows an active revision or creates a node from a terminal baseline,
   renders it closed with the `Reasoning` summary. Later non-active revisions
@@ -167,6 +167,10 @@ subscriptions. The frontend contract is in `src/types/ui-history.ts`.
 buffers early `ui_history` events. Generation changes replace the window;
 revision gaps request another baseline. The server isolates slow listeners in
 per-client tasks and can send a replacement snapshot of the selected range.
+Live events immediately update the history cache, context budget, and history
+state. Each subscription schedules one animation-frame reconciliation, which
+reads the latest cache. Invalidating or replacing the subscription cancels its
+pending frame.
 
 The status-line context-budget percentage is driven directly by received tool
 lifecycle snapshots. An accepted live batch applies the newest budget source by
@@ -234,6 +238,27 @@ cards:
 - terminal stages render success, rejection, failure, or cancellation; lifecycle
   results remain strings on the wire and are JSON-decoded only when structured
   presentation needs object fields.
+
+Command previews retain their `code.command-cmd` nodes. The application starts
+an independent command-highlighting worker during startup. A new node receives
+its initial Shiki markup on the main thread; subsequent changes enter a FIFO
+queue with one active job and the latest pending text for each node. The last
+completed markup remains visible until the next result is applied. The worker
+uses Oniguruma, the bash grammar, and the github-light/github-dark themes.
+Vite emits its module worker and imports relative to the versioned asset bundle.
+
+Main highlighter initialization and grammar-load promises retain their results,
+including failures. A failed Markdown code element is marked for its lifetime;
+other elements continue their own decoration. Command-preview failures stop its
+worker and replace active, pending, initial, and newly requested previews with
+an explicit syntax-highlighting error. Idle previews retain their last completed
+markup until their next request. Each Error object is reported once in the
+console and an error toast.
+
+Permission toolbar updates validate the successful `sessions.patch` payload and
+merge its mode, type, and version into the session's current metadata. The
+session's version check retains newer state when a response is stale. The
+toolbar then reads the current active session.
 
 `src/tool-permission.ts` puts approve, deny, and skip on the active invocation
 card while a moderated/manual permission is pending. Deny opens the Deny tool

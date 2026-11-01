@@ -22,6 +22,7 @@ interface Subscription {
 	key: string;
 	ready: boolean;
 	range: UiHistoryRange;
+	renderFrame?: number;
 	needsSnapshot?: boolean;
 	buffered?: UiHistoryEvent;
 	bufferedContextBudget?: BufferedContextBudget;
@@ -115,7 +116,21 @@ function rememberBufferedContextBudget(current: Subscription, event: UiHistoryEv
 }
 
 export function invalidateHistorySubscription(): void {
+	if (subscription?.renderFrame !== undefined) cancelAnimationFrame(subscription.renderFrame);
 	subscription = null;
+}
+
+function scheduleHistoryReconciliation(current: Subscription): void {
+	if (current.renderFrame !== undefined) return;
+	current.renderFrame = requestAnimationFrame(() => {
+		current.renderFrame = undefined;
+		if (subscription !== current || S.activeSessionKey !== current.key) return;
+		try {
+			reconcileSessionHistory(current.key);
+		} catch (error) {
+			recoverHistorySubscription(current, error);
+		}
+	});
 }
 
 function buffer(current: Subscription, event: UiHistoryEvent): void {
@@ -200,7 +215,7 @@ function accept(event: UiHistoryEvent): void {
 		if (!applyHistoryEvent(current.key, event)) return;
 		applyEventContextBudget(current.key, event, bufferedContextBudget);
 		syncHistoryState(current.key);
-		reconcileSessionHistory(current.key);
+		scheduleHistoryReconciliation(current);
 	} catch (error) {
 		recoverHistorySubscription(current, error);
 	}
@@ -250,6 +265,7 @@ async function subscribeSessionHistoryRequest(
 		range,
 		bufferedContextBudget: preservedContextBudget,
 	};
+	invalidateHistorySubscription();
 	subscription = current;
 	const response = await sendRpc<{ subscriptionId: string; sessionKey: string; snapshot: UiHistoryPage }>(
 		"sessions.history.subscribe",

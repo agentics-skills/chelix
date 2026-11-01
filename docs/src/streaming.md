@@ -302,12 +302,15 @@ The TypeScript frontend receives semantic history through
    baseline page. The response contains the subscription ID and snapshot.
 2. `ui_history` events carry updated snapshots with a generation and revision
    watermark. The browser buffers events arriving before the RPC baseline.
-3. The reducer applies newer revisions by message ID. A revision gap triggers a
-   new baseline; the server recovers a lagged subscriber with a snapshot of its
+3. The reducer immediately applies newer revisions by message ID, updates the
+   context budget and history state, and schedules one animation-frame DOM pass
+   for the subscription. That pass reads the latest cache. Subscription
+   replacement or invalidation cancels the pending pass. A revision gap triggers
+   a new baseline; the server recovers a lagged subscriber with a snapshot of its
    selected range.
 4. `sessions/session-render.ts` reconciles keyed DOM nodes in server position
    order, preserving one reasoning disclosure for each retained assistant node.
-   Every `active` revision renders it open as `Thinking`; manually closing it
+   Each rendered `active` snapshot opens it as `Thinking`; manually closing it
    while active lasts only until the next revision. The first non-active render
    closes it as `Reasoning`, while later non-active revisions preserve the user's
    open state on the retained keyed node. A subscribed baseline uses the same
@@ -319,6 +322,21 @@ Provider items within a snapshot retain their canonical positions. Tool cards
 receive accumulated arguments even when a client subscribes midway through the
 parameter stream. All reasoning items of a segment share one disclosure in both
 live rendering and history reload.
+
+Command-preview highlighting starts its module worker at application startup.
+The first highlight of a command node uses the main-thread highlighter;
+subsequent text changes use one active worker job and a FIFO queue of the latest
+pending value per node. Completed results replace the retained node's markup
+in request order. Main-thread and worker command highlighting use the same bash
+grammar, Oniguruma engine, and github-light/github-dark themes.
+
+A Markdown grammar or block failure is reported for that decoration. A command
+highlighting failure stops its worker and publishes an error in active, pending,
+initial, and newly requested previews; idle previews retain their last completed
+markup until the next request. Error objects are reported once through the
+console and an error toast. Permission toolbar changes apply the validated
+`toolPermissionMode`, `toolPermissionType`, and `version` returned by
+`sessions.patch` through the session's version-aware metadata update.
 
 ## Data Flow
 

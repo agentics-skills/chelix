@@ -58,6 +58,8 @@ export interface SessionPatchPayload {
 	key: string;
 	model: string | null;
 	reasoningEffort: string | null;
+	toolPermissionMode: "auto" | "moderated";
+	toolPermissionType: "manual";
 	version: number;
 }
 

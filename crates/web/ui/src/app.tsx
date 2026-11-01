@@ -3,7 +3,7 @@
 import { render } from "preact";
 import prettyBytes from "pretty-bytes";
 import { applyIdentityFavicon, formatPageTitle } from "./branding";
-import { initHighlighter } from "./code-highlight";
+import { initCommandHighlighter, initHighlighter, reportHighlightError } from "./code-highlight";
 import { SessionList } from "./components/SessionList";
 import { onEvent } from "./events";
 import * as gon from "./gon";
@@ -105,7 +105,8 @@ registerPage("/", () => {
 
 initTheme();
 injectMarkdownStyles();
-initHighlighter();
+initCommandHighlighter();
+void initHighlighter().catch(reportHighlightError);
 initPWA();
 initMobile();
 const i18nReady = initI18n()
