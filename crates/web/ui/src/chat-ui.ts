@@ -1,6 +1,7 @@
 // ── Chat UI ─────────────────────────────────────────────────
 
 import { unmountExecuteCommandToolBubbles } from "./components/ExecuteCommandToolBubble";
+import { unmountSubAgentToolBubbles } from "./components/SubAgentToolBubble";
 import { formatTokens, parseErrorMessage, renderDocument, renderMarkdown, sendRpc } from "./helpers";
 import * as S from "./state";
 import type { ContextBudgetMetadata, ReasoningContent } from "./types/ws-events";
@@ -199,6 +200,7 @@ export function chatViewEpoch(): number {
 /// Empty the chat view and invalidate any detached render targeting it.
 export function resetChatView(box: HTMLElement): void {
 	unmountExecuteCommandToolBubbles(box);
+	unmountSubAgentToolBubbles(box);
 	box.textContent = "";
 	chatViewGeneration += 1;
 }
