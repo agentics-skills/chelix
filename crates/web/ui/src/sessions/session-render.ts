@@ -17,6 +17,7 @@ import {
 } from "../chat-ui";
 import { highlightCodeBlocks } from "../code-highlight";
 import { unmountExecuteCommandToolBubbles } from "../components/ExecuteCommandToolBubble";
+import { unmountSubAgentToolBubbles } from "../components/SubAgentToolBubble";
 import * as gon from "../gon";
 import { parseAgentsListPayload, renderAudioPlayer, renderDocument, renderMarkdown, sendRpc } from "../helpers";
 import { appendMessageActions, appendUserMessageActions } from "../message-actions";
@@ -783,6 +784,7 @@ function retainedMessageNodes(box: HTMLElement, history: UiSnapshot[]): Map<stri
 		if (retained.has(child.dataset.messageId)) nodes.set(child.dataset.messageId, child);
 		else {
 			unmountExecuteCommandToolBubbles(child);
+			unmountSubAgentToolBubbles(child);
 			child.remove();
 		}
 	}

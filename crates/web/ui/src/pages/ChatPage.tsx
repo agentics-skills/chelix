@@ -20,6 +20,7 @@ import { copyToClipboard } from "../clipboard";
 import { unmountExecuteCommandToolBubbles } from "../components/ExecuteCommandToolBubble";
 import { SessionEmptyState } from "../components/SessionEmptyState";
 import { SessionHeader } from "../components/SessionHeader";
+import { unmountSubAgentToolBubbles } from "../components/SubAgentToolBubble";
 import * as gon from "../gon";
 import { sendRpc } from "../helpers";
 import { initMediaDrop, teardownMediaDrop } from "../media-drop";
@@ -801,7 +802,10 @@ function teardownChat(): void {
 	if (m1) render(null, m1);
 	const m2 = S.$("sessionActionsMount");
 	if (m2) render(null, m2);
-	if (S.chatMsgBox) unmountExecuteCommandToolBubbles(S.chatMsgBox);
+	if (S.chatMsgBox) {
+		unmountExecuteCommandToolBubbles(S.chatMsgBox);
+		unmountSubAgentToolBubbles(S.chatMsgBox);
+	}
 	S.setChatMsgBox(null);
 	S.setChatInput(null);
 	S.setChatSendBtn(null);

@@ -1,6 +1,7 @@
 // ── Tool call card renderer ──────────────────────────────────
 
 import { renderCommand } from "./code-highlight";
+import { mountSubAgentToolBubble } from "./components/SubAgentToolBubble";
 import {
 	missingSessionId,
 	renderDocument,
@@ -277,7 +278,7 @@ export function createToolCallCard(options: ToolCardOptions): HTMLElement {
 
 	header.appendChild(metaRow);
 
-	const summaryEl = document.createElement("span");
+	const summaryEl = document.createElement(toolName === "sub_agent" ? "div" : "span");
 	summaryEl.className = "command-prompt tool-call-summary";
 	renderCommand(summaryEl, buildToolSummary(toolName, options.arguments));
 	header.appendChild(summaryEl);
@@ -339,13 +340,23 @@ export function createToolCallCard(options: ToolCardOptions): HTMLElement {
 	return card;
 }
 
-export function updateToolCardParameters(card: HTMLElement, argumentsValue: unknown): void {
+export function updateToolCardParameters(card: HTMLElement, argumentsValue: unknown, inputReady: boolean): void {
 	const toolName = card.dataset.toolName || "tool";
 	const parameters = card.querySelector<HTMLElement>(".tool-call-params-details .tool-call-raw-json");
 	if (!parameters) throw new Error("tool card Parameters content is unavailable");
 	parameters.textContent = stringifyValue(argumentsValue);
 	const summary = card.querySelector<HTMLElement>(".tool-call-summary");
 	if (!summary) throw new Error("tool card summary is unavailable");
+	if (
+		toolName === "sub_agent" &&
+		inputReady &&
+		argumentsValue !== null &&
+		typeof argumentsValue === "object" &&
+		!Array.isArray(argumentsValue)
+	) {
+		mountSubAgentToolBubble(card, { parameters: argumentsValue });
+		return;
+	}
 	renderCommand(summary, buildToolSummary(toolName, argumentsValue));
 }
 

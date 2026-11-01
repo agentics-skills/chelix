@@ -229,7 +229,10 @@ export function renderToolLifecycleSnapshot(
 	card.dataset.toolSequence = String(snapshot.lifecycle.sequence);
 	if (options.assistantId) card.dataset.assistantId = options.assistantId;
 	const argumentsValue = toolLifecycleArguments(snapshot.lifecycle, snapshot.accumulatedArguments);
-	if (argumentsValue !== undefined) updateToolCardParameters(card, argumentsValue);
+	if (argumentsValue !== undefined) {
+		const inputReady = snapshot.lifecycle.stage !== "created" && snapshot.lifecycle.stage !== "input_streaming";
+		updateToolCardParameters(card, argumentsValue, inputReady);
+	}
 	if (isTerminalToolLifecycle(snapshot.lifecycle)) {
 		completeToolCard(card, snapshot, eventSession, options.screenshotMode || "inline-base64");
 	} else {

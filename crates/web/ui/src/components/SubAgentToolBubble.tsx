@@ -1,0 +1,161 @@
+import type { VNode } from "preact";
+import { render } from "preact";
+import { useLayoutEffect, useRef } from "preact/hooks";
+import { highlightCodeBlocks } from "../code-highlight";
+import { renderMarkdown } from "../helpers";
+
+interface SubAgentToolBubbleProps {
+	parameters: object;
+}
+
+interface MetadataField {
+	key: string;
+	name: string;
+	value: unknown;
+}
+
+interface MarkdownBodyProps {
+	text: string;
+}
+
+interface InputBody extends MarkdownBodyProps {
+	name: string;
+}
+
+interface SubAgentInput {
+	metadata: MetadataField[];
+	bodies: InputBody[];
+}
+
+interface ActionPayload {
+	name: string;
+	parameters: Record<string, unknown>;
+}
+
+const mountedBubbles = new Map<HTMLElement, HTMLElement>();
+
+const markdownClasses = [
+	"min-w-0 [overflow-wrap:anywhere]",
+	"[&_code]:overflow-visible! [&_code]:text-clip!",
+	"[&_:not(pre)>code]:inline! [&_:not(pre)>code]:whitespace-pre-wrap!",
+	"[&_pre>code]:block! [&_pre>code]:whitespace-pre-wrap!",
+	"[&_pre]:my-1! [&_pre]:px-[5px]! [&_pre]:py-1! [&_pre]:overflow-x-auto!",
+	"[&_:is(h1,h2,h3,h4,h5,h6)]:mt-1! [&_:is(h1,h2,h3,h4,h5,h6)]:mb-0.5!",
+	"[&_:is(ul,ol)]:my-1! [&_ul]:pl-4! [&_ol]:pl-0!",
+	"[&_blockquote]:my-1! [&_blockquote]:py-0! [&_blockquote]:px-2!",
+	"[&_:where(hr,.msg-table-wrap)]:my-1!",
+	"[&>:first-child]:mt-0! [&>:last-child]:mb-0!",
+].join(" ");
+
+function isParameterObject(value: unknown): value is Record<string, unknown> {
+	return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function actionPayload(value: unknown): ActionPayload | null {
+	if (!isParameterObject(value)) return null;
+	const entries = Object.entries(value);
+	if (entries.length !== 1) return null;
+	const [name, parameters] = entries[0];
+	return isParameterObject(parameters) ? { name, parameters } : null;
+}
+
+function splitInput(parameters: object): SubAgentInput {
+	const metadata: MetadataField[] = [];
+	const bodies: InputBody[] = [];
+	const entries: [string, unknown][] = Object.entries(parameters);
+	for (const [name, value] of entries) {
+		const action = name === "action" ? actionPayload(value) : null;
+		if (!action) {
+			metadata.push({ key: `root:${name}`, name, value });
+			continue;
+		}
+		metadata.push({ key: "root:action", name: "action", value: action.name });
+		for (const [fieldName, fieldValue] of Object.entries(action.parameters)) {
+			if ((fieldName === "message" || fieldName === "task") && typeof fieldValue === "string") {
+				bodies.push({ name: fieldName, text: fieldValue });
+			} else {
+				metadata.push({ key: `payload:${fieldName}`, name: fieldName, value: fieldValue });
+			}
+		}
+	}
+	return { metadata, bodies: bodies.filter((body) => body.text.trim()) };
+}
+
+function prepareOrderedLists(body: HTMLElement): void {
+	for (const list of body.querySelectorAll<HTMLOListElement>("ol")) {
+		list.setAttribute("role", "list");
+		list.classList.add("grid", "grid-cols-[max-content_minmax(0,1fr)]", "gap-x-1", "list-none!");
+		let number = list.start;
+		for (const item of list.querySelectorAll<HTMLLIElement>(":scope > li")) {
+			const marker = document.createElement("span");
+			marker.className = "whitespace-nowrap text-right";
+			marker.textContent = `${number}.`;
+			const content = document.createElement("div");
+			content.className = "min-w-0";
+			while (item.firstChild) content.appendChild(item.firstChild);
+			item.classList.add("col-span-2", "grid", "grid-cols-subgrid", "items-baseline", "min-w-0");
+			item.append(marker, content);
+			number += 1;
+		}
+	}
+}
+
+function MarkdownBody({ text }: MarkdownBodyProps): VNode {
+	const bodyRef = useRef<HTMLDivElement>(null);
+	useLayoutEffect(() => {
+		const body = bodyRef.current;
+		if (!body) throw new Error("sub_agent Markdown body is unavailable");
+		body.textContent = "";
+		body.insertAdjacentHTML("afterbegin", renderMarkdown(text));
+		prepareOrderedLists(body);
+		void highlightCodeBlocks(body);
+	}, [text]);
+	return <div ref={bodyRef} className={markdownClasses} />;
+}
+
+function SubAgentToolBubble({ parameters }: SubAgentToolBubbleProps): VNode {
+	const { metadata, bodies } = splitInput(parameters);
+	return (
+		<div className="flex w-full min-w-0 flex-col gap-0.5">
+			<dl className="m-0 flex min-w-0 flex-wrap gap-x-1 text-[0.62rem] leading-[1.2]">
+				{metadata.map((field) => (
+					<div key={field.key} className="min-w-0 [overflow-wrap:anywhere]">
+						<dt className="inline">{field.name}: </dt>
+						<dd className="m-0 inline">
+							{typeof field.value === "string" ? field.value : JSON.stringify(field.value)}
+						</dd>
+					</div>
+				))}
+			</dl>
+			{bodies.map((body) => (
+				<MarkdownBody key={body.name} text={body.text} />
+			))}
+		</div>
+	);
+}
+
+export function mountSubAgentToolBubble(card: HTMLElement, options: SubAgentToolBubbleProps): void {
+	let mount = mountedBubbles.get(card);
+	if (!mount) {
+		const summary = card.querySelector<HTMLElement>(".tool-call-header > .tool-call-summary");
+		if (!summary) throw new Error("sub_agent tool card summary mount is unavailable");
+		summary.textContent = "";
+		summary.setAttribute("data-sub-agent-bubble", "");
+		mount = summary;
+		mountedBubbles.set(card, mount);
+	}
+	render(<SubAgentToolBubble {...options} />, mount);
+}
+
+export function unmountSubAgentToolBubble(card: HTMLElement): void {
+	const mount = mountedBubbles.get(card);
+	if (!mount) return;
+	render(null, mount);
+	mountedBubbles.delete(card);
+}
+
+export function unmountSubAgentToolBubbles(container: ParentNode): void {
+	for (const [card] of mountedBubbles) {
+		if (container === card || container.contains(card)) unmountSubAgentToolBubble(card);
+	}
+}

@@ -239,6 +239,13 @@ cards:
   results remain strings on the wire and are JSON-decoded only when structured
   presentation needs object fields.
 
+After argument streaming finishes, `sub_agent` replaces the JSON preview in its
+card header with `components/SubAgentToolBubble.tsx`. The action name and service
+fields form a compact, wrapping metadata row. The payload's `message` and `task`
+strings render below it as Markdown with Shiki code-block highlighting.
+Code blocks wrap long lines to the available width while preserving whitespace.
+Ordered-list numbers occupy a shared text column and are included in text selections.
+
 Command previews retain their `code.command-cmd` nodes. The application starts
 an independent command-highlighting worker during startup. A new node receives
 its initial Shiki markup on the main thread; subsequent changes enter a FIFO
