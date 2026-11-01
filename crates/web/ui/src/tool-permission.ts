@@ -4,6 +4,7 @@ import { sessionStore } from "./stores/session-store";
 import { showToast } from "./toast";
 import { renderToolCardResult, setToolCardStatus, type ToolResultRenderOptions } from "./tool-call-card";
 import { isTerminalToolLifecycle } from "./tool-lifecycle";
+import type { SessionPatchPayload } from "./types/session";
 import type { ToolLifecycleEvent } from "./types/ws-events";
 
 export type ToolPermissionMode = "auto" | "moderated";
@@ -292,11 +293,35 @@ function refreshVisiblePermissionCards(): void {
 	}
 }
 
+type ConfirmedPermissionPayload = Pick<
+	SessionPatchPayload,
+	"key" | "version" | "toolPermissionMode" | "toolPermissionType"
+>;
+
+function isConfirmedPermissionPayload(payload: unknown, key: string): payload is ConfirmedPermissionPayload {
+	if (!payload || typeof payload !== "object") return false;
+	const value = payload as Partial<ConfirmedPermissionPayload>;
+	return (
+		value.key === key &&
+		typeof value.version === "number" &&
+		Number.isInteger(value.version) &&
+		value.version >= 0 &&
+		(value.toolPermissionMode === "auto" || value.toolPermissionMode === "moderated") &&
+		value.toolPermissionType === "manual"
+	);
+}
+
 async function patchPermission(fields: Record<string, string>): Promise<void> {
 	const key = S.activeSessionKey;
 	if (!key) return;
 	const response = await sendRpc("sessions.patch", { key, ...fields });
 	if (!response.ok) throw new Error(response.error?.message || "Failed to update tool permission");
+	if (!isConfirmedPermissionPayload(response.payload, key))
+		throw new Error("Tool permission update returned invalid state");
+	const session = sessionStore.getByKey(key);
+	if (!session) throw new Error("Session state is unavailable after tool permission update");
+	const { toolPermissionMode, toolPermissionType, version } = response.payload;
+	session.update({ ...session.toMeta(), toolPermissionMode, toolPermissionType, version });
 }
 
 export function syncToolPermissionToolbar(): void {
@@ -319,6 +344,7 @@ export function mountToolPermissionToolbar(): void {
 		void patchPermission({ toolPermissionMode: next })
 			.then(syncToolPermissionToolbar)
 			.catch((error: unknown) => {
+				console.error("[tool-permission] failed to update permission:", error);
 				showToast(error instanceof Error ? error.message : "Failed to update tool permission", "error");
 			});
 	});
@@ -327,6 +353,7 @@ export function mountToolPermissionToolbar(): void {
 		void patchPermission({ toolPermissionType: "manual" })
 			.then(syncToolPermissionToolbar)
 			.catch((error: unknown) => {
+				console.error("[tool-permission] failed to update permission:", error);
 				showToast(error instanceof Error ? error.message : "Failed to update tool permission", "error");
 			});
 	});
