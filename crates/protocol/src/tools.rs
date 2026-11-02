@@ -2,7 +2,10 @@
 
 use std::fmt;
 
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{
+    Deserialize, Deserializer, Serialize,
+    de::{SeqAccess, Visitor},
+};
 
 pub const TOOLS_SERVICE_PROTOCOL_VERSION: u32 = 18;
 pub const TOOLS_SERVICE_CONTAINER_PORT: u16 = 43_271;
@@ -486,18 +489,53 @@ where
     T::deserialize(deserializer).map(Some)
 }
 
+fn deserialize_string_or_string_array<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct StringOrStringArray;
+
+    impl<'de> Visitor<'de> for StringOrStringArray {
+        type Value = Vec<String>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a string or an array of strings")
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(vec![value.to_owned()])
+        }
+
+        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+        where
+            A: SeqAccess<'de>,
+        {
+            let mut targets = Vec::new();
+            while let Some(target) = seq.next_element::<String>()? {
+                targets.push(target);
+            }
+            Ok(targets)
+        }
+    }
+
+    deserializer.deserialize_any(StringOrStringArray)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RipgrepInput {
     pub pattern: String,
-    #[serde(default)]
-    pub paths: Vec<String>,
+    #[serde(default, deserialize_with = "deserialize_string_or_string_array")]
+    pub targets: Vec<String>,
     #[serde(
         default,
         deserialize_with = "deserialize_present_option",
         skip_serializing_if = "Option::is_none"
     )]
-    pub cwd: Option<String>,
+    pub folder: Option<String>,
     #[serde(default)]
     pub fixed_strings: bool,
     #[serde(default)]
@@ -1577,8 +1615,8 @@ mod tests {
         }))
         .unwrap_or_else(|error| panic!("ripgrep input decode failed: {error}"));
 
-        assert!(input.paths.is_empty());
-        assert!(input.cwd.is_none());
+        assert!(input.targets.is_empty());
+        assert!(input.folder.is_none());
         assert!(!input.fixed_strings);
         assert!(!input.multiline);
         assert_eq!(input.detail, RipgrepDetail::Lines);
@@ -1595,14 +1633,31 @@ mod tests {
     #[test]
     fn ripgrep_input_rejects_null_and_unknown_fields() {
         for invalid in [
-            serde_json::json!({ "pattern": "needle", "cwd": null }),
-            serde_json::json!({ "pattern": "needle", "paths": null }),
+            serde_json::json!({ "pattern": "needle", "folder": null }),
+            serde_json::json!({ "pattern": "needle", "targets": null }),
             serde_json::json!({ "pattern": "needle", "multiline": null }),
             serde_json::json!({ "pattern": "needle", "maxMatches": null }),
             serde_json::json!({ "pattern": "needle", "obsolete": true }),
         ] {
             assert!(serde_json::from_value::<RipgrepInput>(invalid).is_err());
         }
+    }
+
+    #[test]
+    fn ripgrep_input_accepts_string_or_array_targets() {
+        let one: RipgrepInput = serde_json::from_value(serde_json::json!({
+            "pattern": "needle",
+            "targets": "alpha.txt"
+        }))
+        .unwrap_or_else(|error| panic!("ripgrep input decode failed: {error}"));
+        assert_eq!(one.targets, ["alpha.txt"]);
+
+        let many: RipgrepInput = serde_json::from_value(serde_json::json!({
+            "pattern": "needle",
+            "targets": ["src", "docs"]
+        }))
+        .unwrap_or_else(|error| panic!("ripgrep input decode failed: {error}"));
+        assert_eq!(many.targets, ["src", "docs"]);
     }
 
     #[test]

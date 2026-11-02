@@ -253,7 +253,7 @@ The `ripgrep` tool searches files by shelling out to the system `rg` binary
 with `--json` output and returns structured results. The binary is assumed to
 be installed — a spawn failure surfaces as a tool error.
 
-Parameters (camelCase): `pattern` (required), `paths`, `cwd`, `fixedStrings`,
+Parameters (camelCase): `pattern` (required), `targets`, `folder`, `fixedStrings`,
 `multiline`, `caseMode` (`sensitive`/`ignore`/`smart`), `detail` (`summary`, `files`,
 `lines` — default, `lines+submatches`), `glob`, `type`, `typeNot`,
 `contextLines`, `maxMatches` (300), `maxFiles` (100), `maxOutputChars`
@@ -268,7 +268,7 @@ terminators; dot-all behavior must be requested explicitly in the pattern.
 `gitignore` switches every git-sourced rg filter as one unit: `.gitignore`
 files, `.git/info/exclude`, and `core.excludesFile`. When enabled, the rules
 also apply from parent directories and outside a git repository. Paths listed
-explicitly in `paths` are searched by rg regardless of these rules.
+explicitly in `targets` are searched by rg regardless of these rules.
 
 Common extension-like `type` values (`tsx`, `jsx`, `mjs`, …) are normalized to
 rg type names; unknown extension-like values become glob filters; anything

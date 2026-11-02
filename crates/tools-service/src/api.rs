@@ -750,7 +750,7 @@ mod tests {
                     "pattern": "service\nneedle",
                     "fixedStrings": true,
                     "multiline": true,
-                    "cwd": dir.path(),
+                    "folder": dir.path(),
                 }
             }))
             .send()
@@ -771,7 +771,7 @@ mod tests {
         let base_url = spawn_api().await;
         let client = reqwest::Client::new();
         for params in [
-            serde_json::json!({ "pattern": "needle", "cwd": null }),
+            serde_json::json!({ "pattern": "needle", "folder": null }),
             serde_json::json!({ "pattern": "needle", "obsolete": true }),
         ] {
             let response = client
