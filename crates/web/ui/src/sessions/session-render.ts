@@ -17,6 +17,7 @@ import {
 } from "../chat-ui";
 import { highlightCodeBlocks } from "../code-highlight";
 import { mountAssistantMarkdown, unmountAssistantMarkdown } from "../components/AssistantMarkdown";
+import { unmountEditFileToolBubbles } from "../components/EditFileToolBubble";
 import { unmountExecuteCommandToolBubbles } from "../components/ExecuteCommandToolBubble";
 import { unmountSubAgentToolBubbles } from "../components/SubAgentToolBubble";
 import * as gon from "../gon";
@@ -788,6 +789,7 @@ function retainedMessageNodes(box: HTMLElement, history: UiSnapshot[]): Map<stri
 		if (!(child instanceof HTMLElement && child.dataset.messageId)) continue;
 		if (retained.has(child.dataset.messageId)) nodes.set(child.dataset.messageId, child);
 		else {
+			unmountEditFileToolBubbles(child);
 			unmountExecuteCommandToolBubbles(child);
 			unmountSubAgentToolBubbles(child);
 			unmountAssistantMarkdown(child);

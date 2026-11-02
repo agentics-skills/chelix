@@ -1,6 +1,7 @@
 // ── Tool call card renderer ──────────────────────────────────
 
 import { renderCommand } from "./code-highlight";
+import { mountEditFileToolBubble } from "./components/EditFileToolBubble";
 import { mountSubAgentToolBubble } from "./components/SubAgentToolBubble";
 import {
 	missingSessionId,
@@ -278,9 +279,12 @@ export function createToolCallCard(options: ToolCardOptions): HTMLElement {
 
 	header.appendChild(metaRow);
 
-	const summaryEl = document.createElement(toolName === "sub_agent" ? "div" : "span");
-	summaryEl.className = toolName === "sub_agent" ? "tool-call-summary" : "command-prompt tool-call-summary";
+	const isEditFile = toolName === "edit_file" || toolName === "multiedit_file";
+	const hasInputBubble = toolName === "sub_agent" || isEditFile;
+	const summaryEl = document.createElement(hasInputBubble ? "div" : "span");
+	summaryEl.className = hasInputBubble ? "tool-call-summary" : "command-prompt tool-call-summary";
 	if (toolName === "sub_agent") summaryEl.setAttribute("data-sub-agent-bubble", "");
+	if (isEditFile) summaryEl.setAttribute("data-edit-file-bubble", "");
 	renderCommand(summaryEl, buildToolSummary(toolName, options.arguments));
 	header.appendChild(summaryEl);
 
@@ -348,15 +352,15 @@ export function updateToolCardParameters(card: HTMLElement, argumentsValue: unkn
 	parameters.textContent = stringifyValue(argumentsValue);
 	const summary = card.querySelector<HTMLElement>(".tool-call-summary");
 	if (!summary) throw new Error("tool card summary is unavailable");
-	if (
-		toolName === "sub_agent" &&
-		inputReady &&
-		argumentsValue !== null &&
-		typeof argumentsValue === "object" &&
-		!Array.isArray(argumentsValue)
-	) {
-		mountSubAgentToolBubble(card, { parameters: argumentsValue });
-		return;
+	if (inputReady && argumentsValue !== null && typeof argumentsValue === "object" && !Array.isArray(argumentsValue)) {
+		if (toolName === "sub_agent") {
+			mountSubAgentToolBubble(card, { parameters: argumentsValue });
+			return;
+		}
+		if (toolName === "edit_file" || toolName === "multiedit_file") {
+			mountEditFileToolBubble(card, { toolName, parameters: argumentsValue });
+			return;
+		}
 	}
 	renderCommand(summary, buildToolSummary(toolName, argumentsValue));
 }
