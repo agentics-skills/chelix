@@ -2,6 +2,7 @@
 
 import { renderCommand } from "./code-highlight";
 import { mountEditFileToolBubble } from "./components/EditFileToolBubble";
+import { mountOverwriteFileToolBubble } from "./components/OverwriteFileToolBubble";
 import { mountSubAgentToolBubble } from "./components/SubAgentToolBubble";
 import {
 	missingSessionId,
@@ -39,6 +40,12 @@ const STATUS_LABELS: Record<ToolCardStatus, string> = {
 
 const TRUNCATED_RESULT_MARKER = "\n\n[Truncated —";
 const TEXT_RESULT_FIELDS = ["stdout", "output", "stderr"] as const;
+const INPUT_BUBBLE_ATTRIBUTES = new Map<string, string>([
+	["sub_agent", "data-sub-agent-bubble"],
+	["edit_file", "data-edit-file-bubble"],
+	["multiedit_file", "data-edit-file-bubble"],
+	["overwrite_file", "data-overwrite-file-bubble"],
+]);
 
 function stringifyValue(value: unknown): string {
 	if (value === undefined) return "";
@@ -279,12 +286,10 @@ export function createToolCallCard(options: ToolCardOptions): HTMLElement {
 
 	header.appendChild(metaRow);
 
-	const isEditFile = toolName === "edit_file" || toolName === "multiedit_file";
-	const hasInputBubble = toolName === "sub_agent" || isEditFile;
-	const summaryEl = document.createElement(hasInputBubble ? "div" : "span");
-	summaryEl.className = hasInputBubble ? "tool-call-summary" : "command-prompt tool-call-summary";
-	if (toolName === "sub_agent") summaryEl.setAttribute("data-sub-agent-bubble", "");
-	if (isEditFile) summaryEl.setAttribute("data-edit-file-bubble", "");
+	const bubbleAttribute = INPUT_BUBBLE_ATTRIBUTES.get(toolName);
+	const summaryEl = document.createElement(bubbleAttribute ? "div" : "span");
+	summaryEl.className = bubbleAttribute ? "tool-call-summary" : "command-prompt tool-call-summary";
+	if (bubbleAttribute) summaryEl.setAttribute(bubbleAttribute, "");
 	renderCommand(summaryEl, buildToolSummary(toolName, options.arguments));
 	header.appendChild(summaryEl);
 
@@ -359,6 +364,10 @@ export function updateToolCardParameters(card: HTMLElement, argumentsValue: unkn
 		}
 		if (toolName === "edit_file" || toolName === "multiedit_file") {
 			mountEditFileToolBubble(card, { toolName, parameters: argumentsValue });
+			return;
+		}
+		if (toolName === "overwrite_file") {
+			mountOverwriteFileToolBubble(card, { parameters: argumentsValue });
 			return;
 		}
 	}
