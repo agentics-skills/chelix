@@ -243,6 +243,8 @@ After argument streaming finishes, `sub_agent` replaces the JSON preview in its
 card header with `components/SubAgentToolBubble.tsx`. The action name and service
 fields form a compact, wrapping metadata row. The payload's `message` and `task`
 strings render below it as Markdown with Shiki code-block highlighting.
+Each code-block badge includes a copy icon for the block's text. A floating
+copy icon at the upper right copies the original `message` or `task` Markdown.
 Code blocks wrap long lines to the available width while preserving whitespace.
 Ordered-list numbers occupy a shared text column and are included in text selections.
 

@@ -3,6 +3,7 @@ import { render } from "preact";
 import { useLayoutEffect, useRef } from "preact/hooks";
 import { highlightCodeBlocks } from "../code-highlight";
 import { renderMarkdown } from "../helpers";
+import { showToast } from "../toast";
 
 interface SubAgentToolBubbleProps {
 	parameters: object;
@@ -25,6 +26,15 @@ interface InputBody extends MarkdownBodyProps {
 interface SubAgentInput {
 	metadata: MetadataField[];
 	bodies: InputBody[];
+}
+
+interface MarkdownCopyActionsProps {
+	bodies: InputBody[];
+}
+
+interface CopyControl {
+	button: HTMLButtonElement;
+	dispose: () => void;
 }
 
 interface ActionPayload {
@@ -101,6 +111,92 @@ function prepareOrderedLists(body: HTMLElement): void {
 	}
 }
 
+function createCopyControl(readText: () => string, label: string, feedbackMs: number): CopyControl {
+	const button = document.createElement("button");
+	button.type = "button";
+	button.className = "pointer-events-auto! inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0";
+	button.title = "Click to copy";
+	button.setAttribute("aria-label", label);
+	const icon = document.createElement("span");
+	icon.className = "icon icon-copy size-[1em]!";
+	icon.setAttribute("aria-hidden", "true");
+	button.appendChild(icon);
+	const feedbackClasses = ["outline", "outline-1", "outline-(--accent)", "-outline-offset-1"];
+	let feedbackTimer: ReturnType<typeof setTimeout> | undefined;
+	const onClick = async (event: MouseEvent): Promise<void> => {
+		event.stopPropagation();
+		try {
+			await navigator.clipboard.writeText(readText());
+		} catch (error) {
+			console.error("[sub_agent] Failed to copy to clipboard:", error);
+			showToast("Failed to copy to clipboard", "error");
+			return;
+		}
+		if (!button.isConnected) return;
+		clearTimeout(feedbackTimer);
+		button.classList.add(...feedbackClasses);
+		feedbackTimer = setTimeout(() => button.classList.remove(...feedbackClasses), feedbackMs);
+	};
+	button.addEventListener("click", onClick);
+	return {
+		button,
+		dispose: () => {
+			button.removeEventListener("click", onClick);
+			clearTimeout(feedbackTimer);
+		},
+	};
+}
+
+function prepareCodeCopyControls(body: HTMLElement): () => void {
+	const controls: CopyControl[] = [];
+	for (const pre of body.querySelectorAll<HTMLPreElement>("pre.code-block")) {
+		const code = pre.querySelector<HTMLElement>(":scope > code");
+		if (!code) throw new Error("sub_agent Markdown code block content is unavailable");
+		const control = createCopyControl(
+			() => {
+				const text = code.textContent;
+				if (text === null) throw new Error("sub_agent Markdown code block text is unavailable");
+				return text;
+			},
+			"Copy code",
+			250,
+		);
+		control.button.classList.add("code-lang-badge");
+		const badge = pre.querySelector<HTMLElement>(":scope > .code-lang-badge");
+		if (badge) {
+			control.button.prepend(...badge.childNodes);
+			badge.replaceWith(control.button);
+		} else {
+			pre.appendChild(control.button);
+		}
+		controls.push(control);
+	}
+	return () => {
+		for (const control of controls) control.dispose();
+	};
+}
+
+function MarkdownCopyActions({ bodies }: MarkdownCopyActionsProps): VNode {
+	const groupRef = useRef<HTMLDivElement>(null);
+	useLayoutEffect(() => {
+		const group = groupRef.current;
+		if (!group) throw new Error("sub_agent Markdown copy controls mount is unavailable");
+		const controls = bodies.map((body) => {
+			const control = createCopyControl(() => body.text, `Copy ${body.name}`, 300);
+			control.button.classList.add("text-[0.7em]", "text-(--muted)", "[font-family:var(--font-mono)]");
+			group.appendChild(control.button);
+			return control;
+		});
+		return () => {
+			for (const control of controls) {
+				control.dispose();
+				control.button.remove();
+			}
+		};
+	}, [bodies]);
+	return <div ref={groupRef} className="absolute top-0 right-0 z-10 flex" />;
+}
+
 function MarkdownBody({ text }: MarkdownBodyProps): VNode {
 	const bodyRef = useRef<HTMLDivElement>(null);
 	useLayoutEffect(() => {
@@ -109,7 +205,9 @@ function MarkdownBody({ text }: MarkdownBodyProps): VNode {
 		body.textContent = "";
 		body.insertAdjacentHTML("afterbegin", renderMarkdown(text));
 		prepareOrderedLists(body);
+		const disposeCopyControls = prepareCodeCopyControls(body);
 		void highlightCodeBlocks(body);
+		return disposeCopyControls;
 	}, [text]);
 	return <div ref={bodyRef} className={markdownClasses} />;
 }
@@ -117,7 +215,7 @@ function MarkdownBody({ text }: MarkdownBodyProps): VNode {
 function SubAgentToolBubble({ parameters }: SubAgentToolBubbleProps): VNode {
 	const { metadata, bodies } = splitInput(parameters);
 	return (
-		<div className="flex w-full min-w-0 flex-col gap-0.5">
+		<div className="relative flex w-full min-w-0 flex-col gap-0.5">
 			<dl className="m-0 flex min-w-0 flex-wrap gap-x-1 text-[0.62rem] leading-[1.2]">
 				{metadata.map((field) => (
 					<div key={field.key} className="min-w-0 [overflow-wrap:anywhere]">
@@ -128,6 +226,7 @@ function SubAgentToolBubble({ parameters }: SubAgentToolBubbleProps): VNode {
 					</div>
 				))}
 			</dl>
+			<MarkdownCopyActions bodies={bodies} />
 			{bodies.map((body) => (
 				<MarkdownBody key={body.name} text={body.text} />
 			))}
