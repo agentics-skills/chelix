@@ -36,6 +36,7 @@ const mountedBubbles = new Map<HTMLElement, HTMLElement>();
 
 const markdownClasses = [
 	"min-w-0 [overflow-wrap:anywhere]",
+	"[&_pre]:bg-(--bg)! [&_:not(pre)>code]:bg-(--bg)!",
 	"[&_code]:overflow-visible! [&_code]:text-clip!",
 	"[&_:not(pre)>code]:inline! [&_:not(pre)>code]:whitespace-pre-wrap!",
 	"[&_pre>code]:block! [&_pre>code]:whitespace-pre-wrap!",
@@ -141,6 +142,7 @@ export function mountSubAgentToolBubble(card: HTMLElement, options: SubAgentTool
 		if (!summary) throw new Error("sub_agent tool card summary mount is unavailable");
 		summary.textContent = "";
 		summary.setAttribute("data-sub-agent-bubble", "");
+		summary.classList.add("bg-(--surface)!", "[font-family:var(--font-body)]!");
 		mount = summary;
 		mountedBubbles.set(card, mount);
 	}
