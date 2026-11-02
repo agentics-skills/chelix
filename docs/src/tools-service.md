@@ -383,9 +383,9 @@ rejected instead of being removed or replaced with defaults. The agent-facing
 client removes only internal `_...` invocation metadata before constructing the
 request.
 
-When `cwd` is omitted, `rg` always runs in the service's required
+When `folder` is omitted, `rg` always runs in the service's required
 `--working-dir`; the service never relies on its inherited process directory.
-Relative `paths` are resolved by `rg` from that effective working directory. An
+Relative `targets` are resolved by `rg` from that effective working directory. An
 effective working directory that does not exist or is not a directory is an
 explicit tool error.
 

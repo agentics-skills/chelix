@@ -278,7 +278,7 @@ fn build_args(input: &RipgrepInput, known_type_names: &HashSet<String>) -> Vec<S
     }
     args.push("--".to_string());
     args.push(input.pattern.clone());
-    args.extend(input.paths.iter().cloned());
+    args.extend(input.targets.iter().cloned());
     args
 }
 
@@ -612,7 +612,7 @@ async fn effective_working_directory(
     runtime: &RipgrepRuntime,
 ) -> Result<PathBuf> {
     let working_dir = input
-        .cwd
+        .folder
         .as_deref()
         .map(PathBuf::from)
         .unwrap_or_else(|| runtime.working_dir.clone());
@@ -890,7 +890,7 @@ mod tests {
     fn build_args_preserves_all_flags() {
         let input = input(json!({
             "pattern": "needle",
-            "paths": ["src", "docs"],
+            "targets": ["src", "docs"],
             "fixedStrings": true,
             "multiline": true,
             "caseMode": "ignore",
@@ -1115,8 +1115,8 @@ mod tests {
                 "pattern": "relative-needle",
                 "fixedStrings": true,
                 "detail": "files",
-                "cwd": directory.path(),
-                "paths": ["nested/sample.txt"]
+                "folder": directory.path(),
+                "targets": ["nested/sample.txt"]
             })),
             &runtime(directory.path()),
         )
@@ -1133,7 +1133,7 @@ mod tests {
             input(json!({
                 "pattern": "ripgrep-needle here",
                 "fixedStrings": true,
-                "paths": [directory.path().join("alpha.txt")]
+                "targets": [directory.path().join("alpha.txt")]
             })),
             &runtime(directory.path()),
         )
@@ -1154,7 +1154,7 @@ mod tests {
                 "pattern": "ripgrep-needle",
                 "fixedStrings": true,
                 "detail": "lines+submatches",
-                "paths": ["alpha.txt"]
+                "targets": ["alpha.txt"]
             })),
             &runtime(directory.path()),
         )
@@ -1186,7 +1186,7 @@ mod tests {
             input(json!({
                 "pattern": "first line\nripgrep-needle here",
                 "fixedStrings": true,
-                "paths": ["alpha.txt"]
+                "targets": ["alpha.txt"]
             })),
             &runtime(directory.path()),
         )
@@ -1208,7 +1208,7 @@ mod tests {
                 "multiline": true,
                 "detail": "lines+submatches",
                 "contextLines": 1,
-                "paths": ["alpha.txt"]
+                "targets": ["alpha.txt"]
             })),
             &runtime(directory.path()),
         )
@@ -1250,7 +1250,7 @@ mod tests {
                 "fixedStrings": true,
                 "detail": "lines",
                 "contextLines": 1,
-                "paths": ["alpha.txt"]
+                "targets": ["alpha.txt"]
             })),
             &runtime(directory.path()),
         )
@@ -1429,7 +1429,7 @@ mod tests {
         let directory = setup_tree().await;
         let file = directory.path().join("alpha.txt");
         let error = run_tool(
-            input(json!({ "pattern": "x", "cwd": file })),
+            input(json!({ "pattern": "x", "folder": file })),
             &runtime(directory.path()),
         )
         .await
@@ -1448,7 +1448,7 @@ mod tests {
         let directory = setup_tree().await;
         let missing = directory.path().join("missing-directory");
         let error = run_tool(
-            input(json!({ "pattern": "x", "cwd": missing })),
+            input(json!({ "pattern": "x", "folder": missing })),
             &runtime(directory.path()),
         )
         .await
@@ -1469,7 +1469,7 @@ mod tests {
             input(json!({
                 "pattern": "ripgrep-needle",
                 "fixedStrings": true,
-                "paths": ["beta.txt"],
+                "targets": ["beta.txt"],
                 "maxMatches": 1
             })),
             &runtime(directory.path()),
@@ -1492,7 +1492,7 @@ mod tests {
                 "pattern": "ripgrep-needle",
                 "fixedStrings": true,
                 "detail": "files",
-                "paths": ["alpha.txt", "Dockerfile"],
+                "targets": ["alpha.txt", "Dockerfile"],
                 "maxFiles": 1
             })),
             &runtime(directory.path()),
@@ -1515,7 +1515,7 @@ mod tests {
             input(json!({
                 "pattern": "ripgrep-needle",
                 "fixedStrings": true,
-                "paths": ["alpha.txt"],
+                "targets": ["alpha.txt"],
                 "maxOutputChars": 1
             })),
             &runtime(directory.path()),
@@ -1564,8 +1564,8 @@ mod tests {
             input(json!({
                 "pattern": "ripgrep-needle here",
                 "fixedStrings": true,
-                "cwd": directory.path(),
-                "paths": ["alpha.txt", "missing.txt"]
+                "folder": directory.path(),
+                "targets": ["alpha.txt", "missing.txt"]
             })),
             &runtime(directory.path()),
         )

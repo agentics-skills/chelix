@@ -49,12 +49,12 @@ impl AgentTool for RipgrepTool {
                     "minLength": 1,
                     "description": "Pattern to search for."
                 },
-                "paths": {
-                    "type": "array",
+                "targets": {
+                    "type": ["string", "array"],
                     "items": { "type": "string" },
-                    "description": "Search within file contents at the specified paths. Accepts files or directories; directories are traversed recursively. Relative paths are resolved from cwd. If omitted, searches within file contents under cwd."
+                    "description": "Search content in files and folders relative to `folder` or by absolute paths."
                 },
-                "cwd": {
+                "folder": {
                     "type": "string",
                     "description": "Optional working directory. If omitted, uses the home directory (e.g., /home/user)."
                 },
@@ -278,7 +278,7 @@ mod tests {
             .match_body(mockito::Matcher::Json(json!({
                 "params": {
                     "pattern": "needle",
-                    "paths": [],
+                    "targets": [],
                     "fixedStrings": false,
                     "multiline": false,
                     "detail": "lines",
@@ -343,7 +343,7 @@ mod tests {
     #[test]
     fn parse_input_rejects_null_and_unknown_public_fields() {
         for invalid in [
-            json!({ "pattern": "needle", "cwd": null }),
+            json!({ "pattern": "needle", "folder": null }),
             json!({ "pattern": "needle", "maxMatches": null }),
             json!({ "pattern": "needle", "obsolete": true }),
         ] {
@@ -389,6 +389,28 @@ mod tests {
         }
         assert!(parse_input(json!({ "pattern": "needle", "unrestricted": maximum + 1 })).is_err());
         assert!(parse_input(json!({ "pattern": "needle", "unrestricted": minimum - 1 })).is_err());
+    }
+
+    #[test]
+    fn targets_schema_types_are_accepted() {
+        let schema =
+            RipgrepTool::new(client("http://tools.invalid".into(), "unused")).parameters_schema();
+        let types = schema["properties"]["targets"]["type"]
+            .as_array()
+            .unwrap_or_else(|| panic!("'targets' type must be an array of type names"));
+
+        for json_type in types {
+            let name = json_type
+                .as_str()
+                .unwrap_or_else(|| panic!("'targets' type entry must be a string"));
+            let targets = match name {
+                "string" => json!("alpha.txt"),
+                "array" => json!(["src", "docs"]),
+                other => panic!("unhandled advertised targets type: {other}"),
+            };
+            parse_input(json!({ "pattern": "needle", "targets": targets }))
+                .unwrap_or_else(|error| panic!("advertised type {name} is rejected: {error}"));
+        }
     }
 
     #[tokio::test]
