@@ -324,6 +324,18 @@
   overflow-x: auto;
 }
 
+[data-sub-agent-bubble] {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--text);
+  background: var(--assistant-bg);
+  border: 1px solid var(--assistant-border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+}
+
 .command-prompt-char {
   color: var(--ok);
   -webkit-user-select: none;

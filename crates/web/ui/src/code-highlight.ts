@@ -105,25 +105,28 @@ function highlightedMarkup(text: string, lang: string): HTMLElement {
 	);
 }
 
-async function highlightCodeElement(codeEl: HTMLElement): Promise<void> {
-	if (codeEl.querySelector(".shiki") || codeEl.classList.contains("shiki")) return;
+async function highlightCodeElement(codeEl: HTMLElement, signal?: AbortSignal): Promise<void> {
+	if (signal?.aborted || codeEl.querySelector(".shiki") || codeEl.classList.contains("shiki")) return;
 	const lang = codeEl.getAttribute("data-lang") || "";
 	if (!(await ensureLanguageLoaded(lang))) return;
+	if (signal?.aborted || codeEl.querySelector(".shiki") || codeEl.classList.contains("shiki")) return;
 	applyShikiMarkupToCode(codeEl, highlightedMarkup(codeEl.textContent || "", lang));
 }
 
-export async function highlightCodeBlocks(containerEl: HTMLElement | null): Promise<void> {
-	if (!containerEl) return;
+export async function highlightCodeBlocks(containerEl: HTMLElement | null, signal?: AbortSignal): Promise<void> {
+	if (!containerEl || signal?.aborted) return;
 	try {
 		await initHighlighter();
 	} catch (error) {
 		reportHighlightError(error);
 		return;
 	}
+	if (signal?.aborted) return;
 	for (const codeEl of containerEl.querySelectorAll<HTMLElement>("pre code[data-lang]")) {
+		if (signal?.aborted) return;
 		if (failedCodeElements.has(codeEl)) continue;
 		try {
-			await highlightCodeElement(codeEl);
+			await highlightCodeElement(codeEl, signal);
 		} catch (error) {
 			failedCodeElements.add(codeEl);
 			reportHighlightError(error);

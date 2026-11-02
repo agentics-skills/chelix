@@ -279,7 +279,8 @@ export function createToolCallCard(options: ToolCardOptions): HTMLElement {
 	header.appendChild(metaRow);
 
 	const summaryEl = document.createElement(toolName === "sub_agent" ? "div" : "span");
-	summaryEl.className = "command-prompt tool-call-summary";
+	summaryEl.className = toolName === "sub_agent" ? "tool-call-summary" : "command-prompt tool-call-summary";
+	if (toolName === "sub_agent") summaryEl.setAttribute("data-sub-agent-bubble", "");
 	renderCommand(summaryEl, buildToolSummary(toolName, options.arguments));
 	header.appendChild(summaryEl);
 
