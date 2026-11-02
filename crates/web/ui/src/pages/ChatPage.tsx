@@ -18,6 +18,7 @@ import {
 } from "../chat-ui";
 import { copyToClipboard } from "../clipboard";
 import { unmountAssistantMarkdown } from "../components/AssistantMarkdown";
+import { unmountEditFileToolBubbles } from "../components/EditFileToolBubble";
 import { unmountExecuteCommandToolBubbles } from "../components/ExecuteCommandToolBubble";
 import { SessionEmptyState } from "../components/SessionEmptyState";
 import { SessionHeader } from "../components/SessionHeader";
@@ -804,6 +805,7 @@ function teardownChat(): void {
 	const m2 = S.$("sessionActionsMount");
 	if (m2) render(null, m2);
 	if (S.chatMsgBox) {
+		unmountEditFileToolBubbles(S.chatMsgBox);
 		unmountExecuteCommandToolBubbles(S.chatMsgBox);
 		unmountSubAgentToolBubbles(S.chatMsgBox);
 		unmountAssistantMarkdown(S.chatMsgBox);

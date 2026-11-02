@@ -262,6 +262,29 @@ disposes copy controls. `components/AssistantMarkdown.tsx` tracks assistant
 mounts and unmounts them when messages are replaced or removed, the chat view is
 reset, or the chat page is torn down.
 
+After argument streaming finishes, `edit_file` and `multiedit_file` use
+`components/EditFileToolBubble.tsx` in the card header. Their containers share
+the sub-agent bubble's styling. `components/ToolBubbleParts.tsx` supplies the
+metadata rows and floating Markdown copy controls for both kinds of bubble.
+Root parameters such as `filePath` appear in the top metadata row. Each `edit`
+or indexed `edits[i]` has a compact label and its own metadata row, including
+an explicitly supplied `replaceAll` value, followed by a fenced `diff` block
+rendered through `MarkdownBody`. Batch blocks follow the input array order.
+
+Each `oldString` line receives a `-` prefix and each `newString` line receives
+a `+` prefix. CRLF and CR become LF for Markdown; spaces and empty segments
+are preserved, including the final empty segment after a trailing newline,
+which appears as a prefix-only line. An empty string contributes zero lines;
+an operation with two empty strings produces an empty diff block. Values
+that cannot be split into operations with string `oldString` and `newString`
+fields appear in full in the top metadata row, under `edit` or `edits[i]`.
+An empty `edits` array or a non-array `edits` value appears there as `edits`.
+
+Each diff badge copies its block's text. The floating `Copy edit` or `Copy edits`
+button copies the fenced blocks joined by a blank line. Markdown highlighting
+and copy-control cleanup use the shared components; edit-bubble mounts are
+released on history eviction, chat reset, and chat-page teardown.
+
 Command previews retain their `code.command-cmd` nodes. The application starts
 an independent command-highlighting worker during startup. A new node receives
 its initial Shiki markup on the main thread; subsequent changes enter a FIFO

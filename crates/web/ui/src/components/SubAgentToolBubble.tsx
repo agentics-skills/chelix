@@ -1,28 +1,14 @@
 import type { VNode } from "preact";
 import { render } from "preact";
-import { useLayoutEffect, useRef } from "preact/hooks";
-import { createCopyControl, MarkdownBody, type MarkdownBodyProps } from "./MarkdownBody";
+import { MarkdownBody } from "./MarkdownBody";
+import { type InputBody, MarkdownCopyActions, type MetadataField, ToolBubbleMetadata } from "./ToolBubbleParts";
 
 interface SubAgentToolBubbleProps {
 	parameters: object;
 }
 
-interface MetadataField {
-	key: string;
-	name: string;
-	value: unknown;
-}
-
-interface InputBody extends MarkdownBodyProps {
-	name: string;
-}
-
 interface SubAgentInput {
 	metadata: MetadataField[];
-	bodies: InputBody[];
-}
-
-interface MarkdownCopyActionsProps {
 	bodies: InputBody[];
 }
 
@@ -67,41 +53,11 @@ function splitInput(parameters: object): SubAgentInput {
 	return { metadata, bodies: bodies.filter((body) => body.text.trim()) };
 }
 
-function MarkdownCopyActions({ bodies }: MarkdownCopyActionsProps): VNode {
-	const groupRef = useRef<HTMLDivElement>(null);
-	useLayoutEffect(() => {
-		const group = groupRef.current;
-		if (!group) throw new Error("sub_agent Markdown copy controls mount is unavailable");
-		const controls = bodies.map((body) => {
-			const control = createCopyControl(() => body.text, `Copy ${body.name}`, 300);
-			control.button.classList.add("text-[0.56rem]", "text-(--muted)", "[font-family:var(--font-mono)]");
-			group.appendChild(control.button);
-			return control;
-		});
-		return () => {
-			for (const control of controls) {
-				control.dispose();
-				control.button.remove();
-			}
-		};
-	}, [bodies]);
-	return <div ref={groupRef} className="absolute top-0 right-0 z-10 flex" />;
-}
-
 function SubAgentToolBubble({ parameters }: SubAgentToolBubbleProps): VNode {
 	const { metadata, bodies } = splitInput(parameters);
 	return (
 		<div className="relative flex w-full min-w-0 flex-col gap-0.5">
-			<dl className="m-0 flex min-w-0 flex-wrap gap-x-1 text-[0.62rem] leading-[1.2]">
-				{metadata.map((field) => (
-					<div key={field.key} className="min-w-0 [overflow-wrap:anywhere]">
-						<dt className="inline">{field.name}: </dt>
-						<dd className="m-0 inline">
-							{typeof field.value === "string" ? field.value : JSON.stringify(field.value)}
-						</dd>
-					</div>
-				))}
-			</dl>
+			<ToolBubbleMetadata fields={metadata} />
 			<MarkdownCopyActions bodies={bodies} />
 			{bodies.map((body) => (
 				<MarkdownBody key={body.name} text={body.text} />
