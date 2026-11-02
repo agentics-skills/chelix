@@ -18,6 +18,7 @@ import {
 import { highlightCodeBlocks } from "../code-highlight";
 import { mountAssistantMarkdown, unmountAssistantMarkdown } from "../components/AssistantMarkdown";
 import { unmountEditFileToolBubbles } from "../components/EditFileToolBubble";
+import { unmountExecuteCommandInputBubbles } from "../components/ExecuteCommandInputBubble";
 import { unmountExecuteCommandToolBubbles } from "../components/ExecuteCommandToolBubble";
 import { unmountOverwriteFileToolBubbles } from "../components/OverwriteFileToolBubble";
 import { unmountSubAgentToolBubbles } from "../components/SubAgentToolBubble";
@@ -791,6 +792,7 @@ function retainedMessageNodes(box: HTMLElement, history: UiSnapshot[]): Map<stri
 		if (retained.has(child.dataset.messageId)) nodes.set(child.dataset.messageId, child);
 		else {
 			unmountEditFileToolBubbles(child);
+			unmountExecuteCommandInputBubbles(child);
 			unmountExecuteCommandToolBubbles(child);
 			unmountOverwriteFileToolBubbles(child);
 			unmountSubAgentToolBubbles(child);

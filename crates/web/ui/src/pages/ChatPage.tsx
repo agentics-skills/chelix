@@ -19,6 +19,7 @@ import {
 import { copyToClipboard } from "../clipboard";
 import { unmountAssistantMarkdown } from "../components/AssistantMarkdown";
 import { unmountEditFileToolBubbles } from "../components/EditFileToolBubble";
+import { unmountExecuteCommandInputBubbles } from "../components/ExecuteCommandInputBubble";
 import { unmountExecuteCommandToolBubbles } from "../components/ExecuteCommandToolBubble";
 import { unmountOverwriteFileToolBubbles } from "../components/OverwriteFileToolBubble";
 import { SessionEmptyState } from "../components/SessionEmptyState";
@@ -807,6 +808,7 @@ function teardownChat(): void {
 	if (m2) render(null, m2);
 	if (S.chatMsgBox) {
 		unmountEditFileToolBubbles(S.chatMsgBox);
+		unmountExecuteCommandInputBubbles(S.chatMsgBox);
 		unmountExecuteCommandToolBubbles(S.chatMsgBox);
 		unmountOverwriteFileToolBubbles(S.chatMsgBox);
 		unmountSubAgentToolBubbles(S.chatMsgBox);

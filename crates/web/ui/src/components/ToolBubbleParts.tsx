@@ -20,6 +20,13 @@ interface MarkdownCopyActionsProps {
 	bodies: InputBody[];
 }
 
+export function fencedContent(content: string, language: string): string {
+	let fenceLength = 3;
+	for (const match of content.matchAll(/`+/g)) fenceLength = Math.max(fenceLength, match[0].length + 1);
+	const fence = "`".repeat(fenceLength);
+	return `${fence}${language}\n${content}\n${fence}`;
+}
+
 export function ToolBubbleMetadata({ fields }: ToolBubbleMetadataProps): VNode {
 	return (
 		<dl className="m-0 flex min-w-0 flex-wrap gap-x-1 text-[0.62rem] leading-[1.2]">

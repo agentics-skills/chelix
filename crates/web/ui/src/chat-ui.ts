@@ -2,6 +2,7 @@
 
 import { unmountAssistantMarkdown } from "./components/AssistantMarkdown";
 import { unmountEditFileToolBubbles } from "./components/EditFileToolBubble";
+import { unmountExecuteCommandInputBubbles } from "./components/ExecuteCommandInputBubble";
 import { unmountExecuteCommandToolBubbles } from "./components/ExecuteCommandToolBubble";
 import { unmountOverwriteFileToolBubbles } from "./components/OverwriteFileToolBubble";
 import { unmountSubAgentToolBubbles } from "./components/SubAgentToolBubble";
@@ -203,6 +204,7 @@ export function chatViewEpoch(): number {
 /// Empty the chat view and invalidate any detached render targeting it.
 export function resetChatView(box: HTMLElement): void {
 	unmountEditFileToolBubbles(box);
+	unmountExecuteCommandInputBubbles(box);
 	unmountExecuteCommandToolBubbles(box);
 	unmountOverwriteFileToolBubbles(box);
 	unmountSubAgentToolBubbles(box);

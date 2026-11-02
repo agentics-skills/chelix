@@ -308,6 +308,22 @@ badge copies the rendered block's text and uses the shared Shiki highlighting
 and copy-control cleanup. Overwrite-bubble mounts are released on history
 eviction, chat reset, and chat-page teardown.
 
+After argument streaming finishes, `execute_command` uses
+`components/ExecuteCommandInputBubble.tsx` in the card header with the sub-agent
+bubble's styling and shared metadata and copy controls. All parameters other
+than a string `command` appear in the compact, wrapping metadata row in input
+entry order. String `command` appears as one fenced `shell` block through
+`MarkdownBody`, including an empty command. A non-string `command` appears in
+metadata.
+
+`ToolBubbleParts.tsx` supplies `fencedContent` to both the command and overwrite
+input bubbles. Its backtick fence is at least three characters long and longer
+than every backtick sequence in the source text. The command body selects
+`asciiTables={false}` to preserve literal code. The floating `Copy command`
+control copies the original command; the code badge copies the rendered block's
+text. Shiki highlighting and copy-control cleanup use `MarkdownBody`. Command
+input mounts are released on history eviction, chat reset, and chat-page teardown.
+
 Command previews retain their `code.command-cmd` nodes. The application starts
 an independent command-highlighting worker during startup. A new node receives
 its initial Shiki markup on the main thread; subsequent changes enter a FIFO

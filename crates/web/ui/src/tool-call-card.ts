@@ -2,6 +2,7 @@
 
 import { renderCommand } from "./code-highlight";
 import { mountEditFileToolBubble } from "./components/EditFileToolBubble";
+import { mountExecuteCommandInputBubble } from "./components/ExecuteCommandInputBubble";
 import { mountOverwriteFileToolBubble } from "./components/OverwriteFileToolBubble";
 import { mountSubAgentToolBubble } from "./components/SubAgentToolBubble";
 import {
@@ -41,6 +42,7 @@ const STATUS_LABELS: Record<ToolCardStatus, string> = {
 const TRUNCATED_RESULT_MARKER = "\n\n[Truncated —";
 const TEXT_RESULT_FIELDS = ["stdout", "output", "stderr"] as const;
 const INPUT_BUBBLE_ATTRIBUTES = new Map<string, string>([
+	["execute_command", "data-execute-command-input-bubble"],
 	["sub_agent", "data-sub-agent-bubble"],
 	["edit_file", "data-edit-file-bubble"],
 	["multiedit_file", "data-edit-file-bubble"],
@@ -358,6 +360,10 @@ export function updateToolCardParameters(card: HTMLElement, argumentsValue: unkn
 	const summary = card.querySelector<HTMLElement>(".tool-call-summary");
 	if (!summary) throw new Error("tool card summary is unavailable");
 	if (inputReady && argumentsValue !== null && typeof argumentsValue === "object" && !Array.isArray(argumentsValue)) {
+		if (toolName === "execute_command") {
+			mountExecuteCommandInputBubble(card, { parameters: argumentsValue });
+			return;
+		}
 		if (toolName === "sub_agent") {
 			mountSubAgentToolBubble(card, { parameters: argumentsValue });
 			return;
