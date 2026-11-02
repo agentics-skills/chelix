@@ -2,7 +2,13 @@ import type { VNode } from "preact";
 import { render } from "preact";
 import { bundledLanguagesInfo } from "shiki/langs";
 import { MarkdownBody } from "./MarkdownBody";
-import { type InputBody, MarkdownCopyActions, type MetadataField, ToolBubbleMetadata } from "./ToolBubbleParts";
+import {
+	fencedContent,
+	type InputBody,
+	MarkdownCopyActions,
+	type MetadataField,
+	ToolBubbleMetadata,
+} from "./ToolBubbleParts";
 
 interface OverwriteFileToolBubbleProps {
 	parameters: object;
@@ -51,13 +57,6 @@ function fileLanguage(filePath: unknown): string {
 		languages.get(extension) ??
 		"text"
 	);
-}
-
-function fencedContent(content: string, language: string): string {
-	let fenceLength = 3;
-	for (const match of content.matchAll(/`+/g)) fenceLength = Math.max(fenceLength, match[0].length + 1);
-	const fence = "`".repeat(fenceLength);
-	return `${fence}${language}\n${content}\n${fence}`;
 }
 
 function OverwriteFileToolBubble({ parameters }: OverwriteFileToolBubbleProps): VNode {

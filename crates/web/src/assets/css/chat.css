@@ -326,7 +326,8 @@
 
 [data-sub-agent-bubble],
 [data-edit-file-bubble],
-[data-overwrite-file-bubble] {
+[data-overwrite-file-bubble],
+[data-execute-command-input-bubble] {
   display: block;
   font-family: var(--font-body);
   font-size: 0.9rem;
