@@ -17,10 +17,10 @@ import {
 	smartScrollToBottom,
 } from "../chat-ui";
 import { copyToClipboard } from "../clipboard";
-import { unmountAssistantMarkdown } from "../components/AssistantMarkdown";
 import { unmountEditFileToolBubbles } from "../components/EditFileToolBubble";
 import { unmountExecuteCommandInputBubbles } from "../components/ExecuteCommandInputBubble";
 import { unmountExecuteCommandToolBubbles } from "../components/ExecuteCommandToolBubble";
+import { unmountMessageMarkdown } from "../components/MessageMarkdown";
 import { unmountOverwriteFileToolBubbles } from "../components/OverwriteFileToolBubble";
 import { SessionEmptyState } from "../components/SessionEmptyState";
 import { SessionHeader } from "../components/SessionHeader";
@@ -812,7 +812,7 @@ function teardownChat(): void {
 		unmountExecuteCommandToolBubbles(S.chatMsgBox);
 		unmountOverwriteFileToolBubbles(S.chatMsgBox);
 		unmountSubAgentToolBubbles(S.chatMsgBox);
-		unmountAssistantMarkdown(S.chatMsgBox);
+		unmountMessageMarkdown(S.chatMsgBox);
 	}
 	S.setChatMsgBox(null);
 	S.setChatInput(null);

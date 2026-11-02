@@ -5,7 +5,7 @@ import {
 	appendReasoningDisclosure,
 	chatAddErrorCard,
 	chatAddMsg,
-	chatAddMsgWithImages,
+	chatAddUserMsg,
 	highlightAndScroll,
 	pinChatToBottom,
 	preserveChatViewport,
@@ -16,10 +16,10 @@ import {
 	withChatInsertionTarget,
 } from "../chat-ui";
 import { highlightCodeBlocks } from "../code-highlight";
-import { mountAssistantMarkdown, unmountAssistantMarkdown } from "../components/AssistantMarkdown";
 import { unmountEditFileToolBubbles } from "../components/EditFileToolBubble";
 import { unmountExecuteCommandInputBubbles } from "../components/ExecuteCommandInputBubble";
 import { unmountExecuteCommandToolBubbles } from "../components/ExecuteCommandToolBubble";
+import { mountMessageMarkdown, unmountMessageMarkdown } from "../components/MessageMarkdown";
 import { unmountOverwriteFileToolBubbles } from "../components/OverwriteFileToolBubble";
 import { unmountSubAgentToolBubbles } from "../components/SubAgentToolBubble";
 import * as gon from "../gon";
@@ -203,8 +203,7 @@ function renderUserAudioMessage(
 	if (text) {
 		const textWrap = document.createElement("div");
 		textWrap.className = "mt-2";
-		// Safe: renderMarkdown escapes user input before formatting tags.
-		textWrap.insertAdjacentHTML("beforeend", renderMarkdown(text));
+		mountMessageMarkdown(textWrap, text);
 		messageEl.appendChild(textWrap);
 	}
 	appendImageThumbnails(messageEl, images);
@@ -217,8 +216,7 @@ function renderUserMessageBody(
 	images: { dataUrl: string; name: string }[],
 ): HTMLElement | null {
 	if (msg.audio) return renderUserAudioMessage(msg.audio, text, images);
-	if (images.length > 0) return chatAddMsgWithImages("user", text ? renderMarkdown(text) : "", images);
-	return chatAddMsg("user", renderMarkdown(text), true);
+	return chatAddUserMsg(text, images);
 }
 
 function appendUserDocuments(messageEl: HTMLElement | null, documents: UserMsg["documents"]): void {
@@ -243,13 +241,13 @@ function renderHistoryUserMessage(msg: UserMsg): HTMLElement | null {
 		confirmPendingSend(S.activeSessionKey, msg.clientMessageId) || renderUserMessageBody(msg, text, images);
 	if (messageEl && messageEl.parentElement !== currentMessageContainer) currentMessageContainer?.appendChild(messageEl);
 	appendUserDocuments(messageEl, msg.documents);
+	if (messageEl && msg.channel) appendChannelFooter(messageEl, msg.channel);
 	appendUserMessageActions({
 		messageEl,
 		sessionKey: S.activeSessionKey,
 		target: historyTarget(msg),
 		text,
 	});
-	if (messageEl && msg.channel) appendChannelFooter(messageEl, msg.channel);
 	return messageEl;
 }
 
@@ -284,7 +282,7 @@ function renderAssistantAudioMessage(msg: AssistantMsg): HTMLElement | null {
 	if (msg.content) {
 		const textWrap = document.createElement("div");
 		textWrap.className = "mt-2";
-		mountAssistantMarkdown(textWrap, msg.content);
+		mountMessageMarkdown(textWrap, msg.content);
 		messageEl.appendChild(textWrap);
 	}
 	return messageEl;
@@ -630,7 +628,7 @@ function updateAssistantText(element: HTMLElement, text: string): void {
 		body.className = "assistant-text";
 		element.appendChild(body);
 	}
-	mountAssistantMarkdown(body, text);
+	mountMessageMarkdown(body, text);
 }
 
 function renderAssistantSnapshot(message: UiSnapshot, container: HTMLElement): void {
@@ -641,7 +639,7 @@ function renderAssistantSnapshot(message: UiSnapshot, container: HTMLElement): v
 		appendAssistantReasoning(element, assistant);
 		decorateAssistantMessage(element, assistant);
 	} else if (!element || element.dataset.audio !== assistant.audio) {
-		unmountAssistantMarkdown(container);
+		unmountMessageMarkdown(container);
 		container.replaceChildren();
 		element = renderHistoryAssistantMessage(assistant, false);
 		if (element && assistant.audio) element.dataset.audio = assistant.audio;
@@ -693,7 +691,7 @@ function renderSnapshotBody(message: UiSnapshot, container: HTMLElement): void {
 			renderUserSnapshot(message, container);
 			return;
 		case "checkpoint":
-			unmountAssistantMarkdown(container);
+			unmountMessageMarkdown(container);
 			container.replaceChildren();
 			renderCheckpointCard(message as unknown as CheckpointHistoryMessage);
 			return;
@@ -701,7 +699,7 @@ function renderSnapshotBody(message: UiSnapshot, container: HTMLElement): void {
 			renderProviderError(message, container);
 			return;
 		default:
-			unmountAssistantMarkdown(container);
+			unmountMessageMarkdown(container);
 			container.replaceChildren();
 			chatAddMsg("system", renderMarkdown(typeof message.content === "string" ? message.content : ""), true);
 	}
@@ -714,7 +712,7 @@ function renderProviderError(message: UiSnapshot, container: HTMLElement): void 
 		details: { title?: string; detail?: string; provider?: string; icon?: string };
 	};
 	if (!error || typeof error.raw !== "string") throw new Error("Invalid provider error snapshot");
-	unmountAssistantMarkdown(container);
+	unmountMessageMarkdown(container);
 	container.replaceChildren();
 	chatAddErrorCard({ ...error.details, title: error.details.title || error.raw });
 	const raw = document.createElement("details");
@@ -796,7 +794,7 @@ function retainedMessageNodes(box: HTMLElement, history: UiSnapshot[]): Map<stri
 			unmountExecuteCommandToolBubbles(child);
 			unmountOverwriteFileToolBubbles(child);
 			unmountSubAgentToolBubbles(child);
-			unmountAssistantMarkdown(child);
+			unmountMessageMarkdown(child);
 			child.remove();
 		}
 	}

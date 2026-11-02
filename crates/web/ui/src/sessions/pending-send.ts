@@ -1,4 +1,5 @@
 import { chatAddMsg } from "../chat-ui";
+import { unmountMessageMarkdown } from "../components/MessageMarkdown";
 import { replaceQueuedPromptsDock } from "../pages/chat/prompt-queue";
 import { setSessionActiveRunId } from "../sessions";
 import * as S from "../state";
@@ -31,7 +32,10 @@ export function confirmPendingSend(sessionKey: string, clientMessageId: unknown)
 export function rejectPendingSend(sessionKey: string, id: string, message?: string): void {
 	const entry = pending.get(id);
 	if (entry?.sessionKey === sessionKey) {
-		entry.element?.remove();
+		if (entry.element) {
+			unmountMessageMarkdown(entry.element);
+			entry.element.remove();
+		}
 		pending.delete(id);
 	}
 	if (message && sessionKey === S.activeSessionKey) chatAddMsg("error", message);
@@ -56,7 +60,10 @@ export function handlePendingSendResponse(
 export function clearPendingSends(sessionKey?: string): void {
 	for (const [id, entry] of pending) {
 		if (sessionKey !== undefined && entry.sessionKey !== sessionKey) continue;
-		entry.element?.remove();
+		if (entry.element) {
+			unmountMessageMarkdown(entry.element);
+			entry.element.remove();
+		}
 		pending.delete(id);
 	}
 }

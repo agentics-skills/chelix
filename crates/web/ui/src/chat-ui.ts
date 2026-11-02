@@ -1,9 +1,9 @@
 // ── Chat UI ─────────────────────────────────────────────────
 
-import { unmountAssistantMarkdown } from "./components/AssistantMarkdown";
 import { unmountEditFileToolBubbles } from "./components/EditFileToolBubble";
 import { unmountExecuteCommandInputBubbles } from "./components/ExecuteCommandInputBubble";
 import { unmountExecuteCommandToolBubbles } from "./components/ExecuteCommandToolBubble";
+import { mountMessageMarkdown, unmountMessageMarkdown } from "./components/MessageMarkdown";
 import { unmountOverwriteFileToolBubbles } from "./components/OverwriteFileToolBubble";
 import { unmountSubAgentToolBubbles } from "./components/SubAgentToolBubble";
 import { formatTokens, parseErrorMessage, renderDocument, renderMarkdown, sendRpc } from "./helpers";
@@ -208,7 +208,7 @@ export function resetChatView(box: HTMLElement): void {
 	unmountExecuteCommandToolBubbles(box);
 	unmountOverwriteFileToolBubbles(box);
 	unmountSubAgentToolBubbles(box);
-	unmountAssistantMarkdown(box);
+	unmountMessageMarkdown(box);
 	box.textContent = "";
 	chatViewGeneration += 1;
 }
@@ -279,27 +279,6 @@ export function chatAddMsg(cls: MessageRole, content: string, isHtml?: boolean):
 	return el;
 }
 
-/**
- * Add a user message with image thumbnails below the text.
- */
-export function chatAddMsgWithImages(
-	cls: MessageRole,
-	htmlContent: string,
-	images: ImageAttachment[],
-): HTMLDivElement | null {
-	return chatAddMsgWithAttachments(cls, htmlContent, images, []);
-}
-
-function appendHtmlContent(el: HTMLElement, htmlContent: string): void {
-	if (!htmlContent) return;
-	const textDiv = document.createElement("div");
-	// Safe: htmlContent is produced by renderMarkdown which escapes user
-	// input via esc() first, then only adds our own formatting tags.
-	// This is the same pattern used in chatAddMsg above.
-	textDiv.innerHTML = htmlContent; // eslint-disable-line no-unsanitized/property
-	el.appendChild(textDiv);
-}
-
 function appendImageAttachments(el: HTMLElement, images: ImageAttachment[]): void {
 	if (images.length === 0) return;
 	const thumbRow = document.createElement("div");
@@ -325,23 +304,25 @@ function appendDocumentAttachments(el: HTMLElement, documents: DocumentAttachmen
 	}
 }
 
-export function chatAddMsgWithAttachments(
-	cls: MessageRole,
-	htmlContent: string,
-	images: ImageAttachment[],
-	documents: DocumentAttachment[],
+export function chatAddUserMsg(
+	text: string,
+	images: ImageAttachment[] = [],
+	documents: DocumentAttachment[] = [],
 ): HTMLDivElement | null {
 	const target = chatInsertionTarget();
 	if (!target) return null;
 	clearChatEmptyState();
 	const el = document.createElement("div");
-	el.className = `msg ${cls}`;
-	appendHtmlContent(el, htmlContent);
+	el.className = "msg user";
+	if (text) {
+		const body = document.createElement("div");
+		mountMessageMarkdown(body, text);
+		el.appendChild(body);
+	}
 	appendImageAttachments(el, images);
 	appendDocumentAttachments(el, documents);
 	target.appendChild(el);
-	if (cls === "user") scrollChatToBottom(true);
-	else smartScrollToBottom();
+	scrollChatToBottom(true);
 	return el;
 }
 

@@ -158,9 +158,6 @@
   }
   .msg.user {
     align-self: flex-end;
-    background: var(--user-bg);
-    border: 1px solid var(--user-border);
-    color: var(--text);
   }
   .queued-tray {
     display: flex;
@@ -174,6 +171,9 @@
     display: none;
   }
   .msg.user.queued {
+    background: var(--user-bg);
+    border: 1px solid var(--user-border);
+    color: var(--text);
     opacity: 0.6;
     border-style: dashed;
     max-width: 100%;
@@ -204,12 +204,15 @@
     color: var(--error);
     border-color: var(--error);
   }
+  .msg.user:not(.queued),
   .msg.assistant {
-    align-self: flex-start;
     background: var(--assistant-bg);
     border: 1px solid var(--assistant-border);
     color: var(--text);
     white-space: normal;
+  }
+  .msg.assistant {
+    align-self: flex-start;
   }
   .msg.system {
     align-self: center;

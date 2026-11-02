@@ -1,6 +1,5 @@
-import { chatAddMsg, chatAddMsgWithAttachments } from "../../chat-ui";
-import { highlightCodeBlocks } from "../../code-highlight";
-import { renderMarkdown, sendRpc, warmAudioPlayback } from "../../helpers";
+import { chatAddMsg, chatAddUserMsg } from "../../chat-ui";
+import { sendRpc, warmAudioPlayback } from "../../helpers";
 import {
 	clearPendingAttachments,
 	getPendingAttachments,
@@ -84,10 +83,7 @@ async function buildChatMessage(text: string, sessionKey: string): Promise<{ par
 	const content: ChatContentPart[] = [];
 	if (text) content.push({ type: "text", text });
 	for (const image of images) content.push({ type: "image_url", image_url: { url: image.dataUrl } });
-	const element =
-		attachments.length > 0
-			? chatAddMsgWithAttachments("user", renderMarkdown(text), images, documents)
-			: chatAddMsg("user", renderMarkdown(text), true);
+	const element = chatAddUserMsg(text, images, documents);
 	appendUserMessageCopyAction(element, text);
 	clearPendingAttachments();
 	const id = registerPendingSend(sessionKey, element);
@@ -99,7 +95,6 @@ async function buildChatMessage(text: string, sessionKey: string): Promise<{ par
 			mimeType: document.mime_type,
 			sizeBytes: document.size_bytes,
 		}));
-	if (element) void highlightCodeBlocks(element);
 	return { params, id };
 }
 
