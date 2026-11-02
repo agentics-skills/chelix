@@ -248,6 +248,20 @@ copy icon at the upper right copies the original `message` or `task` Markdown.
 Code blocks wrap long lines to the available width while preserving whitespace.
 Ordered-list numbers occupy a shared text column and are included in text selections.
 
+`components/MarkdownBody.tsx` supplies this Markdown rendering for both sub-agent
+inputs and assistant text, including audio-response text. Its text-dependent
+layout effect formats ordered lists, prepares code-copy badges, and requests
+Shiki highlighting during streaming and history pagination. Code uses 0.68rem
+and code-copy badges use 0.56rem; the sub-agent container uses the assistant
+bubble's background, border, body font, 0.9rem font size, and 1.6 line height.
+Sub-agent metadata uses 0.62rem and its message/task copy buttons use 0.56rem.
+Each Markdown body retains its current code nodes by language and original
+source text, reusing completed highlighting for matching blocks on the next
+render. Effect cleanup aborts pending highlighting through an `AbortSignal` and
+disposes copy controls. `components/AssistantMarkdown.tsx` tracks assistant
+mounts and unmounts them when messages are replaced or removed, the chat view is
+reset, or the chat page is torn down.
+
 Command previews retain their `code.command-cmd` nodes. The application starts
 an independent command-highlighting worker during startup. A new node receives
 its initial Shiki markup on the main thread; subsequent changes enter a FIFO

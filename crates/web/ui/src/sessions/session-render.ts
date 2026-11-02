@@ -16,6 +16,7 @@ import {
 	withChatInsertionTarget,
 } from "../chat-ui";
 import { highlightCodeBlocks } from "../code-highlight";
+import { mountAssistantMarkdown, unmountAssistantMarkdown } from "../components/AssistantMarkdown";
 import { unmountExecuteCommandToolBubbles } from "../components/ExecuteCommandToolBubble";
 import { unmountSubAgentToolBubbles } from "../components/SubAgentToolBubble";
 import * as gon from "../gon";
@@ -280,7 +281,7 @@ function renderAssistantAudioMessage(msg: AssistantMsg): HTMLElement | null {
 	if (msg.content) {
 		const textWrap = document.createElement("div");
 		textWrap.className = "mt-2";
-		textWrap.insertAdjacentHTML("beforeend", renderMarkdown(msg.content));
+		mountAssistantMarkdown(textWrap, msg.content);
 		messageEl.appendChild(textWrap);
 	}
 	return messageEl;
@@ -626,7 +627,7 @@ function updateAssistantText(element: HTMLElement, text: string): void {
 		body.className = "assistant-text";
 		element.appendChild(body);
 	}
-	setSafeMarkdownHtml(body, text);
+	mountAssistantMarkdown(body, text);
 }
 
 function renderAssistantSnapshot(message: UiSnapshot, container: HTMLElement): void {
@@ -637,6 +638,7 @@ function renderAssistantSnapshot(message: UiSnapshot, container: HTMLElement): v
 		appendAssistantReasoning(element, assistant);
 		decorateAssistantMessage(element, assistant);
 	} else if (!element || element.dataset.audio !== assistant.audio) {
+		unmountAssistantMarkdown(container);
 		container.replaceChildren();
 		element = renderHistoryAssistantMessage(assistant, false);
 		if (element && assistant.audio) element.dataset.audio = assistant.audio;
@@ -688,6 +690,7 @@ function renderSnapshotBody(message: UiSnapshot, container: HTMLElement): void {
 			renderUserSnapshot(message, container);
 			return;
 		case "checkpoint":
+			unmountAssistantMarkdown(container);
 			container.replaceChildren();
 			renderCheckpointCard(message as unknown as CheckpointHistoryMessage);
 			return;
@@ -695,6 +698,7 @@ function renderSnapshotBody(message: UiSnapshot, container: HTMLElement): void {
 			renderProviderError(message, container);
 			return;
 		default:
+			unmountAssistantMarkdown(container);
 			container.replaceChildren();
 			chatAddMsg("system", renderMarkdown(typeof message.content === "string" ? message.content : ""), true);
 	}
@@ -707,6 +711,7 @@ function renderProviderError(message: UiSnapshot, container: HTMLElement): void 
 		details: { title?: string; detail?: string; provider?: string; icon?: string };
 	};
 	if (!error || typeof error.raw !== "string") throw new Error("Invalid provider error snapshot");
+	unmountAssistantMarkdown(container);
 	container.replaceChildren();
 	chatAddErrorCard({ ...error.details, title: error.details.title || error.raw });
 	const raw = document.createElement("details");
@@ -785,6 +790,7 @@ function retainedMessageNodes(box: HTMLElement, history: UiSnapshot[]): Map<stri
 		else {
 			unmountExecuteCommandToolBubbles(child);
 			unmountSubAgentToolBubbles(child);
+			unmountAssistantMarkdown(child);
 			child.remove();
 		}
 	}

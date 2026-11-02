@@ -17,6 +17,7 @@ import {
 	smartScrollToBottom,
 } from "../chat-ui";
 import { copyToClipboard } from "../clipboard";
+import { unmountAssistantMarkdown } from "../components/AssistantMarkdown";
 import { unmountExecuteCommandToolBubbles } from "../components/ExecuteCommandToolBubble";
 import { SessionEmptyState } from "../components/SessionEmptyState";
 import { SessionHeader } from "../components/SessionHeader";
@@ -805,6 +806,7 @@ function teardownChat(): void {
 	if (S.chatMsgBox) {
 		unmountExecuteCommandToolBubbles(S.chatMsgBox);
 		unmountSubAgentToolBubbles(S.chatMsgBox);
+		unmountAssistantMarkdown(S.chatMsgBox);
 	}
 	S.setChatMsgBox(null);
 	S.setChatInput(null);

@@ -1,5 +1,6 @@
 // ── Chat UI ─────────────────────────────────────────────────
 
+import { unmountAssistantMarkdown } from "./components/AssistantMarkdown";
 import { unmountExecuteCommandToolBubbles } from "./components/ExecuteCommandToolBubble";
 import { unmountSubAgentToolBubbles } from "./components/SubAgentToolBubble";
 import { formatTokens, parseErrorMessage, renderDocument, renderMarkdown, sendRpc } from "./helpers";
@@ -201,6 +202,7 @@ export function chatViewEpoch(): number {
 export function resetChatView(box: HTMLElement): void {
 	unmountExecuteCommandToolBubbles(box);
 	unmountSubAgentToolBubbles(box);
+	unmountAssistantMarkdown(box);
 	box.textContent = "";
 	chatViewGeneration += 1;
 }
