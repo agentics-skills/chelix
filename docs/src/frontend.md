@@ -248,9 +248,9 @@ copy icon at the upper right copies the original `message` or `task` Markdown.
 Code blocks wrap long lines to the available width while preserving whitespace.
 Ordered-list numbers occupy a shared text column and are included in text selections.
 
-`components/MarkdownBody.tsx` supplies this Markdown rendering for both sub-agent
-inputs and assistant text, including audio-response text. Its text-dependent
-layout effect formats ordered lists, prepares code-copy badges, and requests
+`components/MarkdownBody.tsx` supplies this Markdown rendering for sub-agent
+inputs, assistant text, and user message text, including text accompanying audio.
+Its text-dependent layout effect formats ordered lists, prepares code-copy badges, and requests
 Shiki highlighting during streaming and history pagination. Code uses 0.68rem
 and code-copy badges use 0.56rem; the sub-agent container uses the assistant
 bubble's background, border, body font, 0.9rem font size, and 1.6 line height.
@@ -258,9 +258,17 @@ Sub-agent metadata uses 0.62rem and its message/task copy buttons use 0.56rem.
 Each Markdown body retains its current code nodes by language and original
 source text, reusing completed highlighting for matching blocks on the next
 render. Effect cleanup aborts pending highlighting through an `AbortSignal` and
-disposes copy controls. `components/AssistantMarkdown.tsx` tracks assistant
-mounts and unmounts them when messages are replaced or removed, the chat view is
-reset, or the chat page is torn down.
+disposes copy controls. `components/MessageMarkdown.tsx` tracks assistant and user
+message mounts and unmounts them when messages are replaced or removed, the chat
+view is reset, or the chat page is torn down. Pending user messages release their
+mounts when rejected or cleared.
+
+User messages in the conversation share the assistant's background, border, and
+Markdown formatting. Text sent with images or documents and text accompanying
+audio use the same Markdown body. Copy and Delete controls form a horizontal
+action bar at the bottom of the message, after attachments and channel metadata.
+Copy uses the original message text; Delete truncates the session from the
+selected message.
 
 After argument streaming finishes, `edit_file` and `multiedit_file` use
 `components/EditFileToolBubble.tsx` in the card header. Their containers share

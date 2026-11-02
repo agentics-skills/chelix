@@ -75,23 +75,24 @@ export interface UserMessageActionContext {
 export function appendUserMessageActions(ctx: UserMessageActionContext): void {
 	const { messageEl, text } = ctx;
 	if (!messageEl) return;
-	let stack = messageEl.querySelector(".msg-user-action-stack") as HTMLDivElement | null;
-	if (!stack) {
-		stack = document.createElement("div");
-		stack.className = "msg-user-action-stack";
-		messageEl.appendChild(stack);
+	let bar = messageEl.querySelector(":scope > .msg-action-bar") as HTMLDivElement | null;
+	if (!bar) {
+		bar = document.createElement("div");
+		bar.className = "msg-action-bar";
+		messageEl.appendChild(bar);
 	}
 
-	if (text && !stack.querySelector(".msg-user-copy-btn")) {
-		stack.appendChild(buildUserCopyButton(text));
+	if (text && !bar.querySelector(".msg-user-copy-btn")) {
+		bar.appendChild(buildUserCopyButton(text));
 	}
 
 	const canDelete = ctx.deleteEnabled !== false && ctx.target !== undefined;
-	if (canDelete && !stack.querySelector(".msg-user-delete-btn")) {
-		stack.appendChild(buildUserDeleteButton(ctx));
+	if (canDelete && !bar.querySelector(".msg-user-delete-btn")) {
+		bar.appendChild(buildUserDeleteButton(ctx));
 	}
 
-	if (!stack.childElementCount) stack.remove();
+	if (!bar.childElementCount) bar.remove();
+	else if (bar.nextElementSibling) messageEl.appendChild(bar);
 }
 
 export function appendUserMessageCopyAction(messageEl: HTMLElement | null, text: string): void {

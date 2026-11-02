@@ -7,9 +7,10 @@
 //      auto-detects speech via energy-based VAD, auto-sends on silence,
 //      auto-re-listens after TTS playback finishes.
 
-import { chatAddMsg, scrollChatToBottom, smartScrollToBottom } from "./chat-ui";
+import { chatAddMsg, chatAddUserMsg, scrollChatToBottom, smartScrollToBottom } from "./chat-ui";
+import { mountMessageMarkdown } from "./components/MessageMarkdown";
 import * as gon from "./gon";
-import { renderAudioPlayer, renderMarkdown, sendRpc, warmAudioPlayback } from "./helpers";
+import { renderAudioPlayer, sendRpc, warmAudioPlayback } from "./helpers";
 import { t } from "./i18n";
 import { selectedModelSelection } from "./models";
 import { handlePendingSendResponse, registerPendingSend, rejectPendingSend } from "./sessions/pending-send";
@@ -433,14 +434,12 @@ function sendTranscribedMessage(
 			if (text) {
 				const textWrap = document.createElement("div");
 				textWrap.className = "mt-2";
-				const rendered = renderMarkdown(text);
-				const fragment = document.createRange().createContextualFragment(rendered);
-				textWrap.appendChild(fragment);
+				mountMessageMarkdown(textWrap, text);
 				userEl.appendChild(textWrap);
 			}
 		}
 	} else {
-		userEl = chatAddMsg("user", renderMarkdown(text), true);
+		userEl = chatAddUserMsg(text);
 	}
 	if (userEl) appendSttProviderFooter(userEl, providerInfo);
 
