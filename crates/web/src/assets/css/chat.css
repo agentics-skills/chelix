@@ -325,7 +325,8 @@
 }
 
 [data-sub-agent-bubble],
-[data-edit-file-bubble] {
+[data-edit-file-bubble],
+[data-overwrite-file-bubble] {
   display: block;
   font-family: var(--font-body);
   font-size: 0.9rem;

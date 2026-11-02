@@ -3,6 +3,7 @@
 import { unmountAssistantMarkdown } from "./components/AssistantMarkdown";
 import { unmountEditFileToolBubbles } from "./components/EditFileToolBubble";
 import { unmountExecuteCommandToolBubbles } from "./components/ExecuteCommandToolBubble";
+import { unmountOverwriteFileToolBubbles } from "./components/OverwriteFileToolBubble";
 import { unmountSubAgentToolBubbles } from "./components/SubAgentToolBubble";
 import { formatTokens, parseErrorMessage, renderDocument, renderMarkdown, sendRpc } from "./helpers";
 import * as S from "./state";
@@ -203,6 +204,7 @@ export function chatViewEpoch(): number {
 export function resetChatView(box: HTMLElement): void {
 	unmountEditFileToolBubbles(box);
 	unmountExecuteCommandToolBubbles(box);
+	unmountOverwriteFileToolBubbles(box);
 	unmountSubAgentToolBubbles(box);
 	unmountAssistantMarkdown(box);
 	box.textContent = "";

@@ -6,6 +6,7 @@ import { showToast } from "../toast";
 
 export interface MarkdownBodyProps {
 	text: string;
+	asciiTables?: boolean;
 }
 
 interface CopyControl {
@@ -130,14 +131,14 @@ function reuseHighlightedCode(body: HTMLElement, previous: Map<string, HTMLEleme
 	return current;
 }
 
-export function MarkdownBody({ text }: MarkdownBodyProps): VNode {
+export function MarkdownBody({ text, asciiTables = true }: MarkdownBodyProps): VNode {
 	const bodyRef = useRef<HTMLDivElement>(null);
 	const codeBlocksRef = useRef<Map<string, HTMLElement[]>>(new Map());
 	useLayoutEffect(() => {
 		const body = bodyRef.current;
 		if (!body) throw new Error("Markdown body is unavailable");
 		body.textContent = "";
-		body.insertAdjacentHTML("afterbegin", renderMarkdown(text));
+		body.insertAdjacentHTML("afterbegin", renderMarkdown(text, asciiTables));
 		codeBlocksRef.current = reuseHighlightedCode(body, codeBlocksRef.current);
 		prepareOrderedLists(body);
 		const disposeCopyControls = prepareCodeCopyControls(body);
@@ -147,6 +148,6 @@ export function MarkdownBody({ text }: MarkdownBodyProps): VNode {
 			controller.abort();
 			disposeCopyControls();
 		};
-	}, [text]);
+	}, [text, asciiTables]);
 	return <div ref={bodyRef} className={markdownClasses} />;
 }

@@ -285,6 +285,29 @@ button copies the fenced blocks joined by a blank line. Markdown highlighting
 and copy-control cleanup use the shared components; edit-bubble mounts are
 released on history eviction, chat reset, and chat-page teardown.
 
+After argument streaming finishes, `overwrite_file` uses
+`components/OverwriteFileToolBubble.tsx` in the card header with the same
+container styling and shared metadata and copy controls as the sub-agent bubble.
+`filePath` and other parameters appear in the metadata row; string `content`
+appears as one fenced code block through `MarkdownBody`, including empty content.
+A non-string `content` value appears in the metadata row.
+
+The code language is determined from the lowercased basename of `filePath`:
+special filenames take precedence over Shiki language IDs and aliases, followed
+by special extensions and the final extension's Shiki ID or alias. Special
+filenames include `Containerfile`, `GNUmakefile`, `Justfile`, `CMakeLists.txt`,
+`.env`, `.bashrc`, `.bash_profile`, and `.zshrc`. Special extensions cover C and
+C++ headers and source (`h`, `cc`, `cxx`, `hpp`, `hh`, `hxx`), HTML (`htm`), XML
+(`svg`, `xsd`), and dotenv (`env`). Unrecognized paths use `text`. The backtick
+fence is at least three characters long and longer than every backtick sequence
+in the content. This body selects `asciiTables={false}` so ASCII tables and
+placeholder strings remain literal code. Markdown normalizes CRLF and CR to LF.
+
+The floating `Copy content` control copies the original file content. The code
+badge copies the rendered block's text and uses the shared Shiki highlighting
+and copy-control cleanup. Overwrite-bubble mounts are released on history
+eviction, chat reset, and chat-page teardown.
+
 Command previews retain their `code.command-cmd` nodes. The application starts
 an independent command-highlighting worker during startup. A new node receives
 its initial Shiki markup on the main thread; subsequent changes enter a FIFO

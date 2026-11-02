@@ -263,7 +263,8 @@ function rpcIdleTimeoutMs(method: string, progressSeen: boolean): number {
 	return DEFAULT_RPC_IDLE_TIMEOUT_MS;
 }
 
-export function renderMarkdown(raw: string): string {
+export function renderMarkdown(raw: string, asciiTables = true): string {
+	if (!asciiTables) return (markedInstance.parse(raw) as string).trimEnd();
 	// Extract ASCII tables as placeholders before marked processes the text.
 	// Re-insert after marked is done so the HTML doesn't get escaped.
 	const { text, tables } = extractAsciiTables(raw);
