@@ -300,7 +300,9 @@ container styling and shared metadata and copy controls as the sub-agent bubble.
 appears as one fenced code block through `MarkdownBody`, including empty content.
 A non-string `content` value appears in the metadata row.
 
-The code language is determined from the lowercased basename of `filePath`:
+`ToolBubbleParts.tsx` supplies `fileLanguage` to the overwrite and memory-save
+input bubbles. It determines the code language from the lowercased basename of
+the supplied path (`filePath` for overwrite, `file` for memory-save):
 special filenames take precedence over Shiki language IDs and aliases, followed
 by special extensions and the final extension's Shiki ID or alias. Special
 filenames include `Containerfile`, `GNUmakefile`, `Justfile`, `CMakeLists.txt`,
@@ -316,6 +318,21 @@ badge copies the rendered block's text and uses the shared Shiki highlighting
 and copy-control cleanup. Overwrite-bubble mounts are released on history
 eviction, chat reset, and chat-page teardown.
 
+After argument streaming finishes, `memory_save` uses
+`components/MemorySaveToolBubble.tsx` in the card header with the same container
+styling and shared metadata and copy controls as the overwrite and sub-agent
+bubbles. All parameters other than a string `content` appear in the metadata row
+in input entry order, including supplied `file` and `append` values. A non-string
+`content` value appears in metadata. String `content`, including an empty string,
+appears as one fenced code block through `MarkdownBody` with `asciiTables={false}`.
+A string `file` selects the language through `fileLanguage`; an omitted or
+non-string `file` selects `markdown`, matching the tool's default Markdown targets.
+
+The floating `Copy content` control copies the original memory content. The code
+badge copies the rendered block's text. Highlighting and copy-control cleanup use
+`MarkdownBody`. Memory-save mounts are released on history eviction, chat reset,
+and chat-page teardown.
+
 After argument streaming finishes, `execute_command` uses
 `components/ExecuteCommandInputBubble.tsx` in the card header with the sub-agent
 bubble's styling and shared metadata and copy controls. All parameters other
@@ -324,8 +341,8 @@ entry order. String `command` appears as one fenced `shell` block through
 `MarkdownBody`, including an empty command. A non-string `command` appears in
 metadata.
 
-`ToolBubbleParts.tsx` supplies `fencedContent` to both the command and overwrite
-input bubbles. Its backtick fence is at least three characters long and longer
+`ToolBubbleParts.tsx` supplies `fencedContent` to the command, overwrite, and
+memory-save input bubbles. Its backtick fence is at least three characters long and longer
 than every backtick sequence in the source text. The command body selects
 `asciiTables={false}` to preserve literal code. The floating `Copy command`
 control copies the original command; the code badge copies the rendered block's
