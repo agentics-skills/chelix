@@ -3,6 +3,7 @@
 import { renderCommand } from "./code-highlight";
 import { mountEditFileToolBubble } from "./components/EditFileToolBubble";
 import { mountExecuteCommandInputBubble } from "./components/ExecuteCommandInputBubble";
+import { mountMemorySaveToolBubble } from "./components/MemorySaveToolBubble";
 import { mountOverwriteFileToolBubble } from "./components/OverwriteFileToolBubble";
 import { mountSubAgentToolBubble } from "./components/SubAgentToolBubble";
 import {
@@ -47,6 +48,7 @@ const INPUT_BUBBLE_ATTRIBUTES = new Map<string, string>([
 	["edit_file", "data-edit-file-bubble"],
 	["multiedit_file", "data-edit-file-bubble"],
 	["overwrite_file", "data-overwrite-file-bubble"],
+	["memory_save", "data-memory-save-bubble"],
 ]);
 
 function stringifyValue(value: unknown): string {
@@ -360,21 +362,23 @@ export function updateToolCardParameters(card: HTMLElement, argumentsValue: unkn
 	const summary = card.querySelector<HTMLElement>(".tool-call-summary");
 	if (!summary) throw new Error("tool card summary is unavailable");
 	if (inputReady && argumentsValue !== null && typeof argumentsValue === "object" && !Array.isArray(argumentsValue)) {
-		if (toolName === "execute_command") {
-			mountExecuteCommandInputBubble(card, { parameters: argumentsValue });
-			return;
-		}
-		if (toolName === "sub_agent") {
-			mountSubAgentToolBubble(card, { parameters: argumentsValue });
-			return;
-		}
-		if (toolName === "edit_file" || toolName === "multiedit_file") {
-			mountEditFileToolBubble(card, { toolName, parameters: argumentsValue });
-			return;
-		}
-		if (toolName === "overwrite_file") {
-			mountOverwriteFileToolBubble(card, { parameters: argumentsValue });
-			return;
+		switch (toolName) {
+			case "execute_command":
+				mountExecuteCommandInputBubble(card, { parameters: argumentsValue });
+				return;
+			case "sub_agent":
+				mountSubAgentToolBubble(card, { parameters: argumentsValue });
+				return;
+			case "edit_file":
+			case "multiedit_file":
+				mountEditFileToolBubble(card, { toolName, parameters: argumentsValue });
+				return;
+			case "overwrite_file":
+				mountOverwriteFileToolBubble(card, { parameters: argumentsValue });
+				return;
+			case "memory_save":
+				mountMemorySaveToolBubble(card, { parameters: argumentsValue });
+				return;
 		}
 	}
 	renderCommand(summary, buildToolSummary(toolName, argumentsValue));

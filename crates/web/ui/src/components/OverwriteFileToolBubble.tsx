@@ -1,9 +1,9 @@
 import type { VNode } from "preact";
 import { render } from "preact";
-import { bundledLanguagesInfo } from "shiki/langs";
 import { MarkdownBody } from "./MarkdownBody";
 import {
 	fencedContent,
+	fileLanguage,
 	type InputBody,
 	MarkdownCopyActions,
 	type MetadataField,
@@ -15,50 +15,6 @@ interface OverwriteFileToolBubbleProps {
 }
 
 const mountedBubbles = new Map<HTMLElement, HTMLElement>();
-const languages = new Map<string, string>();
-for (const language of bundledLanguagesInfo) {
-	languages.set(language.id, language.id);
-	for (const alias of language.aliases ?? []) languages.set(alias, language.id);
-}
-
-const filenameLanguages = new Map<string, string>([
-	["containerfile", "docker"],
-	["gnumakefile", "make"],
-	["justfile", "just"],
-	["cmakelists.txt", "cmake"],
-	[".env", "dotenv"],
-	[".bashrc", "shellscript"],
-	[".bash_profile", "shellscript"],
-	[".zshrc", "shellscript"],
-]);
-
-const extensionLanguages = new Map<string, string>([
-	["h", "c"],
-	["cc", "cpp"],
-	["cxx", "cpp"],
-	["hpp", "cpp"],
-	["hh", "cpp"],
-	["hxx", "cpp"],
-	["htm", "html"],
-	["svg", "xml"],
-	["xsd", "xml"],
-	["env", "dotenv"],
-]);
-
-function fileLanguage(filePath: unknown): string {
-	if (typeof filePath !== "string") return "text";
-	const filename = filePath.slice(Math.max(filePath.lastIndexOf("/"), filePath.lastIndexOf("\\")) + 1).toLowerCase();
-	const dot = filename.lastIndexOf(".");
-	const extension = dot < 0 ? "" : filename.slice(dot + 1);
-	return (
-		filenameLanguages.get(filename) ??
-		languages.get(filename) ??
-		extensionLanguages.get(extension) ??
-		languages.get(extension) ??
-		"text"
-	);
-}
-
 function OverwriteFileToolBubble({ parameters }: OverwriteFileToolBubbleProps): VNode {
 	const entries: [string, unknown][] = Object.entries(parameters);
 	const metadata: MetadataField[] = entries

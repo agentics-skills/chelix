@@ -19,6 +19,7 @@ import { highlightCodeBlocks } from "../code-highlight";
 import { unmountEditFileToolBubbles } from "../components/EditFileToolBubble";
 import { unmountExecuteCommandInputBubbles } from "../components/ExecuteCommandInputBubble";
 import { unmountExecuteCommandToolBubbles } from "../components/ExecuteCommandToolBubble";
+import { unmountMemorySaveToolBubbles } from "../components/MemorySaveToolBubble";
 import { mountMessageMarkdown, unmountMessageMarkdown } from "../components/MessageMarkdown";
 import { unmountOverwriteFileToolBubbles } from "../components/OverwriteFileToolBubble";
 import { unmountSubAgentToolBubbles } from "../components/SubAgentToolBubble";
@@ -792,6 +793,7 @@ function retainedMessageNodes(box: HTMLElement, history: UiSnapshot[]): Map<stri
 			unmountEditFileToolBubbles(child);
 			unmountExecuteCommandInputBubbles(child);
 			unmountExecuteCommandToolBubbles(child);
+			unmountMemorySaveToolBubbles(child);
 			unmountOverwriteFileToolBubbles(child);
 			unmountSubAgentToolBubbles(child);
 			unmountMessageMarkdown(child);
