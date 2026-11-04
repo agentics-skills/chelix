@@ -80,7 +80,7 @@ impl AgentTool for RipgrepTool {
                     "description": "Detail level for results."
                 },
                 "glob": {
-                    "type": "array",
+                    "type": ["string", "array"],
                     "items": { "type": "string" },
                     "description": "Include or exclude file paths using glob patterns, e.g., \"*.rs\", \"Cargo.toml\", \"src/**\". Prefix with \"!\" to exclude, e.g., \"!**/target/**\"."
                 },
@@ -409,6 +409,28 @@ mod tests {
                 other => panic!("unhandled advertised targets type: {other}"),
             };
             parse_input(json!({ "pattern": "needle", "targets": targets }))
+                .unwrap_or_else(|error| panic!("advertised type {name} is rejected: {error}"));
+        }
+    }
+
+    #[test]
+    fn glob_schema_types_are_accepted() {
+        let schema =
+            RipgrepTool::new(client("http://tools.invalid".into(), "unused")).parameters_schema();
+        let types = schema["properties"]["glob"]["type"]
+            .as_array()
+            .unwrap_or_else(|| panic!("'glob' type must be an array of type names"));
+
+        for json_type in types {
+            let name = json_type
+                .as_str()
+                .unwrap_or_else(|| panic!("'glob' type entry must be a string"));
+            let glob = match name {
+                "string" => json!("*.rs"),
+                "array" => json!(["*.rs", "Cargo.toml"]),
+                other => panic!("unhandled advertised glob type: {other}"),
+            };
+            parse_input(json!({ "pattern": "needle", "glob": glob }))
                 .unwrap_or_else(|error| panic!("advertised type {name} is rejected: {error}"));
         }
     }

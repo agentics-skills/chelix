@@ -548,7 +548,7 @@ pub struct RipgrepInput {
     pub case_mode: Option<RipgrepCaseMode>,
     #[serde(default)]
     pub detail: RipgrepDetail,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_string_or_string_array")]
     pub glob: Vec<String>,
     #[serde(default, rename = "type")]
     pub include_types: Vec<String>,
@@ -1658,6 +1658,23 @@ mod tests {
         }))
         .unwrap_or_else(|error| panic!("ripgrep input decode failed: {error}"));
         assert_eq!(many.targets, ["src", "docs"]);
+    }
+
+    #[test]
+    fn ripgrep_input_accepts_string_or_array_glob() {
+        let one: RipgrepInput = serde_json::from_value(serde_json::json!({
+            "pattern": "needle",
+            "glob": "*.rs"
+        }))
+        .unwrap_or_else(|error| panic!("ripgrep input decode failed: {error}"));
+        assert_eq!(one.glob, ["*.rs"]);
+
+        let many: RipgrepInput = serde_json::from_value(serde_json::json!({
+            "pattern": "needle",
+            "glob": ["*.rs", "Cargo.toml"]
+        }))
+        .unwrap_or_else(|error| panic!("ripgrep input decode failed: {error}"));
+        assert_eq!(many.glob, ["*.rs", "Cargo.toml"]);
     }
 
     #[test]
