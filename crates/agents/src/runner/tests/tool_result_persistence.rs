@@ -10,8 +10,14 @@ use std::{
 };
 
 use {
-    async_trait::async_trait, chelix_common::tool_lifecycle::ToolLifecycleUpdate,
-    chelix_sessions::ToolResultStore, tokio_stream::Stream, tokio_util::sync::CancellationToken,
+    async_trait::async_trait,
+    chelix_common::{
+        hooks::{HookAction, HookEvent, HookHandler, HookPayload, HookRegistry},
+        tool_lifecycle::ToolLifecycleUpdate,
+    },
+    chelix_sessions::ToolResultStore,
+    tokio_stream::Stream,
+    tokio_util::sync::CancellationToken,
 };
 
 use crate::model::{ChatMessage, CompletionResponse, LlmProvider, StreamEvent, ToolCall, Usage};
@@ -37,6 +43,7 @@ async fn small_result_is_persisted_but_not_truncated() {
         50_000,
         Truncation::Standard,
         ToolResultPersistence::On,
+        0,
     )
     .await
     .unwrap();
@@ -69,12 +76,13 @@ async fn oversized_result_is_truncated_with_pointer_to_file() {
         100,
         Truncation::Standard,
         ToolResultPersistence::On,
+        0,
     )
     .await
     .unwrap();
 
     assert!(result.starts_with("xxxx"));
-    assert!(result.contains("[Truncated — full tool result (1KB) written to file."));
+    assert!(result.contains("[Truncated — full tool result (1KB or 1 lines) written to file."));
     assert!(result.contains("Use the read_file tool to access the content at:"));
     let content_path = dir
         .path()
@@ -100,6 +108,7 @@ async fn oversized_json_result_mentions_schema_file() {
         100,
         Truncation::Standard,
         ToolResultPersistence::On,
+        0,
     )
     .await
     .unwrap();
@@ -130,6 +139,7 @@ async fn truncation_off_keeps_full_result_in_context() {
         100,
         Truncation::Off,
         ToolResultPersistence::On,
+        0,
     )
     .await
     .unwrap();
@@ -159,6 +169,7 @@ async fn truncation_respects_char_boundary() {
         51,
         Truncation::Standard,
         ToolResultPersistence::On,
+        0,
     )
     .await
     .unwrap();
@@ -166,6 +177,137 @@ async fn truncation_respects_char_boundary() {
     let prefix_end = result.find("\n\n[Truncated").unwrap();
     assert!(prefix_end <= 51);
     assert_eq!(prefix_end % 2, 0, "must not split a 2-byte char");
+}
+
+#[tokio::test]
+async fn truncated_marker_reports_full_file_line_count() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_in(&dir);
+    let raw = "line\n".repeat(40);
+
+    let result = persist_and_truncate(
+        &store,
+        "chat:main",
+        "call_lines",
+        &serde_json::json!(raw),
+        15,
+        Truncation::Standard,
+        ToolResultPersistence::On,
+        0,
+    )
+    .await
+    .unwrap();
+
+    let marker = result.find("\n\n[Truncated").unwrap();
+    assert_eq!(&result[..marker], &raw[..15]);
+    assert!(result.contains("[Truncated — full tool result (1KB or 40 lines) written to file."));
+    let content_path = dir
+        .path()
+        .join("tool-results")
+        .join("chat_main")
+        .join("call_lines")
+        .join("content.txt");
+    assert_eq!(std::fs::read_to_string(content_path).unwrap(), raw);
+}
+
+#[tokio::test]
+async fn end_truncation_keeps_suffix() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_in(&dir);
+    let raw = format!("{}TAIL", "a".repeat(100));
+
+    let result = persist_and_truncate(
+        &store,
+        "chat:main",
+        "call_end",
+        &serde_json::json!(raw),
+        4,
+        Truncation::End,
+        ToolResultPersistence::On,
+        0,
+    )
+    .await
+    .unwrap();
+
+    let marker = result.find("\n\n[Truncated").unwrap();
+    assert_eq!(&result[..marker], "TAIL");
+    assert!(result.contains("[Truncated — full tool result (1KB or 1 lines) written to file."));
+    let content_path = dir
+        .path()
+        .join("tool-results")
+        .join("chat_main")
+        .join("call_end")
+        .join("content.txt");
+    assert_eq!(std::fs::read_to_string(content_path).unwrap(), raw);
+}
+
+#[tokio::test]
+async fn end_truncation_respects_char_boundary() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_in(&dir);
+    let raw = "é".repeat(10);
+
+    let result = persist_and_truncate(
+        &store,
+        "chat:main",
+        "call_end_char",
+        &serde_json::json!(raw),
+        5,
+        Truncation::End,
+        ToolResultPersistence::On,
+        0,
+    )
+    .await
+    .unwrap();
+
+    let marker = result.find("\n\n[Truncated").unwrap();
+    assert_eq!(&result[..marker], "éé");
+}
+
+#[tokio::test]
+async fn end_truncation_keeps_status_prefix_and_output_tail() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_in(&dir);
+    let header = "Command finished in terminal (id: 7) with exit code 0.\nOutput:\n";
+    let raw = format!("{header}{}TAIL", "a".repeat(300));
+
+    let result = persist_and_truncate(
+        &store,
+        "chat:main",
+        "call_end_status",
+        &serde_json::json!(raw),
+        header.len() + 4,
+        Truncation::End,
+        ToolResultPersistence::On,
+        header.len(),
+    )
+    .await
+    .unwrap();
+
+    let marker = result.find("\n\n[Truncated").unwrap();
+    assert_eq!(&result[..marker], &format!("{header}TAIL"));
+    let content_path = dir
+        .path()
+        .join("tool-results")
+        .join("chat_main")
+        .join("call_end_status")
+        .join("content.txt");
+    assert_eq!(std::fs::read_to_string(&content_path).unwrap(), raw);
+
+    let short = persist_and_truncate(
+        &store,
+        "chat:main",
+        "call_end_status_short",
+        &serde_json::json!(raw),
+        10,
+        Truncation::End,
+        ToolResultPersistence::On,
+        header.len(),
+    )
+    .await
+    .unwrap();
+    let short_marker = short.find("\n\n[Truncated").unwrap();
+    assert_eq!(&short[..short_marker], &header[..10]);
 }
 
 #[tokio::test]
@@ -183,6 +325,7 @@ async fn blob_stripping_applies_to_in_context_copy_only() {
         50_000,
         Truncation::Standard,
         ToolResultPersistence::On,
+        0,
     )
     .await
     .unwrap();
@@ -217,6 +360,7 @@ async fn agent_facing_text_is_persisted_without_protocol_metadata() {
         10,
         Truncation::Standard,
         ToolResultPersistence::On,
+        0,
     )
     .await
     .unwrap();
@@ -248,6 +392,7 @@ async fn structured_agent_result_is_persisted_as_json() {
         50_000,
         Truncation::Standard,
         ToolResultPersistence::On,
+        0,
     )
     .await
     .unwrap();
@@ -324,6 +469,208 @@ fn default_in_context_result_bytes_is_none() {
     let tool = EchoTool;
     use crate::tool_registry::AgentTool as _;
     assert_eq!(tool.in_context_result_bytes(&serde_json::json!({})), None);
+}
+
+struct EndWindowTool {
+    body: String,
+    prefix: usize,
+}
+
+#[async_trait]
+impl crate::tool_registry::AgentTool for EndWindowTool {
+    fn name(&self) -> &str {
+        "end_window_tool"
+    }
+
+    fn description(&self) -> &str {
+        "Returns a payload truncated from the end with a preserved status prefix"
+    }
+
+    fn parameters_schema(&self) -> serde_json::Value {
+        serde_json::json!({"type": "object", "properties": {}})
+    }
+
+    fn truncation(&self, _params: &serde_json::Value) -> Truncation {
+        Truncation::End
+    }
+
+    fn in_context_preserved_prefix(
+        &self,
+        _params: &serde_json::Value,
+        _raw_result: &serde_json::Value,
+    ) -> usize {
+        self.prefix
+    }
+
+    async fn execute(&self, _params: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        Ok(serde_json::Value::String(self.body.clone()))
+    }
+}
+
+struct EndWindowProvider {
+    call_count: AtomicUsize,
+}
+
+impl LlmProvider for EndWindowProvider {
+    fn name(&self) -> &str {
+        "end-window"
+    }
+
+    fn id(&self) -> &str {
+        "end-window-model"
+    }
+
+    fn context_window(&self) -> Option<u32> {
+        Some(TEST_CONTEXT_WINDOW)
+    }
+
+    fn max_input_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_INPUT_TOKENS)
+    }
+
+    fn max_output_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_OUTPUT_TOKENS)
+    }
+
+    fn supports_tools(&self) -> bool {
+        true
+    }
+
+    fn stream_with_tools(
+        &self,
+        _messages: Vec<ChatMessage>,
+        _tools: Vec<serde_json::Value>,
+    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        crate::model::response_stream(async move {
+            let count = self.call_count.fetch_add(1, Ordering::SeqCst);
+            if count == 0 {
+                return Ok(CompletionResponse {
+                    text: None,
+                    tool_calls: vec![ToolCall {
+                        id: "call_end_window".into(),
+                        name: "end_window_tool".into(),
+                        arguments: serde_json::json!({}),
+                        argument_diagnostic: None,
+                    }],
+                    usage: Usage {
+                        input_tokens: 10,
+                        output_tokens: 5,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                });
+            }
+            Ok(CompletionResponse {
+                text: Some("Done!".into()),
+                tool_calls: vec![],
+                usage: Usage {
+                    input_tokens: 20,
+                    output_tokens: 10,
+                    ..Default::default()
+                },
+                ..Default::default()
+            })
+        })
+    }
+
+    fn stream(
+        &self,
+        messages: Vec<ChatMessage>,
+    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        self.stream_with_tools(messages, Vec::new())
+    }
+}
+
+struct ReplacePersistResultHook {
+    replacement: serde_json::Value,
+}
+
+#[async_trait]
+impl HookHandler for ReplacePersistResultHook {
+    fn name(&self) -> &str {
+        "replace-persist-result-hook"
+    }
+
+    fn events(&self) -> &[HookEvent] {
+        static EVENTS: [HookEvent; 1] = [HookEvent::ToolResultPersist];
+        &EVENTS
+    }
+
+    async fn handle(
+        &self,
+        _event: HookEvent,
+        _payload: &HookPayload,
+    ) -> chelix_common::error::Result<HookAction> {
+        Ok(HookAction::ModifyPayload(self.replacement.clone()))
+    }
+}
+
+async fn run_end_window(hooks: Option<Arc<HookRegistry>>) -> String {
+    let header = "Command finished in terminal (id: 7) with exit code 0.\nOutput:\n";
+    let mut tools = ToolRegistry::new();
+    tools.register(Box::new(EndWindowTool {
+        body: format!("{header}{}TAIL", "a".repeat(300)),
+        prefix: header.len(),
+    }));
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let on_lifecycle = recording_tool_lifecycle(&events);
+    let mut config = test_config();
+    config
+        .agents
+        .entries
+        .get_mut("main")
+        .unwrap()
+        .max_tool_result_bytes = Some(header.len() + 4);
+    let fixture = crate::test_support::ConfigFixture::new(config)
+        .await
+        .unwrap();
+    let tools_config = chelix_config::schema::ToolsConfig::default();
+    let user_content = UserContent::text("run");
+
+    super::super::run_agent_loop_streaming_with_limits(
+        Arc::new(EndWindowProvider {
+            call_count: AtomicUsize::new(0),
+        }),
+        &tools,
+        &tools_config,
+        &fixture.service,
+        "main",
+        "You are a test bot.",
+        &user_content,
+        None,
+        Some(&on_lifecycle),
+        None,
+        None,
+        test_tool_context(None),
+        None,
+        hooks,
+        None,
+        None,
+        &CancellationToken::new(),
+        test_agent_loop_limits(),
+    )
+    .await
+    .unwrap();
+
+    let events = events.lock().unwrap();
+    completed_tool_result(&events, "call_end_window").to_string()
+}
+
+#[tokio::test]
+async fn end_window_keeps_prefix_until_persist_hook_replaces_result() {
+    let header = "Command finished in terminal (id: 7) with exit code 0.\nOutput:\n";
+    let plain = run_end_window(None).await;
+    assert_eq!(truncated_prefix(&plain), &format!("{header}TAIL"));
+
+    let mut hooks = HookRegistry::new();
+    hooks.register(Arc::new(ReplacePersistResultHook {
+        replacement: serde_json::Value::String(format!("{}{}ZZZZ", "HEAD", "m".repeat(300))),
+    }));
+    let replaced = run_end_window(Some(Arc::new(hooks))).await;
+    assert_eq!(
+        truncated_prefix(&replaced),
+        &format!("{}ZZZZ", "m".repeat(63))
+    );
 }
 
 struct QuickBudgetTool {

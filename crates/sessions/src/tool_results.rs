@@ -46,6 +46,8 @@ pub struct PersistedToolResult {
     pub schema_path: Option<PathBuf>,
     /// Size in bytes of the persisted content.
     pub content_bytes: usize,
+    /// Line count of the persisted content.
+    pub content_lines: usize,
 }
 
 /// Writes full tool outputs to per-session, per-call directories.
@@ -103,6 +105,7 @@ impl ToolResultStore {
         tokio::fs::create_dir_all(&dir).await?;
         let content_path = dir.join(file_name);
         let content_bytes = content.len();
+        let content_lines = content.lines().count();
         write_if_missing(&content_path, content).await?;
         let schema_path = match schema {
             Some(schema) => {
@@ -121,6 +124,7 @@ impl ToolResultStore {
             content_path,
             schema_path,
             content_bytes,
+            content_lines,
         })
     }
 
@@ -136,16 +140,19 @@ impl ToolResultStore {
         let dir = self.call_dir(session_key, call_id);
         tokio::fs::create_dir_all(&dir).await?;
         let content_path = dir.join("content.txt");
+        let content_bytes = content.len();
+        let content_lines = content.lines().count();
         write_if_missing(&content_path, content.to_string()).await?;
         tracing::debug!(
             path = %content_path.display(),
-            bytes = content.len(),
+            bytes = content_bytes,
             "persisted text tool result"
         );
         Ok(PersistedToolResult {
             content_path,
             schema_path: None,
-            content_bytes: content.len(),
+            content_bytes,
+            content_lines,
         })
     }
 }
@@ -428,6 +435,7 @@ mod tests {
         assert!(persisted.content_path.ends_with("content.txt"));
         assert!(persisted.schema_path.is_none());
         assert_eq!(persisted.content_bytes, "not json at all".len());
+        assert_eq!(persisted.content_lines, 1);
         let on_disk = std::fs::read_to_string(&persisted.content_path).unwrap();
         assert_eq!(on_disk, "not json at all");
         // Path layout: <sessions>/tool-results/<session>/<call>/content.txt
@@ -453,6 +461,7 @@ mod tests {
         assert!(schema_path.ends_with("schema.json"));
 
         let content = std::fs::read_to_string(&persisted.content_path).unwrap();
+        assert_eq!(persisted.content_lines, content.lines().count());
         // Pretty-printed (multi-line) and parseable back to the same value.
         assert!(content.contains('\n'));
         let round_trip: Value = serde_json::from_str(&content).unwrap();
@@ -499,6 +508,7 @@ mod tests {
             std::fs::read_to_string(&persisted.content_path).unwrap(),
             "{\n  \"line\": 1\n}"
         );
+        assert_eq!(persisted.content_lines, 3);
     }
 
     #[tokio::test]

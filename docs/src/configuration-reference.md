@@ -323,8 +323,8 @@ Tools must not truncate their own returned results. A tool can select its
 in-code truncation and persistence policies independently. Reading tools use
 both opt-outs: `read_file` already applies explicit line and byte bounds, so it
 neither re-truncates nor re-persists content when reading a persisted tool
-result back into context. A tool that disables persistence cannot use standard
-truncation for an oversized result because there would be no resolvable
+result back into context. A tool that disables persistence cannot use `Truncation::Standard` or
+`Truncation::End` for an oversized result because there would be no resolvable
 full-output file.
 
 ### `tools.execute_command` — ExecuteCommandConfig

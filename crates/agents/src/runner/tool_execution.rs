@@ -16,7 +16,7 @@ use crate::{
     model::{ToolCall, ToolCallArgumentSource, ToolChoice},
     tool_arg_validator::validate_tool_args,
     tool_context::ToolExecutionContext,
-    tool_registry::ToolRegistry,
+    tool_registry::{ToolRegistry, Truncation},
 };
 
 use super::{
@@ -664,6 +664,15 @@ impl ToolInvocationExecutor<'_> {
         } else {
             raw_result.clone()
         };
+        let truncation = tool
+            .map(|tool| tool.truncation(arguments))
+            .unwrap_or_default();
+        let mut preserve_prefix = match truncation {
+            Truncation::End if has_raw_result => tool
+                .map(|tool| tool.in_context_preserved_prefix(arguments, raw_result))
+                .unwrap_or(0),
+            Truncation::End | Truncation::Standard | Truncation::Off => 0,
+        };
 
         if let Some(hooks) = self.hook_registry {
             let payload = HookPayload::ToolResultPersist {
@@ -676,12 +685,14 @@ impl ToolInvocationExecutor<'_> {
                 Ok(HookAction::ModifyPayload(value)) => {
                     debug!(tool = %tool_call.name, "ToolResultPersist replaced tool result");
                     agent_result = value;
+                    preserve_prefix = 0;
                 },
                 Ok(HookAction::Block(reason)) => {
                     warn!(tool = %tool_call.name, reason = %reason, "ToolResultPersist blocked result — substituting error marker");
                     agent_result = serde_json::json!({
                         "error": format!("blocked by hook: {reason}")
                     });
+                    preserve_prefix = 0;
                 },
                 Ok(HookAction::Continue) => {},
                 Err(error) => {
@@ -690,9 +701,6 @@ impl ToolInvocationExecutor<'_> {
             }
         }
 
-        let truncation = tool
-            .map(|tool| tool.truncation(arguments))
-            .unwrap_or_default();
         let persistence = tool
             .map(|tool| tool.result_persistence(arguments))
             .unwrap_or_default();
@@ -717,6 +725,7 @@ impl ToolInvocationExecutor<'_> {
             max_bytes,
             truncation,
             persistence,
+            preserve_prefix,
         )
         .await
         .map_err(Into::into)
