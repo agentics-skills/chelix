@@ -81,6 +81,7 @@ Chelix registers command execution tools for agent command work:
 - `timeout`: milliseconds to wait for completion without terminating the
   process;
 - `terminalId`: run in the terminal returned by an earlier call.
+- `quickResultFrom`: `begin` (default) or `end`. An oversized in-context result keeps the leading bytes for `begin`. For `end` it keeps the trailing command output and the command status line ahead of that tail.
 
 Omit optional routing parameters when they do not apply. Empty `customCwd` and
 `terminalId` strings are treated as omitted. A non-empty `terminalId` cannot be

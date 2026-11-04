@@ -19,9 +19,11 @@ pub use crate::tool_schema_defaults::ToolSchemaDefaults;
 /// content (e.g. a Read mode that reads persisted tool results back).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Truncation {
-    /// Truncate results above the configured byte budget (default).
+    /// Keep the leading bytes up to the budget, then append the full-output pointer.
     #[default]
     Standard,
+    /// Keep a caller-supplied leading prefix, then the trailing bytes that fit in the remaining budget, and append the full-output pointer. A zero prefix keeps only the trailing bytes.
+    End,
     /// Never truncate the in-context copy of this result.
     Off,
 }
@@ -77,6 +79,14 @@ pub trait AgentTool: Send + Sync {
     /// `max_tool_result_bytes` for this result.
     fn in_context_result_bytes(&self, _params: &serde_json::Value) -> Option<usize> {
         None
+    }
+    /// Leading bytes of this call's command status to keep when truncation is End. The default is 0.
+    fn in_context_preserved_prefix(
+        &self,
+        _params: &serde_json::Value,
+        _raw_result: &serde_json::Value,
+    ) -> usize {
+        0
     }
     /// Convert the raw implementation/protocol result into the value exposed
     /// to the LLM and persisted as tool context. The default contract exposes

@@ -129,6 +129,10 @@ impl AgentTool for AgentScopedSkillTool {
         self.inner.in_context_result_bytes(params)
     }
 
+    fn in_context_preserved_prefix(&self, params: &Value, raw_result: &Value) -> usize {
+        self.inner.in_context_preserved_prefix(params, raw_result)
+    }
+
     async fn agent_result(&self, params: &Value, raw_result: &Value) -> anyhow::Result<Value> {
         self.inner.agent_result(params, raw_result).await
     }

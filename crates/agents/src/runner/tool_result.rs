@@ -111,6 +111,30 @@ fn truncate_at_char_boundary(result: &mut String, max_bytes: usize) {
     result.truncate(end);
 }
 
+/// Keep `preserve_prefix` leading bytes, then the trailing bytes that fit in the
+/// rest of `max_bytes`. A zero prefix keeps only the trailing bytes.
+fn truncate_end_at_char_boundary(result: &mut String, max_bytes: usize, preserve_prefix: usize) {
+    if result.len() <= max_bytes {
+        return;
+    }
+    let mut prefix_len = preserve_prefix.min(max_bytes);
+    while prefix_len > 0 && !result.is_char_boundary(prefix_len) {
+        prefix_len -= 1;
+    }
+    let tail_budget = max_bytes - prefix_len;
+    if tail_budget == 0 {
+        result.truncate(prefix_len);
+        return;
+    }
+    let mut tail_start = result.len() - tail_budget;
+    while tail_start < result.len() && !result.is_char_boundary(tail_start) {
+        tail_start += 1;
+    }
+    let tail = result[tail_start..].to_string();
+    result.truncate(prefix_len);
+    result.push_str(&tail);
+}
+
 /// Persist the complete agent-facing tool result and build the in-context copy.
 ///
 /// Unless persistence is explicitly disabled by the tool, the agent-facing
@@ -118,8 +142,11 @@ fn truncate_at_char_boundary(result: &mut String, max_bytes: usize) {
 /// persisted as `content.txt`; structured values are persisted as
 /// `content.json` with a schema. The in-context copy is blob-stripped and,
 /// when it exceeds `max_bytes` and `truncation` is
-/// [`Truncation::Standard`], truncated with an appended marker pointing at the
-/// persisted full output.
+/// [`Truncation::Standard`] or [`Truncation::End`], truncated with an appended
+/// marker pointing at the persisted full output. `Standard` keeps the leading
+/// bytes. `End` keeps `preserve_prefix` leading bytes plus the trailing bytes
+/// that fit in the rest of the budget. A zero prefix keeps only the trailing
+/// bytes.
 pub async fn persist_and_truncate(
     store: &ToolResultStore,
     session_key: &str,
@@ -128,6 +155,7 @@ pub async fn persist_and_truncate(
     max_bytes: usize,
     truncation: Truncation,
     persistence: ToolResultPersistence,
+    preserve_prefix: usize,
 ) -> anyhow::Result<String> {
     let raw = match result_value.as_str() {
         Some(text) => text.to_string(),
@@ -137,16 +165,16 @@ pub async fn persist_and_truncate(
         persist_result(store, session_key, call_id, result_value, &raw, persistence).await?;
 
     let mut result = sanitize_tool_result(&raw);
-    if truncation == Truncation::Off || result.len() <= max_bytes {
-        return Ok(result);
+    match truncation {
+        Truncation::Off => return Ok(result),
+        Truncation::Standard | Truncation::End if result.len() <= max_bytes => return Ok(result),
+        Truncation::Standard => truncate_at_char_boundary(&mut result, max_bytes),
+        Truncation::End => truncate_end_at_char_boundary(&mut result, max_bytes, preserve_prefix),
     }
 
     let persisted = persisted.ok_or_else(|| {
-        anyhow::anyhow!(
-            "tool result persistence cannot be disabled when standard truncation is required"
-        )
+        anyhow::anyhow!("tool result persistence cannot be disabled when truncation is required")
     })?;
-    truncate_at_char_boundary(&mut result, max_bytes);
     append_full_output_pointer(&mut result, &persisted);
     Ok(result)
 }
@@ -177,9 +205,10 @@ async fn persist_result(
 /// Append the marker pointing the agent at the persisted full output.
 fn append_full_output_pointer(result: &mut String, persisted: &PersistedToolResult) {
     let kb = persisted.content_bytes.div_ceil(1024);
+    let lines = persisted.content_lines;
     let _ = write!(
         result,
-        "\n\n[Truncated — full tool result ({kb}KB) written to file. Use the read_file tool to access \
+        "\n\n[Truncated — full tool result ({kb}KB or {lines} lines) written to file. Use the read_file tool to access \
          the content at: {}]",
         persisted.content_path.display()
     );

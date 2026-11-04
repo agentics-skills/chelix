@@ -2,7 +2,7 @@ use std::{sync::Arc, time::Duration};
 
 use {
     async_trait::async_trait,
-    chelix_agents::tool_registry::{AgentTool, ToolSchemaDefaults},
+    chelix_agents::tool_registry::{AgentTool, ToolSchemaDefaults, Truncation},
     chelix_config_service::ConfigService,
     chelix_protocol::{
         ExecuteCommandRequest, ExecuteCommandResponse, ReadTerminalOutputRequest,
@@ -148,6 +148,12 @@ impl ExecuteCommandTool {
                     "type": "integer",
                     "minimum": 200,
                     "description": format!("Return immediately in the result output; the rest will be written to a dump file and will be available for reading later or careful study due to large volume (default {quick_result_default})")
+                },
+                "quickResultFrom": {
+                    "type": "string",
+                    "enum": ["begin", "end"],
+                    "default": "begin",
+                    "description": "Quick result shows this edge."
                 }
             },
             "required": ["command"],
@@ -243,6 +249,15 @@ fn parse_quick_result_bytes(
     }
 }
 
+fn parse_quick_result_from(params: &serde_json::Value) -> anyhow::Result<Truncation> {
+    match params.get("quickResultFrom") {
+        None | Some(serde_json::Value::Null) => Ok(Truncation::Standard),
+        Some(serde_json::Value::String(value)) if value == "begin" => Ok(Truncation::Standard),
+        Some(serde_json::Value::String(value)) if value == "end" => Ok(Truncation::End),
+        Some(_) => anyhow::bail!("quickResultFrom must be \"begin\" or \"end\""),
+    }
+}
+
 fn json_non_negative_usize(value: &serde_json::Value) -> Option<usize> {
     if let Some(n) = value.as_u64() {
         return usize::try_from(n).ok();
@@ -290,7 +305,28 @@ impl AgentTool for ExecuteCommandTool {
     }
 
     fn validate(&self, params: &serde_json::Value) -> anyhow::Result<()> {
-        parse_quick_result_bytes(params, &self.parameters_schema()).map(|_| ())
+        parse_quick_result_bytes(params, &self.parameters_schema())?;
+        parse_quick_result_from(params)?;
+        Ok(())
+    }
+
+    fn truncation(&self, params: &serde_json::Value) -> Truncation {
+        parse_quick_result_from(params).unwrap_or(Truncation::Standard)
+    }
+
+    fn in_context_preserved_prefix(
+        &self,
+        params: &serde_json::Value,
+        raw_result: &serde_json::Value,
+    ) -> usize {
+        if !matches!(parse_quick_result_from(params), Ok(Truncation::End)) {
+            return 0;
+        }
+        let Ok(response) = serde_json::from_value::<ExecuteCommandResponse>(raw_result.clone())
+        else {
+            return 0;
+        };
+        command_status_prefix_len(&format_execute_status(&response), &response.output)
     }
 
     fn in_context_result_bytes(&self, params: &serde_json::Value) -> Option<usize> {
@@ -463,11 +499,21 @@ fn format_terminal_output(response: &ReadTerminalOutputResponse) -> String {
     format_output(status, &response.output)
 }
 
+const OUTPUT_SEPARATOR: &str = "\nOutput:\n";
+
 fn format_output(status: String, output: &str) -> String {
     if output.is_empty() {
         status
     } else {
-        format!("{status}\nOutput:\n{output}")
+        format!("{status}{OUTPUT_SEPARATOR}{output}")
+    }
+}
+
+fn command_status_prefix_len(status: &str, output: &str) -> usize {
+    if output.is_empty() {
+        status.len()
+    } else {
+        status.len() + OUTPUT_SEPARATOR.len()
     }
 }
 
@@ -1043,6 +1089,16 @@ mod tests {
         assert_eq!(schema["additionalProperties"], false);
         assert_eq!(schema["properties"]["quickResultBytes"]["type"], "integer");
         assert_eq!(schema["properties"]["quickResultBytes"]["minimum"], 200);
+        assert_eq!(schema["properties"]["quickResultFrom"]["type"], "string");
+        assert_eq!(
+            schema["properties"]["quickResultFrom"]["enum"],
+            serde_json::json!(["begin", "end"])
+        );
+        assert_eq!(schema["properties"]["quickResultFrom"]["default"], "begin");
+        assert_eq!(
+            schema["properties"]["quickResultFrom"]["description"],
+            "Quick result shows this edge."
+        );
         assert!(
             schema["properties"]["responseTimeoutMs"]["description"]
                 .as_str()
@@ -1151,6 +1207,81 @@ mod tests {
         assert!(
             tool.validate(&serde_json::json!({"quickResultBytes": "20"}))
                 .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn quick_result_from_selects_truncation_edge() {
+        let fixture =
+            chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+                .await
+                .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
+        let tool = ExecuteCommandTool::new(
+            client("http://127.0.0.1:1".into(), "unused"),
+            fixture.service.clone(),
+        );
+
+        for params in [
+            serde_json::json!({}),
+            serde_json::json!({"quickResultFrom": serde_json::Value::Null}),
+            serde_json::json!({"quickResultFrom": "begin"}),
+        ] {
+            assert!(tool.validate(&params).is_ok());
+            assert_eq!(tool.truncation(&params), Truncation::Standard);
+        }
+        let end = serde_json::json!({"quickResultFrom": "end"});
+        assert!(tool.validate(&end).is_ok());
+        assert_eq!(tool.truncation(&end), Truncation::End);
+        for params in [
+            serde_json::json!({"quickResultFrom": "middle"}),
+            serde_json::json!({"quickResultFrom": ""}),
+            serde_json::json!({"quickResultFrom": 1}),
+        ] {
+            assert!(tool.validate(&params).is_err());
+        }
+    }
+
+    #[test]
+    fn command_status_prefix_matches_formatted_result() {
+        let header = "Command finished in terminal (id: 7) with exit code 0.\nOutput:\n";
+        let with_output = response("hello", true, false, false);
+        let rendered = format_execute_result(&with_output);
+        let prefix =
+            command_status_prefix_len(&format_execute_status(&with_output), &with_output.output);
+        assert_eq!(prefix, 63);
+        assert_eq!(&rendered[..prefix], header);
+
+        let started = response("", false, false, true);
+        let started_rendered = format_execute_result(&started);
+        let started_prefix =
+            command_status_prefix_len(&format_execute_status(&started), &started.output);
+        assert_eq!(started_rendered, "Command started in terminal (id: 7).");
+        assert_eq!(started_prefix, started_rendered.len());
+    }
+
+    #[tokio::test]
+    async fn preserved_prefix_comes_from_the_command_response() {
+        let fixture =
+            chelix_agents::test_support::ConfigFixture::new(chelix_config::ChelixConfig::default())
+                .await
+                .unwrap_or_else(|error| panic!("config fixture failed: {error}"));
+        let tool = ExecuteCommandTool::new(
+            client("http://127.0.0.1:1".into(), "unused"),
+            fixture.service.clone(),
+        );
+        let raw = serde_json::to_value(response("hello", true, false, false))
+            .unwrap_or_else(|error| panic!("response encoding failed: {error}"));
+
+        assert_eq!(
+            tool.in_context_preserved_prefix(&serde_json::json!({"quickResultFrom": "end"}), &raw),
+            63
+        );
+        assert_eq!(
+            tool.in_context_preserved_prefix(
+                &serde_json::json!({"quickResultFrom": "begin"}),
+                &raw
+            ),
+            0
         );
     }
 
