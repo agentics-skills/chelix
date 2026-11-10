@@ -160,7 +160,7 @@ engine at the common `SessionStore` append boundary.
 | Segment close | Retains the segment outcome on the same snapshot. |
 | Tool lifecycle stage | Replaces the invocation snapshot while retaining accumulated input. |
 | Provider error | Creates an error entity with raw error, received details, run/segment identity and retry delay. |
-| Auto-continue or loop intervention | Appends a notice through the common history ingress. |
+| Loop intervention | Appends a notice through the common history ingress. |
 | Final assistant record | Confirms the canonical binding of the copied assistant snapshot. |
 
 SQLite stores accumulated semantic snapshots in `ui-history.sqlite`; the

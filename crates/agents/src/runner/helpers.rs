@@ -35,22 +35,6 @@ pub(crate) const MALFORMED_TOOL_RETRY_PROMPT: &str = "Your tool call was malform
      ```tool_call\n{\"tool\": \"name\", \"arguments\": {...}}\n```";
 pub(crate) const EMPTY_TOOL_NAME_RETRY_PROMPT: &str = "Your structured tool call had an empty tool name. Retry the same tool call using the intended tool's exact name and the same arguments.";
 
-/// Nudge sent to the model when auto-continue fires after it stopped mid-task
-/// without emitting a substantive final answer.
-///
-/// Deliberately avoids phrasing like "provide a brief final answer" because
-/// that invites the model to overwrite an already-emitted long response with
-/// a terse summary (see GH #628).
-pub(crate) const AUTO_CONTINUE_NUDGE: &str = "Your previous response ended without tool calls and without a final answer. \
-     If there are still steps to run, continue executing them. \
-     Otherwise reply with exactly: done";
-
-/// Minimum character count (after trimming) that qualifies an assistant text
-/// response as a "substantive final answer" — at or above this length the
-/// auto-continue nudge is suppressed because the model has clearly finished
-/// talking and nudging it risks losing the answer (GH #628).
-pub(crate) const AUTO_CONTINUE_SUBSTANTIVE_TEXT_THRESHOLD: usize = 40;
-
 // ── Typed errors and result ─────────────────────────────────────────────
 
 /// Typed errors from the agent loop.
@@ -436,10 +420,6 @@ pub enum RunnerEvent {
         error: String,
         delay_ms: u64,
     },
-    /// The model stopped without tool calls while auto-continue remains enabled.
-    AutoContinue {
-        iteration: usize,
-    },
     /// The loop detector fired after equivalent tool failures repeated across
     /// distinct model rounds. `stage` is 1 for the nudge/directive intervention
     /// and 2 for the stronger tool-stripping escalation.
@@ -721,13 +701,6 @@ pub(crate) fn resolve_tool_lookup<'a>(
     Cow<'a, str>,
 ) {
     (tools.get(name), Cow::Borrowed(name))
-}
-
-/// Returns `true` if `text` (trimmed) is long enough to be considered a real
-/// final answer rather than an empty/terse pause.
-#[must_use]
-pub(crate) fn is_substantive_answer_text(text: &str) -> bool {
-    text.trim().chars().count() >= AUTO_CONTINUE_SUBSTANTIVE_TEXT_THRESHOLD
 }
 
 pub(crate) fn find_empty_tool_name_call(tool_calls: &[ToolCall]) -> Option<&ToolCall> {
