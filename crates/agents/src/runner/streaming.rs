@@ -32,14 +32,13 @@ use crate::{
 };
 
 use super::{
-    AGENT_RUN_CANCELLED_REASON, AUTO_CONTINUE_NUDGE, AgentLoopLimits, AgentRunError,
-    AgentRunResult, AssistantIterationOutput, FinalTextSource, MALFORMED_TOOL_RETRY_PROMPT,
-    OnEvent, OnToolLifecycle, OnToolPermission, RunnerEvent, RunnerToolCall,
-    RunnerToolLifecycleEvent, ToolCallBudget, ToolInvocationExecutor, UsageAccumulator,
-    apply_before_llm_call_modify_payload, apply_loop_detector_intervention,
-    channel_binding_from_internal_params, deliver_tool_lifecycle, dispatch_after_llm_call_hook,
-    dispatch_before_agent_start_hook, empty_tool_name_retry_prompt, fallback_final_text_source,
-    find_empty_tool_name_call, finish_agent_run, has_named_tool_call, is_substantive_answer_text,
+    AGENT_RUN_CANCELLED_REASON, AgentLoopLimits, AgentRunError, AgentRunResult,
+    AssistantIterationOutput, FinalTextSource, MALFORMED_TOOL_RETRY_PROMPT, OnEvent,
+    OnToolLifecycle, OnToolPermission, RunnerEvent, RunnerToolCall, RunnerToolLifecycleEvent,
+    ToolCallBudget, ToolInvocationExecutor, UsageAccumulator, apply_before_llm_call_modify_payload,
+    apply_loop_detector_intervention, channel_binding_from_internal_params, deliver_tool_lifecycle,
+    dispatch_after_llm_call_hook, dispatch_before_agent_start_hook, empty_tool_name_retry_prompt,
+    fallback_final_text_source, find_empty_tool_name_call, finish_agent_run, has_named_tool_call,
     lifecycle_now_ms, record_answer_text,
     retry::{
         EMPTY_PROVIDER_RESPONSE_ERROR, RATE_LIMIT_MAX_RETRIES, SERVER_MAX_RETRIES,
@@ -191,8 +190,6 @@ pub async fn run_agent_loop_streaming_with_limits(
     let tool_mode = provider.tool_mode();
     let native_tools = matches!(tool_mode, ToolMode::Native);
     let text_tools = matches!(tool_mode, ToolMode::Text);
-    let max_auto_continues = tools_config.agent_max_auto_continues;
-    let auto_continue_min_tool_calls = tools_config.agent_auto_continue_min_tool_calls;
 
     let is_multimodal = matches!(user_content, UserContent::Multimodal(_));
     info!(
@@ -294,7 +291,6 @@ pub async fn run_agent_loop_streaming_with_limits(
     let mut last_answer_tool_call_id: Option<String> = None;
     let mut malformed_retry_count: u8 = 0;
     let mut empty_tool_name_retry_count: u8 = 0;
-    let mut auto_continue_count: usize = 0;
     let mut loop_detector = ToolLoopDetector::new(
         tools_config.agent_loop_detector_window,
         tools_config.agent_loop_detector_strip_tools_on_second_fire,
@@ -929,50 +925,10 @@ pub async fn run_agent_loop_streaming_with_limits(
             return Err(error);
         }
 
-        // If no tool calls, auto-continue or return the text response.
         if tool_calls.is_empty() {
-            // Auto-continue: if the model made tool calls earlier in this run
-            // and we haven't exhausted nudges, ask it to keep going. Suppress
-            // the nudge when the model already produced a substantive final
-            // answer — nudging in that case risks losing the answer (GH #628).
             let current_reasoning = materializer.segment.reasoning_content();
             let current_items = materializer.segment.items.clone();
             let current_segment_id = materializer.segment.segment_id.clone();
-            let has_reasoning_output = current_reasoning.as_ref().is_some_and(|r| !r.is_empty())
-                || !current_items.is_empty();
-            if !is_substantive_answer_text(&accumulated_text)
-                && !has_reasoning_output
-                && tool_call_budget.used() > 0
-                && tool_call_budget.used() >= auto_continue_min_tool_calls
-                && auto_continue_count < max_auto_continues
-            {
-                auto_continue_count += 1;
-                info!(
-                    iterations,
-                    auto_continue_count, "model stopped without tool calls, auto-continuing"
-                );
-                if let Some(cb) = on_event {
-                    cb(RunnerEvent::AutoContinue {
-                        iteration: iterations,
-                    });
-                }
-                if !accumulated_text.is_empty()
-                    || current_reasoning.is_some()
-                    || !current_items.is_empty()
-                {
-                    messages.push(
-                        ChatMessage::assistant_with_tools(
-                            (!accumulated_text.is_empty()).then(|| accumulated_text.clone()),
-                            Vec::new(),
-                        )
-                        .with_reasoning(current_reasoning)
-                        .with_provider_items(current_items)
-                        .with_segment_id(current_segment_id),
-                    );
-                }
-                messages.push(ChatMessage::user(AUTO_CONTINUE_NUDGE));
-                continue;
-            }
 
             let current_output = AssistantIterationOutput {
                 text: accumulated_text,

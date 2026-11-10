@@ -251,8 +251,6 @@ archived_session_retention_days = 7  # Days from owner metadata updated_at; requ
 
 # [tools]
 # agent_timeout_secs = 600          # Max seconds for an agent run (0 = no timeout)
-# agent_max_auto_continues = 2      # Auto-continue nudges when model stops mid-task (0 = off)
-# agent_auto_continue_min_tool_calls = 3  # Min tool calls before auto-continue can trigger
 # max_tool_result_bytes = 50000     # Max in-context bytes per tool result before truncation (50KB).
 #                                   # Full outputs are always persisted under
 #                                   # <data_dir>/sessions/tool-results/<session>/<call>/ and truncated

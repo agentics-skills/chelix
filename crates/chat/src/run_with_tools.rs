@@ -981,9 +981,6 @@ pub(crate) async fn run_with_tools(
                 },
             };
             let notice = match &event {
-                RunnerEvent::AutoContinue { iteration } => Some(format!(
-                    "Auto-continue: Model paused after iteration {iteration}. Asking it to continue..."
-                )),
                 RunnerEvent::LoopInterventionFired { stage, tool_name } => Some(format!(
                     "Loop detected: Detected repeated failed calls to `{tool_name}`. Intervening (stage {stage}) to break the loop."
                 )),
@@ -1100,8 +1097,7 @@ pub(crate) async fn run_with_tools(
                     "iteration": n,
                     "seq": seq,
                 }),
-                RunnerEvent::AutoContinue { .. }
-                | RunnerEvent::LoopInterventionFired { .. }
+                RunnerEvent::LoopInterventionFired { .. }
                 | RunnerEvent::ProviderError { .. } => continue,
                 RunnerEvent::RetryingAfterError { error, delay_ms } => {
                     let error_obj =

@@ -167,8 +167,6 @@ pub(crate) fn build_schema_map() -> KnownKeys {
             ("web", Struct(HashMap::from([("firecrawl", firecrawl())]))),
             ("maps", Struct(HashMap::from([("provider", Leaf)]))),
             ("agent_timeout_secs", Leaf),
-            ("agent_max_auto_continues", Leaf),
-            ("agent_auto_continue_min_tool_calls", Leaf),
             ("max_tool_result_bytes", Leaf),
             ("registry_mode", Leaf),
             ("agent_loop_detector_window", Leaf),

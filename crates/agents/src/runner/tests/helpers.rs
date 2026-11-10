@@ -22,8 +22,8 @@ pub(super) use {
         CompactedPromptTokenFloor, ContextCompactionRequest, OnEvent, OnToolLifecycle, RunnerEvent,
         RunnerToolLifecycleEvent, apply_before_llm_call_modify_payload, estimate_prompt_tokens,
         estimate_tool_schema_tokens, evaluate_context_budget, helpers::estimate_message_tokens,
-        is_substantive_answer_text, resolve_tool_lookup, retry::*, sanitize_tool_name,
-        sanitize_tool_result, tool_result::persist_and_truncate,
+        resolve_tool_lookup, retry::*, sanitize_tool_name, sanitize_tool_result,
+        tool_result::persist_and_truncate,
     },
     crate::{
         model::UserContent,
@@ -1207,13 +1207,6 @@ pub(super) fn has_tool_message_containing(messages: &[ChatMessage], needle: &str
         _ => false,
     })
 }
-
-/// Long text emitted after a few tool calls should be returned verbatim
-/// without auto-continue firing (GH #628).
-pub(super) const GH_628_LONG_ANSWER: &str = "Your volume is still down compared to last week. \
-    Squat volume dropped from 12 sets to 8 sets, bench press held steady at 10 sets, \
-    and deadlift volume fell from 6 to 4 sets. Consider adding an accessory day to \
-    recover weekly tonnage before the next overload block.";
 
 pub(super) fn history_contains_intervention(messages: &[ChatMessage]) -> bool {
     messages.iter().any(|m| match m {
