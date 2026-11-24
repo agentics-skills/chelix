@@ -22,28 +22,36 @@ const STATIC_ASSETS: string[] = [
 
 // Install event - cache static assets
 sw.addEventListener("install", (event: ExtendableEvent) => {
-	event.waitUntil(
-		caches.open(CACHE_NAME).then((cache) => {
-			return cache.addAll(STATIC_ASSETS);
-		}),
-	);
+	if ("caches" in sw) {
+		event.waitUntil(
+			caches.open(CACHE_NAME).then((cache) => {
+				return cache.addAll(STATIC_ASSETS);
+			}),
+		);
+	}
 	// Activate immediately
 	sw.skipWaiting();
 });
 
 // Activate event - clean up old caches
 sw.addEventListener("activate", (event: ExtendableEvent) => {
-	event.waitUntil(
-		caches.keys().then((cacheNames) => {
-			return Promise.all(cacheNames.filter((name) => name !== CACHE_NAME).map((name) => caches.delete(name)));
-		}),
-	);
+	if ("caches" in sw) {
+		event.waitUntil(
+			caches.keys().then((cacheNames) => {
+				return Promise.all(cacheNames.filter((name) => name !== CACHE_NAME).map((name) => caches.delete(name)));
+			}),
+		);
+	}
 	// Take control of all pages immediately
 	sw.clients.claim();
 });
 
 // Fetch event - network first for API, cache first for assets
 sw.addEventListener("fetch", (event: FetchEvent) => {
+	if (!("caches" in sw)) {
+		return;
+	}
+
 	const url = new URL(event.request.url);
 
 	// Skip WebSocket requests
